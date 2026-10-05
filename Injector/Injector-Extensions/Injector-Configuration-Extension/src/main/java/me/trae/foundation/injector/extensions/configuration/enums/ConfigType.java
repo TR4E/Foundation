@@ -2,7 +2,7 @@ package me.trae.foundation.injector.extensions.configuration.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import me.trae.foundation.injector.extensions.configuration.serializer.ConfigSerializer;
+import me.trae.foundation.injector.extensions.configuration.serializer.ConfigurationSerializer;
 import me.trae.foundation.injector.extensions.configuration.serializer.json.JsonConfigurationSerializer;
 import me.trae.foundation.injector.extensions.configuration.serializer.yaml.YamlConfigurationSerializer;
 
@@ -14,5 +14,5 @@ public enum ConfigType {
     YAML(".yml", new YamlConfigurationSerializer());
 
     private final String extension;
-    private final ConfigSerializer serializer;
+    private final ConfigurationSerializer serializer;
 }

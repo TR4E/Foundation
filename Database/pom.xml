@@ -10,14 +10,15 @@
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <groupId>me.trae.foundation.injector</groupId>
-    <artifactId>Injector</artifactId>
+    <groupId>me.trae.foundation.database</groupId>
+    <artifactId>Database</artifactId>
     <packaging>pom</packaging>
 
     <modules>
-        <module>Injector-API</module>
-        <module>Injector-Core</module>
-        <module>Injector-Extensions</module>
+        <module>Database-API</module>
+<!--        <module>Database-Storage</module>-->
+<!--        <module>Database-Lookup</module>-->
+<!--        <module>Database-Core</module>-->
     </modules>
 
 </project>

@@ -18,6 +18,7 @@
     <modules>
         <module>Utilities</module>
         <module>Injector</module>
+        <module>Database</module>
     </modules>
 
     <dependencies>

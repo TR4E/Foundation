@@ -5,19 +5,11 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>me.trae.foundation</groupId>
-        <artifactId>Foundation</artifactId>
+        <groupId>me.trae.foundation.database</groupId>
+        <artifactId>Database</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <groupId>me.trae.foundation.injector</groupId>
-    <artifactId>Injector</artifactId>
-    <packaging>pom</packaging>
-
-    <modules>
-        <module>Injector-API</module>
-        <module>Injector-Core</module>
-        <module>Injector-Extensions</module>
-    </modules>
+    <artifactId>Database-API</artifactId>
 
 </project>

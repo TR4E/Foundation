@@ -3,5 +3,5 @@ package me.trae.foundation.injector.api.exception;
 import lombok.experimental.StandardException;
 
 @StandardException
-public class ScanException extends InjectorException {
+public final class ScanException extends InjectorException {
 }

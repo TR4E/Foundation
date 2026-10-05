@@ -3,5 +3,5 @@ package me.trae.foundation.injector.api.exception;
 import lombok.experimental.StandardException;
 
 @StandardException
-public class AmbiguousDependencyException extends InjectorException {
+public final class AmbiguousDependencyException extends InjectorException {
 }

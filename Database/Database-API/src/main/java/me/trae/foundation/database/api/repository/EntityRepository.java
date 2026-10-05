@@ -2,6 +2,7 @@ package me.trae.foundation.database.api.repository;
 
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.property.EntityProperty;
+import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.repository.index.IndexType;
 import me.trae.foundation.database.api.tenant.TenantScope;
 

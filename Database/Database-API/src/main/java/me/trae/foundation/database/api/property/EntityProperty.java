@@ -4,8 +4,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.entity.property.converter.ValueConverter;
 import me.trae.foundation.database.api.exception.SchemaException;
+import me.trae.foundation.database.api.property.converter.ValueConverter;
 
 import java.util.Optional;
 import java.util.function.BiConsumer;

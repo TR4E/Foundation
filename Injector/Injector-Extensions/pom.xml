@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>me.trae.foundation.injector</groupId>
+        <artifactId>Injector</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <groupId>me.trae.foundation.injector.extensions</groupId>
+    <artifactId>Injector-Extensions</artifactId>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>Injector-Scheduler-Extension</module>
+    </modules>
+    <dependencies>
+        <dependency>
+            <groupId>me.trae.foundation.injector</groupId>
+            <artifactId>Injector-API</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -17,7 +17,6 @@
     <modules>
         <module>Injector-API</module>
         <module>Injector-Core</module>
-<!--        <module>Injector-Scheduler</module>-->
-<!--        <module>Injector-Configuration</module>-->
+        <module>Injector-Extensions</module>
     </modules>
 </project>

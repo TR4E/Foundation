@@ -15,8 +15,18 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>Injector-Commons-Extension</module>
         <module>Injector-Scheduler-Extension</module>
         <module>Injector-Configuration-Extension</module>
     </modules>
+
+    <dependencies>
+        <!-- Injector API -->
+        <dependency>
+            <groupId>me.trae.foundation.injector</groupId>
+            <artifactId>Injector-API</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+    </dependencies>
 
 </project>

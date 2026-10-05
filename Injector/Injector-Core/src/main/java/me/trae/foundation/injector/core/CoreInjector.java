@@ -29,6 +29,7 @@ public final class CoreInjector implements Injector {
 
     public CoreInjector() {
         this.componentContainer.register(Injector.class, this);
+        this.extensionRegistry.getExtensionList().forEach(extension -> this.componentContainer.register(extension.getClass(), extension));
     }
 
     @Override

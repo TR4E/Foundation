@@ -16,6 +16,7 @@
 
     <modules>
         <module>Injector-Scheduler-Extension</module>
+        <module>Injector-Configuration-Extension</module>
     </modules>
 
 </project>

@@ -1,5 +1,6 @@
 package me.trae.foundation.injector.core.extension;
 
+import lombok.Getter;
 import me.trae.foundation.injector.api.extension.Extension;
 import me.trae.foundation.injector.core.application.ApplicationContext;
 
@@ -7,7 +8,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.ServiceLoader;
 
-public class ExtensionRegistry {
+@Getter
+public final class ExtensionRegistry {
 
     private final List<Extension> extensionList = ServiceLoader.load(Extension.class, ExtensionRegistry.class.getClassLoader()).stream().map(ServiceLoader.Provider::get).toList();
 

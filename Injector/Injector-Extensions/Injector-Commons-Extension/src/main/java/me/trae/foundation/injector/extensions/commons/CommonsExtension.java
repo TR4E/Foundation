@@ -19,22 +19,10 @@ public final class CommonsExtension implements Extension {
     private final Map<Class<?>, List<Object>> componentMap = new HashMap<>();
 
     @Override
-    public void onComponentCreate(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final Object component) {
-        this.componentMap.computeIfAbsent(applicationClass, key -> new ArrayList<>()).add(component);
-
-        MethodResolver.invoke(component, PostConstruct.class);
-    }
-
-    @Override
     public void onApplicationInitialize(final Class<?> applicationClass, final ApplicationCallback applicationCallback) {
         this.componentMap.getOrDefault(applicationClass, Collections.emptyList()).forEach(component -> {
             MethodResolver.invoke(component, ApplicationReady.class);
         });
-    }
-
-    @Override
-    public void onComponentShutdown(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final Object component) {
-        MethodResolver.invoke(component, PreDestroy.class);
     }
 
     @Override
@@ -47,5 +35,17 @@ public final class CommonsExtension implements Extension {
         componentList.reversed().forEach(component -> {
             MethodResolver.invoke(component, PostDestroy.class);
         });
+    }
+
+    @Override
+    public void onComponentCreate(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final Object component) {
+        this.componentMap.computeIfAbsent(applicationClass, key -> new ArrayList<>()).add(component);
+
+        MethodResolver.invoke(component, PostConstruct.class);
+    }
+
+    @Override
+    public void onComponentShutdown(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final Object component) {
+        MethodResolver.invoke(component, PreDestroy.class);
     }
 }

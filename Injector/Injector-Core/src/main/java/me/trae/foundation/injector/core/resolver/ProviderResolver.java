@@ -4,6 +4,7 @@ import me.trae.foundation.injector.api.annotation.Provider;
 import me.trae.foundation.injector.api.exception.ComponentCreationException;
 import me.trae.foundation.injector.core.application.ApplicationContext;
 import me.trae.foundation.injector.core.container.ComponentContainer;
+import me.trae.foundation.injector.core.extension.ExtensionRegistry;
 import me.trae.foundation.injector.core.resolver.abstracts.AbstractResolver;
 
 import java.lang.reflect.InvocationTargetException;
@@ -18,12 +19,14 @@ public final class ProviderResolver extends AbstractResolver {
 
     private final Map<Class<?>, Class<?>> ownerMap = new LinkedHashMap<>();
 
+    private final ExtensionRegistry extensionRegistry;
     private final ApplicationContext applicationContext;
     private final DependencyResolver dependencyResolver;
 
-    public ProviderResolver(final ComponentContainer componentContainer, final ApplicationContext applicationContext, final DependencyResolver dependencyResolver, final List<Class<?>> pendingClassList) {
+    public ProviderResolver(final ComponentContainer componentContainer, final ExtensionRegistry extensionRegistry, final ApplicationContext applicationContext, final DependencyResolver dependencyResolver, final List<Class<?>> pendingClassList) {
         super(componentContainer);
 
+        this.extensionRegistry = extensionRegistry;
         this.applicationContext = applicationContext;
         this.dependencyResolver = dependencyResolver;
 
@@ -76,6 +79,8 @@ public final class ProviderResolver extends AbstractResolver {
             this.getComponentContainer().register(providedType, provided);
 
             this.applicationContext.getComponentClassList().add(providedType);
+
+            this.extensionRegistry.onComponentCreate(this.applicationContext, provided);
         } catch (final ReflectiveOperationException exception) {
             throw new ComponentCreationException("Failed to invoke @Provider method %s".formatted(name), exception instanceof final InvocationTargetException invocationTargetException ? invocationTargetException.getCause() : exception);
         }

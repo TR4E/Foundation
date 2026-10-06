@@ -1,9 +1,11 @@
 package me.trae.foundation.injector.core.container.collection;
 
 import lombok.AllArgsConstructor;
+import lombok.NonNull;
 import me.trae.foundation.injector.core.container.ComponentContainer;
 
 import java.util.AbstractList;
+import java.util.Iterator;
 
 @AllArgsConstructor
 public final class LiveList<T> extends AbstractList<T> {
@@ -19,5 +21,12 @@ public final class LiveList<T> extends AbstractList<T> {
     @Override
     public int size() {
         return this.componentContainer.getAssignable(this.type).getList().size();
+    }
+
+    @Override
+    public @NonNull Iterator<T> iterator() {
+        return this.componentContainer.getAssignable(this.type).getList().stream()
+                .map(this.type::cast)
+                .iterator();
     }
 }

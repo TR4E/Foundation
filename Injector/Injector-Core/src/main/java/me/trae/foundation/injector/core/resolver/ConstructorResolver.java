@@ -36,7 +36,7 @@ public final class ConstructorResolver extends AbstractResolver {
         this.pendingClassList = pendingClassList;
         this.dependencyResolver = new DependencyResolver(componentContainer);
         this.dependsOnResolver = new DependsOnResolver();
-        this.providerResolver = new ProviderResolver(componentContainer, applicationContext, this.dependencyResolver, pendingClassList);
+        this.providerResolver = new ProviderResolver(componentContainer, extensionRegistry, applicationContext, this.dependencyResolver, pendingClassList);
     }
 
     public void createAll() {

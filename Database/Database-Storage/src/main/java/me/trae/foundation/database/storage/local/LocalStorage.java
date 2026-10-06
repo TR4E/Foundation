@@ -22,6 +22,20 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
         this(null);
     }
 
+    public void put(final Key key, final Value value, final Duration expiry) {
+        this.entryMap.compute(key, (ignored, existing) -> new CacheEntry<>(value, expiry, existing != null && existing.isPinned()));
+    }
+
+    @Override
+    public void put(final Key key, final Value value) {
+        this.put(key, value, this.expiry);
+    }
+
+    @Override
+    public void remove(final Key key) {
+        this.entryMap.remove(key);
+    }
+
     @Override
     public Optional<Value> get(final Key key) {
         final CacheEntry<Value> cacheEntry = this.entryMap.get(key);
@@ -49,13 +63,9 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
         return valueMap;
     }
 
-    public void put(final Key key, final Value value, final Duration expiry) {
-        this.entryMap.compute(key, (ignored, existing) -> new CacheEntry<>(value, expiry, existing != null && existing.isPinned()));
-    }
-
     @Override
-    public void put(final Key key, final Value value) {
-        this.put(key, value, this.expiry);
+    public boolean contains(final Key key) {
+        return this.get(key).isPresent();
     }
 
     public void pin(final Key key, final Value value) {
@@ -88,15 +98,5 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
 
     public void evictExpired() {
         this.entryMap.values().removeIf(CacheEntry::isExpired);
-    }
-
-    @Override
-    public void remove(final Key key) {
-        this.entryMap.remove(key);
-    }
-
-    @Override
-    public boolean contains(final Key key) {
-        return this.get(key).isPresent();
     }
 }

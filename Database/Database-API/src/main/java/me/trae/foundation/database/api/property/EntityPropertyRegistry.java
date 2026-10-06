@@ -16,7 +16,7 @@ public class EntityPropertyRegistry {
 
     private final Map<Class<?>, List<EntityProperty<?, ?>>> PROPERTY_MAP = new ConcurrentHashMap<>();
 
-    public <E extends Entity, V> EntityProperty<E, V> register(final EntityProperty<E, V> entityProperty) {
+    public <E extends Entity, Value> EntityProperty<E, Value> register(final EntityProperty<E, Value> entityProperty) {
         final List<EntityProperty<?, ?>> propertyList = PROPERTY_MAP.computeIfAbsent(entityProperty.getEntityType(), key -> new CopyOnWriteArrayList<>());
 
         if (propertyList.stream().anyMatch(registered -> registered.getName().equals(entityProperty.getName()))) {

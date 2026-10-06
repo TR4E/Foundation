@@ -59,7 +59,7 @@ public class EntityLookups {
         return new TieredLookup<>(stepList);
     }
 
-    private <E extends Entity, V> Optional<E> findLocal(final LocalStorage<UUID, E> localStorage, final EntityProperty<? super E, V> entityProperty, final V value) {
+    private <E extends Entity, Value> Optional<E> findLocal(final LocalStorage<UUID, E> localStorage, final EntityProperty<? super E, Value> entityProperty, final Value value) {
         return localStorage.getValues().stream()
                 .filter(entity -> Objects.equals(entityProperty.getValue(entity), value))
                 .findFirst();

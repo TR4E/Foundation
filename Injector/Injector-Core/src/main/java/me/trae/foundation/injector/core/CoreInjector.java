@@ -52,7 +52,7 @@ public final class CoreInjector implements Injector {
 
         this.start(new ApplicationContext(application), componentClasses);
 
-        this.applicationRegistry.pollReady().ifPresent(pendingApplication -> this.initialize(pendingApplication.getApplication(), pendingApplication.getComponentClasses()));
+        this.applicationRegistry.pollReady().ifPresent(this::startPending);
     }
 
     @Override
@@ -88,18 +88,32 @@ public final class CoreInjector implements Injector {
 
         this.componentContainer.register(applicationContext.getApplicationClass(), applicationContext.getApplication());
 
-        final List<Class<?>> pendingClassList = Stream.concat(
-                this.scanResolver.resolve(applicationContext.getApplicationClass(),
-                        this::isComponent).stream(),
-                componentClasses.stream()
-        ).distinct().sorted(applicationContext.getApplicationCallback().getComponentSorter()).toList();
+        try {
+            final List<Class<?>> pendingClassList = Stream.concat(
+                    this.scanResolver.resolve(applicationContext.getApplicationClass(),
+                            this::isComponent).stream(),
+                    componentClasses.stream()
+            ).distinct().sorted(applicationContext.getApplicationCallback().getComponentSorter()).toList();
 
-        new ConstructorResolver(this.componentContainer, this.extensionRegistry, applicationContext, pendingClassList).createAll();
+            new ConstructorResolver(this.componentContainer, this.extensionRegistry, applicationContext, pendingClassList).createAll();
 
-        this.componentLifecycle.initialize(applicationContext);
+            this.componentLifecycle.initialize(applicationContext);
+        } catch (final RuntimeException | Error exception) {
+            try {
+                this.stop(applicationContext);
+            } catch (final RuntimeException | Error stopException) {
+                exception.addSuppressed(stopException);
+            }
+
+            throw exception;
+        }
     }
 
     private void stop(final ApplicationContext applicationContext) {
+        if (this.applicationRegistry.getContext(applicationContext.getApplicationClass()).isEmpty()) {
+            return;
+        }
+
         this.applicationRegistry.getDependents(applicationContext.getApplicationClass()).forEach(this::stop);
 
         this.componentLifecycle.shutdown(applicationContext);
@@ -107,6 +121,16 @@ public final class CoreInjector implements Injector {
         this.componentContainer.unregister(applicationContext.getApplicationClass());
 
         this.applicationRegistry.unregister(applicationContext.getApplicationClass());
+    }
+
+    private void startPending(final PendingApplication pendingApplication) {
+        try {
+            this.initialize(pendingApplication.getApplication(), pendingApplication.getComponentClasses());
+        } catch (final RuntimeException | Error exception) {
+            new ApplicationContext(pendingApplication.getApplication()).getApplicationCallback().onApplicationFailure(exception);
+        }
+
+        this.applicationRegistry.pollReady().ifPresent(this::startPending);
     }
 
     private boolean isComponent(final Class<?> type) {

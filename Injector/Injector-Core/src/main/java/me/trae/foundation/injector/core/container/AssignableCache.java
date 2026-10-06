@@ -21,19 +21,17 @@ public final class AssignableCache {
     private final Map<Class<?>, Object> map;
 
     public static AssignableCache of(final Class<?> type, final Collection<Object> instances) {
+        final List<Object> list = instances.stream().filter(type::isInstance).distinct().toList();
+
         final LinkedHashMap<Class<?>, Object> map = new LinkedHashMap<>();
 
-        for (final Object instance : instances) {
-            if (!type.isInstance(instance)) {
-                continue;
-            }
-
-            map.put(instance.getClass(), instance);
+        for (final Object instance : list) {
+            map.putIfAbsent(instance.getClass(), instance);
         }
 
         return new AssignableCache(
-                List.copyOf(map.values()),
-                Collections.unmodifiableSet(new LinkedHashSet<>(map.values())),
+                list,
+                Collections.unmodifiableSet(new LinkedHashSet<>(list)),
                 Collections.unmodifiableMap(map)
         );
     }

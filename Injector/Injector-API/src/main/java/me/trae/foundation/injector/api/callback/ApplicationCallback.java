@@ -27,4 +27,8 @@ public interface ApplicationCallback {
 
     default void onComponentUnregister(final Object component) {
     }
+
+    default void onApplicationFailure(final Throwable throwable) {
+        Thread.currentThread().getUncaughtExceptionHandler().uncaughtException(Thread.currentThread(), throwable);
+    }
 }

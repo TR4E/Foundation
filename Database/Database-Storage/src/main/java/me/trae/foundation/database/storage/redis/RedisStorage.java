@@ -37,8 +37,14 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         this(redisDriver, redisNamespace, entityType, null);
     }
 
-    public RedisStorage<E> forTenant(final String tenantId) {
-        return new RedisStorage<>(this.redisDriver, this.redisNamespace.withTenant(tenantId), this.entityCodec, this.redisHashWriter);
+    @Override
+    public void put(final UUID id, final E entity) {
+        this.redisHashWriter.write(this.redisNamespace.getKey(id), this.entityCodec.encode(entity));
+    }
+
+    @Override
+    public void remove(final UUID id) {
+        this.redisDriver.getCommands().del(this.redisNamespace.getKey(id));
     }
 
     @Override
@@ -64,8 +70,8 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     }
 
     @Override
-    public void put(final UUID id, final E entity) {
-        this.redisHashWriter.write(this.redisNamespace.getKey(id), this.entityCodec.encode(entity));
+    public boolean contains(final UUID id) {
+        return this.redisDriver.getCommands().exists(this.redisNamespace.getKey(id)) > 0;
     }
 
     public void putProperties(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
@@ -88,14 +94,8 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         return this.redisHashWriter.increment(this.redisNamespace.getKey(id), entityProperty.getName(), delta);
     }
 
-    @Override
-    public void remove(final UUID id) {
-        this.redisDriver.getCommands().del(this.redisNamespace.getKey(id));
-    }
-
-    @Override
-    public boolean contains(final UUID id) {
-        return this.redisDriver.getCommands().exists(this.redisNamespace.getKey(id)) > 0;
+    public RedisStorage<E> forTenant(final String tenantId) {
+        return new RedisStorage<>(this.redisDriver, this.redisNamespace.withTenant(tenantId), this.entityCodec, this.redisHashWriter);
     }
 
     private Optional<E> decode(final UUID id, final Map<String, String> fieldMap) {

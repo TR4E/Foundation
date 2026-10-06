@@ -22,7 +22,9 @@ public final class RedisDriver {
     private final RedisSettings redisSettings;
 
     private RedisClient redisClient;
-    private StatefulRedisConnection<String, String> connection;
+
+    private volatile StatefulRedisConnection<String, String> connection;
+
     private StatefulRedisPubSubConnection<String, String> pubSubConnection;
 
     public synchronized void connect() {

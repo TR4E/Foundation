@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-public class CoreDatabase implements Database {
+public final class CoreDatabase implements Database {
 
     @Getter
     private final PostgresDriver postgresDriver;

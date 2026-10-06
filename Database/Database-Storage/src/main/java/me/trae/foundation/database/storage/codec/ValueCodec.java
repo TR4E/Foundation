@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 @UtilityClass
-public class ValueCodec {
+public final class ValueCodec {
 
     private final Map<Class<?>, Function<String, Object>> PARSER_MAP = Map.ofEntries(
             Map.entry(String.class, raw -> raw),

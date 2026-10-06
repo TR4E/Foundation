@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Getter
-public class TableSchema<E extends Entity> {
+public final class TableSchema<E extends Entity> {
 
     public static final Field<UUID> ID_FIELD = DSL.field(DSL.name("id"), SQLDataType.UUID.nullable(false));
     public static final Field<String> TENANT_FIELD = DSL.field(DSL.name("tenant_id"), SQLDataType.VARCHAR(64).nullable(false));

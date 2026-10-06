@@ -16,8 +16,8 @@
 
     <modules>
         <module>Minecraft-Common</module>
-<!--        <module>Minecraft-Velocity</module>-->
         <module>Minecraft-Paper</module>
+        <module>Minecraft-Velocity</module>
     </modules>
 
 </project>

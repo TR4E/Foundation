@@ -32,9 +32,7 @@ public final class CommonsExtension implements Extension {
             return;
         }
 
-        componentList.reversed().forEach(component -> {
-            MethodResolver.invoke(component, PostDestroy.class);
-        });
+        componentList.reversed().forEach(component -> MethodResolver.invoke(component, PostDestroy.class));
     }
 
     @Override
@@ -47,5 +45,20 @@ public final class CommonsExtension implements Extension {
     @Override
     public void onComponentShutdown(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final Object component) {
         MethodResolver.invoke(component, PreDestroy.class);
+    }
+
+    @Override
+    public void onComponentsAttach(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final List<Object> componentList) {
+        componentList.forEach(component -> MethodResolver.invoke(component, ApplicationReady.class));
+    }
+
+    @Override
+    public void onComponentsDetach(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final List<Object> componentList) {
+        final List<Object> trackedList = this.componentMap.get(applicationClass);
+        if (trackedList != null) {
+            trackedList.removeIf(tracked -> componentList.stream().anyMatch(component -> component == tracked));
+        }
+
+        componentList.forEach(component -> MethodResolver.invoke(component, PostDestroy.class));
     }
 }

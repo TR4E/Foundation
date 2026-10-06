@@ -24,26 +24,26 @@ public final class ExtensionRegistry {
     }
 
     public void onComponentCreate(final ApplicationContext applicationContext, final Object component) {
-        this.extensionList.forEach(extension -> {
-            extension.onComponentCreate(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback(), component);
-        });
+        this.extensionList.forEach(extension -> extension.onComponentCreate(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback(), component));
     }
 
     public void onApplicationInitialize(final ApplicationContext applicationContext) {
-        this.extensionList.forEach(extension -> {
-            extension.onApplicationInitialize(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback());
-        });
+        this.extensionList.forEach(extension -> extension.onApplicationInitialize(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback()));
     }
 
     public void onComponentShutdown(final ApplicationContext applicationContext, final Object component) {
-        this.extensionList.forEach(extension -> {
-            extension.onComponentShutdown(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback(), component);
-        });
+        this.extensionList.forEach(extension -> extension.onComponentShutdown(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback(), component));
     }
 
     public void onApplicationShutdown(final ApplicationContext applicationContext) {
-        this.extensionList.forEach(extension -> {
-            extension.onApplicationShutdown(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback());
-        });
+        this.extensionList.forEach(extension -> extension.onApplicationShutdown(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback()));
+    }
+
+    public void onComponentsAttach(final ApplicationContext applicationContext, final List<Object> componentList) {
+        this.extensionList.forEach(extension -> extension.onComponentsAttach(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback(), componentList));
+    }
+
+    public void onComponentsDetach(final ApplicationContext applicationContext, final List<Object> componentList) {
+        this.extensionList.forEach(extension -> extension.onComponentsDetach(applicationContext.getApplicationClass(), applicationContext.getApplicationCallback(), componentList));
     }
 }

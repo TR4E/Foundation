@@ -62,6 +62,10 @@ public final class ConfigurationResolver {
         configurationEntry.getConfigurationCallback().onConfigurationSave(type);
     }
 
+    public synchronized void removeConfiguration(final Class<?> type) {
+        this.entryMap.remove(type);
+    }
+
     public synchronized void remove(final Class<?> applicationClass) {
         this.entryMap.values().removeIf(entry -> entry.getApplicationClass() == applicationClass);
     }

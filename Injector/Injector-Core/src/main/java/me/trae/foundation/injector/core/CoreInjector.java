@@ -83,6 +83,42 @@ public final class CoreInjector implements Injector {
                 .orElseThrow(() -> new ApplicationNotInitializedException("%s is not initialized".formatted(applicationClass.getName())));
     }
 
+    @Override
+    public synchronized void attach(final Object application, final List<Class<?>> componentClasses) {
+        final ApplicationContext applicationContext = this.getContext(application.getClass());
+
+        final int index = applicationContext.getComponentClassList().size();
+
+        try {
+            new ConstructorResolver(this.componentContainer, this.extensionRegistry, applicationContext, componentClasses.stream().distinct().sorted(applicationContext.getApplicationCallback().getComponentSorter()).toList()).createAll();
+
+            this.componentLifecycle.attach(applicationContext, this.getAttached(applicationContext, index));
+        } catch (final RuntimeException | Error exception) {
+            try {
+                this.componentLifecycle.detach(applicationContext, this.getAttached(applicationContext, index));
+            } catch (final RuntimeException | Error detachException) {
+                exception.addSuppressed(detachException);
+            }
+
+            throw exception;
+        }
+    }
+
+    @Override
+    public synchronized void detach(final Object application, final List<Class<?>> componentClasses) {
+        final ApplicationContext applicationContext = this.getContext(application.getClass());
+
+        this.componentLifecycle.detach(applicationContext, applicationContext.getComponentClassList().stream().filter(componentClasses::contains).toList());
+    }
+
+    private ApplicationContext getContext(final Class<?> applicationClass) {
+        return this.applicationRegistry.getContext(applicationClass).orElseThrow(() -> new ApplicationNotInitializedException("%s is not initialized".formatted(applicationClass.getName())));
+    }
+
+    private List<Class<?>> getAttached(final ApplicationContext applicationContext, final int index) {
+        return List.copyOf(applicationContext.getComponentClassList().subList(index, applicationContext.getComponentClassList().size()));
+    }
+
     private void start(final ApplicationContext applicationContext, final List<Class<?>> componentClasses) {
         this.applicationRegistry.register(applicationContext);
 

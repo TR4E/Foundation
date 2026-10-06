@@ -2,6 +2,7 @@ package me.trae.foundation.injector.api.extension;
 
 import me.trae.foundation.injector.api.callback.ApplicationCallback;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface Extension {
@@ -24,5 +25,11 @@ public interface Extension {
     }
 
     default void onComponentShutdown(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final Object component) {
+    }
+
+    default void onComponentsAttach(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final List<Object> componentList) {
+    }
+
+    default void onComponentsDetach(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final List<Object> componentList) {
     }
 }

@@ -6,6 +6,10 @@ import me.trae.foundation.injector.core.application.ApplicationContext;
 import me.trae.foundation.injector.core.container.ComponentContainer;
 import me.trae.foundation.injector.core.extension.ExtensionRegistry;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
 @AllArgsConstructor
 public final class ComponentLifecycle {
 
@@ -28,6 +32,32 @@ public final class ComponentLifecycle {
         }
 
         this.extensionRegistry.onApplicationShutdown(applicationContext);
+    }
+
+    public void attach(final ApplicationContext applicationContext, final List<Class<?>> typeList) {
+        final List<Object> componentList = typeList.stream().map(this.componentContainer::getInstance).flatMap(Optional::stream).toList();
+
+        componentList.forEach(component -> this.initializeComponent(applicationContext, component));
+
+        this.extensionRegistry.onComponentsAttach(applicationContext, componentList);
+    }
+
+    public void detach(final ApplicationContext applicationContext, final List<Class<?>> typeList) {
+        final List<Object> componentList = new ArrayList<>();
+
+        for (final Class<?> type : typeList.reversed()) {
+            this.componentContainer.getInstance(type).ifPresent(component -> {
+                this.shutdownComponent(applicationContext, component);
+
+                componentList.add(component);
+            });
+
+            this.componentContainer.unregister(type);
+
+            applicationContext.getComponentClassList().remove(type);
+        }
+
+        this.extensionRegistry.onComponentsDetach(applicationContext, componentList);
     }
 
     private void initializeComponent(final ApplicationContext applicationContext, final Object instance) {

@@ -25,4 +25,8 @@ public interface Injector {
     <T> List<T> getAll(final Class<T> type);
 
     List<Class<?>> getComponents(final Class<?> applicationClass);
+
+    void attach(final Object application, final List<Class<?>> componentClassList);
+
+    void detach(final Object application, final List<Class<?>> componentClassList);
 }

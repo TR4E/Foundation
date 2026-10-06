@@ -6,6 +6,7 @@ import me.trae.foundation.injector.extensions.configuration.annotation.Configura
 import me.trae.foundation.injector.extensions.configuration.callback.ConfigurationCallback;
 import me.trae.foundation.injector.extensions.configuration.resolver.ConfigurationResolver;
 
+import java.util.List;
 import java.util.Optional;
 
 public final class ConfigurationExtension implements Extension {
@@ -33,6 +34,11 @@ public final class ConfigurationExtension implements Extension {
     @Override
     public void onApplicationShutdown(final Class<?> applicationClass, final ApplicationCallback applicationCallback) {
         this.configurationResolver.remove(applicationClass);
+    }
+
+    @Override
+    public void onComponentsDetach(final Class<?> applicationClass, final ApplicationCallback applicationCallback, final List<Object> componentList) {
+        componentList.forEach(component -> this.configurationResolver.removeConfiguration(component.getClass()));
     }
 
     public void reloadAllConfigurations() {

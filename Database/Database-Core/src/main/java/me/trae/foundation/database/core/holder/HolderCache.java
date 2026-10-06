@@ -63,13 +63,26 @@ public final class HolderCache<E extends Entity> {
         this.holderComponents.getChangeTracker().snapshotIfAbsent(entity);
     }
 
-    public void flushChanges() {
-        for (final E entity : this.requireLocal("flush").getValues()) {
-            try {
-                this.holderComponents.getHolderWriter().writeChanged(entity);
-            } catch (final RuntimeException exception) {
-                this.batchQueue.reportFailure(new DatabaseException("Failed to write changes for %s".formatted(entity.getId()), exception));
-            }
+    public void flushAndEvict() {
+        final LocalStorage<UUID, E> localStorage = this.holderComponents.getLocalStorage();
+
+        if (localStorage != null) {
+            localStorage.getValues().forEach(this::writeSafely);
+
+            localStorage.evictExpired().forEach(entity -> {
+                this.writeSafely(entity);
+                this.holderComponents.getChangeTracker().forget(entity.getId());
+            });
+        }
+
+        this.holderComponents.getChangeTracker().evictExpired();
+    }
+
+    private void writeSafely(final E entity) {
+        try {
+            this.holderComponents.getHolderWriter().writeChanged(entity);
+        } catch (final RuntimeException exception) {
+            this.batchQueue.reportFailure(new DatabaseException("Failed to write changes for %s".formatted(entity.getId()), exception));
         }
     }
 

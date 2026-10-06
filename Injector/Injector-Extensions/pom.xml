@@ -27,6 +27,14 @@
             <artifactId>Injector-API</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+
+        <!-- Injector Core -->
+        <dependency>
+            <groupId>me.trae.foundation.injector</groupId>
+            <artifactId>Injector-Core</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

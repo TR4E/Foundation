@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.api.storage.Storage;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -96,7 +97,15 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
                 .toList();
     }
 
-    public void evictExpired() {
-        this.entryMap.values().removeIf(CacheEntry::isExpired);
+    public List<Value> evictExpired() {
+        final List<Value> evictedList = new ArrayList<>();
+
+        this.entryMap.forEach((key, cacheEntry) -> {
+            if (cacheEntry.isExpired() && this.entryMap.remove(key, cacheEntry)) {
+                evictedList.add(cacheEntry.getValue());
+            }
+        });
+
+        return evictedList;
     }
 }

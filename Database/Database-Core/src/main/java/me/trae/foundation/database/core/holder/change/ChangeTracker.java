@@ -84,6 +84,10 @@ public final class ChangeTracker<E extends Entity> {
         this.snapshotStorage.remove(id);
     }
 
+    public void evictExpired() {
+        this.snapshotStorage.evictExpired();
+    }
+
     private static long hash(final String value) {
         if (value == null) {
             return 0L;

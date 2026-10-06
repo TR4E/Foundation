@@ -9,7 +9,6 @@ import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Query;
 import org.jooq.exception.DataAccessException;
-import org.jooq.exception.SQLStateClass;
 import org.jooq.impl.DSL;
 
 import java.util.ArrayList;
@@ -21,6 +20,8 @@ import java.util.function.Consumer;
 
 @AllArgsConstructor
 public final class BatchExecutor {
+
+    private static final List<String> TRANSIENT_STATE_LIST = List.of("00", "08", "40", "53", "57", "58");
 
     private final PostgresDriver postgresDriver;
     private final Consumer<DatabaseException> failureHandler;
@@ -35,7 +36,7 @@ public final class BatchExecutor {
         } catch (final ConnectionException exception) {
             return writeList;
         } catch (final DataAccessException exception) {
-            return this.isIntegrityViolation(exception) ? this.executeIndividually(writeList) : writeList;
+            return this.isTransient(exception) ? writeList : this.executeIndividually(writeList);
         }
 
         writeList.forEach(this::complete);
@@ -45,15 +46,16 @@ public final class BatchExecutor {
 
     private List<PendingWrite> executeIndividually(final List<PendingWrite> writeList) {
         final List<PendingWrite> retryList = new ArrayList<>();
-        final DSLContext dslContext = this.postgresDriver.getDslContext();
 
         for (final PendingWrite pendingWrite : writeList) {
             try {
-                this.render(dslContext, pendingWrite).execute();
+                this.render(this.postgresDriver.getDslContext(), pendingWrite).execute();
 
                 this.complete(pendingWrite);
+            } catch (final ConnectionException exception) {
+                retryList.add(pendingWrite);
             } catch (final DataAccessException exception) {
-                if (!this.isIntegrityViolation(exception)) {
+                if (this.isTransient(exception)) {
                     retryList.add(pendingWrite);
                     continue;
                 }
@@ -97,7 +99,9 @@ public final class BatchExecutor {
         }
     }
 
-    private boolean isIntegrityViolation(final DataAccessException exception) {
-        return exception.sqlStateClass() == SQLStateClass.C23_INTEGRITY_CONSTRAINT_VIOLATION;
+    private boolean isTransient(final DataAccessException exception) {
+        final String sqlState = exception.sqlState();
+
+        return sqlState == null || TRANSIENT_STATE_LIST.stream().anyMatch(sqlState::startsWith);
     }
 }

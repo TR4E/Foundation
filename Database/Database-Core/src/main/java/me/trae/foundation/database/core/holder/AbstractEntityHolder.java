@@ -31,9 +31,7 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
         this.holderComponents = HolderComponents.create(repository, instanceMode, localExpiry, redisExpiry);
         this.holderCache = new HolderCache<>(instanceMode, this.holderComponents, repository.getCoreDatabase().getBatchQueue());
 
-        if (instanceMode == InstanceMode.SINGLETON) {
-            repository.getCoreDatabase().getBatchQueue().addPreFlushTask(this.holderCache::flushChanges);
-        }
+        repository.getCoreDatabase().getBatchQueue().addPreFlushTask(this.holderCache::flushAndEvict);
     }
 
     protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode) {

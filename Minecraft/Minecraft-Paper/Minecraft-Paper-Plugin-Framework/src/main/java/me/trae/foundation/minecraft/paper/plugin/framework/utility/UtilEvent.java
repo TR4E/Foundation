@@ -13,7 +13,7 @@ public class UtilEvent {
 
     public static <T extends Event> void dispatch(final T event) {
         if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null.");
+            throw new IllegalArgumentException("Event cannot be null");
         }
 
         Bukkit.getServer().getPluginManager().callEvent(event);
@@ -21,15 +21,15 @@ public class UtilEvent {
 
     public static <T extends Event> void dispatchSynchronously(final PaperPlugin paperPlugin, final T event) {
         if (paperPlugin == null) {
-            throw new IllegalArgumentException("Paper Plugin cannot be null.");
+            throw new IllegalArgumentException("Paper Plugin cannot be null");
         }
 
         if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null.");
+            throw new IllegalArgumentException("Event cannot be null");
         }
 
         if (event.isAsynchronous()) {
-            throw new IllegalStateException("Cannot dispatch asynchronous event synchronously.");
+            throw new IllegalStateException("Cannot dispatch asynchronous event synchronously");
         }
 
         UtilTask.executeSynchronously(paperPlugin, () -> Bukkit.getServer().getPluginManager().callEvent(event));
@@ -41,15 +41,15 @@ public class UtilEvent {
 
     public static <T extends Event> void dispatchAsynchronous(final PaperPlugin paperPlugin, final T event) {
         if (paperPlugin == null) {
-            throw new IllegalArgumentException("Paper Plugin cannot be null.");
+            throw new IllegalArgumentException("Paper Plugin cannot be null");
         }
 
         if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null.");
+            throw new IllegalArgumentException("Event cannot be null");
         }
 
         if (!event.isAsynchronous()) {
-            throw new IllegalStateException("Cannot dispatch synchronous event asynchronously.");
+            throw new IllegalStateException("Cannot dispatch synchronous event asynchronously");
         }
 
         UtilTask.executeAsynchronously(paperPlugin, () -> Bukkit.getServer().getPluginManager().callEvent(event));
@@ -61,7 +61,7 @@ public class UtilEvent {
 
     public static <R extends Event> R supply(final R event) {
         if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null.");
+            throw new IllegalArgumentException("Event cannot be null");
         }
 
         dispatch(event);
@@ -71,15 +71,15 @@ public class UtilEvent {
 
     public static <R extends Event> CompletableFuture<R> supplySynchronous(final PaperPlugin paperPlugin, final R event) {
         if (paperPlugin == null) {
-            throw new IllegalArgumentException("Paper Plugin cannot be null.");
+            throw new IllegalArgumentException("Paper Plugin cannot be null");
         }
 
         if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null.");
+            throw new IllegalArgumentException("Event cannot be null");
         }
 
         if (event.isAsynchronous()) {
-            throw new IllegalStateException("Cannot supply asynchronous event synchronously.");
+            throw new IllegalStateException("Cannot supply asynchronous event synchronously");
         }
 
         final CompletableFuture<R> completableFuture = new CompletableFuture<>();
@@ -102,15 +102,15 @@ public class UtilEvent {
 
     public static <R extends Event> CompletableFuture<R> supplyAsynchronous(final PaperPlugin paperPlugin, final R event) {
         if (paperPlugin == null) {
-            throw new IllegalArgumentException("Paper Plugin cannot be null.");
+            throw new IllegalArgumentException("Paper Plugin cannot be null");
         }
 
         if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null.");
+            throw new IllegalArgumentException("Event cannot be null");
         }
 
         if (!event.isAsynchronous()) {
-            throw new IllegalStateException("Cannot supply synchronous event asynchronously.");
+            throw new IllegalStateException("Cannot supply synchronous event asynchronously");
         }
 
         final CompletableFuture<R> completableFuture = new CompletableFuture<>();

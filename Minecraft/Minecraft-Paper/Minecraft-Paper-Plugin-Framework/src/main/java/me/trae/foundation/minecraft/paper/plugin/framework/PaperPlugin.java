@@ -8,6 +8,8 @@ import me.trae.foundation.injector.extensions.scheduler.callback.SchedulerCallba
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.AddonRegistry;
 import me.trae.foundation.minecraft.paper.plugin.framework.config.events.ConfigReloadEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.config.events.ConfigSaveEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.plugin.events.PluginInitializeEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.plugin.events.PluginShutdownEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.registry.PluginRegistry;
 import org.bukkit.event.HandlerList;
@@ -29,6 +31,8 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
             Injector.INSTANCE.initialize(this, this.addonRegistry.initialize());
 
             this.addonRegistry.start();
+
+            UtilEvent.dispatch(new PluginInitializeEvent(this));
         } catch (final RuntimeException | Error throwable) {
             this.onApplicationFailure(throwable);
         }
@@ -36,6 +40,8 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
 
     @Override
     public final void onDisable() {
+        UtilEvent.dispatch(new PluginShutdownEvent(this));
+
         this.addonRegistry.shutdown();
 
         PluginRegistry.unregisterInternalPlugin(this);

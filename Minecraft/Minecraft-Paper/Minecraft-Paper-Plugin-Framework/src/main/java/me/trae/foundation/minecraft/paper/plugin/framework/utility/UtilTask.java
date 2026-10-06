@@ -95,19 +95,19 @@ public class UtilTask {
 
     public static void schedule(final PaperPlugin paperPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable, final Supplier<Boolean> cancelSupplier) {
         if (paperPlugin == null) {
-            throw new IllegalArgumentException("Paper Plugin cannot be null.");
+            throw new IllegalArgumentException("Paper Plugin cannot be null");
         }
 
         if (runnable == null) {
-            throw new IllegalArgumentException("Runnable cannot be null.");
+            throw new IllegalArgumentException("Runnable cannot be null");
         }
 
         if (initialDelay < 0 || period < 0) {
-            throw new IllegalArgumentException("Initial delay and Period must be >= 0.");
+            throw new IllegalArgumentException("Initial delay and Period must be >= 0");
         }
 
         if (chronoUnit == null) {
-            throw new IllegalArgumentException("Chrono Unit cannot be null.");
+            throw new IllegalArgumentException("Chrono Unit cannot be null");
         }
 
         final long initialDelayTicks = Duration.of(initialDelay, chronoUnit).toMillis() / 50L;
@@ -131,25 +131,25 @@ public class UtilTask {
         schedule(PluginRegistry.getSelfPlugin(), initialDelay, period, chronoUnit, runnable, cancelSupplier);
     }
 
-    public static void schedule(final Runnable runnable, final int initialDelay, final int period, final ChronoUnit chronoUnit) {
+    public static void schedule(final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable) {
         schedule(PluginRegistry.getSelfPlugin(), initialDelay, period, chronoUnit, runnable, null);
     }
 
     public static void scheduleAsynchronous(final PaperPlugin paperPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable, final Supplier<Boolean> cancelSupplier) {
         if (paperPlugin == null) {
-            throw new IllegalArgumentException("Paper Plugin cannot be null.");
+            throw new IllegalArgumentException("Paper Plugin cannot be null");
         }
 
         if (runnable == null) {
-            throw new IllegalArgumentException("Runnable cannot be null.");
+            throw new IllegalArgumentException("Runnable cannot be null");
         }
 
         if (initialDelay < 0 || period < 0) {
-            throw new IllegalArgumentException("Initial delay and Period must be >= 0.");
+            throw new IllegalArgumentException("Initial delay and Period must be >= 0");
         }
 
         if (chronoUnit == null) {
-            throw new IllegalArgumentException("Chrono Unit cannot be null.");
+            throw new IllegalArgumentException("Chrono Unit cannot be null");
         }
 
         final long initialDelayTicks = Duration.of(initialDelay, chronoUnit).toMillis() / 50L;

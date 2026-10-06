@@ -12,7 +12,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
-public class RedisSubscriptionDispatcher extends RedisPubSubAdapter<String, String> {
+public final class RedisSubscriptionDispatcher extends RedisPubSubAdapter<String, String> {
 
     private final Map<String, List<Consumer<String>>> consumerMap = new ConcurrentHashMap<>();
 

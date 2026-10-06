@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Getter
-public class RedisNamespace {
+public final class RedisNamespace {
 
     private final String table;
     private final String tenantId;

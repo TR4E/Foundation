@@ -14,7 +14,7 @@ import me.trae.foundation.database.api.exception.ConnectionException;
 import java.util.function.Consumer;
 
 @RequiredArgsConstructor
-public class RedisDriver {
+public final class RedisDriver {
 
     private final RedisSubscriptionDispatcher subscriptionDispatcher = new RedisSubscriptionDispatcher();
 

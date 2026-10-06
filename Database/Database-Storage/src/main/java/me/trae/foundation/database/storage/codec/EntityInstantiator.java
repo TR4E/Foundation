@@ -7,7 +7,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.UUID;
 
-public class EntityInstantiator<E extends Entity> {
+public final class EntityInstantiator<E extends Entity> {
 
     private final Constructor<E> constructor;
 

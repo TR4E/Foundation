@@ -5,12 +5,16 @@ import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.property.converter.ValueConverter;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 @UtilityClass
@@ -31,6 +35,8 @@ public class ValueCodec {
             Map.entry(BigInteger.class, BigInteger::new),
             Map.entry(Instant.class, Instant::parse)
     );
+
+    private final Map<Class<?>, Function<String, Object>> RESOLVED_PARSER_MAP = new ConcurrentHashMap<>();
 
     public <Value> String encode(final EntityProperty<?, Value> entityProperty, final Value value) {
         if (value == null) {
@@ -69,18 +75,41 @@ public class ValueCodec {
     }
 
     private Object parse(final String raw, final Class<?> type) {
+        return RESOLVED_PARSER_MAP.computeIfAbsent(type, ValueCodec::resolveParser).apply(raw);
+    }
+
+    private Function<String, Object> resolveParser(final Class<?> type) {
         final Function<String, Object> parser = PARSER_MAP.get(type);
         if (parser != null) {
-            return parser.apply(raw);
+            return parser;
         }
 
         if (type.isEnum()) {
-            return Arrays.stream(type.getEnumConstants())
+            return raw -> Arrays.stream(type.getEnumConstants())
                     .filter(constant -> Enum.class.cast(constant).name().equals(raw))
                     .findFirst()
                     .orElseThrow(() -> new SchemaException("%s has no constant named %s".formatted(type.getName(), raw)));
         }
 
-        throw new SchemaException("%s has no string representation, register it with a ValueConverter".formatted(type.getName()));
+        try {
+            final Method method = type.getMethod("valueOf", String.class);
+
+            if (Modifier.isStatic(method.getModifiers()) && type.isAssignableFrom(method.getReturnType())) {
+                return raw -> invoke(method, raw);
+            }
+        } catch (final NoSuchMethodException ignored) {
+        }
+
+        return _ -> {
+            throw new SchemaException("%s has no string representation, register it with a ValueConverter".formatted(type.getName()));
+        };
+    }
+
+    private Object invoke(final Method method, final String raw) {
+        try {
+            return method.invoke(null, raw);
+        } catch (final ReflectiveOperationException exception) {
+            throw new SchemaException("Failed to parse %s as %s".formatted(raw, method.getDeclaringClass().getName()), exception instanceof final InvocationTargetException invocationTargetException ? invocationTargetException.getCause() : exception);
+        }
     }
 }

@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @RequiredArgsConstructor
-public class LocalStorage<Key, Value> implements Storage<Key, Value> {
+public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
 
     private final Map<Key, CacheEntry<Value>> entryMap = new ConcurrentHashMap<>();
 

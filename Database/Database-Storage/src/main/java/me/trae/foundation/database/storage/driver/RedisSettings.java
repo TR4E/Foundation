@@ -7,7 +7,7 @@ import java.time.Duration;
 
 @AllArgsConstructor
 @Getter
-public class RedisSettings {
+public final class RedisSettings {
 
     private final String host;
     private final int port;

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class EntityCodec<E extends Entity> {
+public final class EntityCodec<E extends Entity> {
 
     private final Class<E> entityType;
     private final EntityInstantiator<E> entityInstantiator;
@@ -65,15 +65,15 @@ public class EntityCodec<E extends Entity> {
         return entity;
     }
 
-    private <T extends Entity, V> String encodeProperty(final EntityProperty<T, V> entityProperty, final Entity entity) {
+    private <Owner extends Entity, Value> String encodeProperty(final EntityProperty<Owner, Value> entityProperty, final Entity entity) {
         return ValueCodec.encode(entityProperty, entityProperty.getValue(this.cast(entityProperty, entity)));
     }
 
-    private <T extends Entity, V> void decodeProperty(final EntityProperty<T, V> entityProperty, final Entity entity, final String raw) {
+    private <Owner extends Entity, Value> void decodeProperty(final EntityProperty<Owner, Value> entityProperty, final Entity entity, final String raw) {
         entityProperty.setValue(this.cast(entityProperty, entity), ValueCodec.decode(entityProperty, raw));
     }
 
-    private <T extends Entity> T cast(final EntityProperty<T, ?> entityProperty, final Entity entity) {
+    private <Owner extends Entity> Owner cast(final EntityProperty<Owner, ?> entityProperty, final Entity entity) {
         if (!entityProperty.getEntityType().isInstance(entity)) {
             throw new SchemaException("Property %s belongs to %s, not %s".formatted(entityProperty.getName(), entityProperty.getEntityType().getName(), entity.getClass().getName()));
         }

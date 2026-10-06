@@ -7,13 +7,13 @@ import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 
 @RequiredArgsConstructor
-public class RedisScript {
+public final class RedisScript {
 
     private final String source;
 
     private volatile String sha;
 
-    public <T> T execute(final RedisDriver redisDriver, final ScriptOutputType scriptOutputType, final String[] keys, final String... arguments) {
+    public <Result> Result execute(final RedisDriver redisDriver, final ScriptOutputType scriptOutputType, final String[] keys, final String... arguments) {
         final RedisCommands<String, String> commands = redisDriver.getCommands();
 
         if (this.sha == null) {

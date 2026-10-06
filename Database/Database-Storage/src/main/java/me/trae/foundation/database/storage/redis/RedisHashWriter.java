@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class RedisHashWriter {
+public final class RedisHashWriter {
 
     private static final RedisScript WRITE_SCRIPT = new RedisScript(
             """

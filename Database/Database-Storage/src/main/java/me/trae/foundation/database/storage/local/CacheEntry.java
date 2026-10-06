@@ -6,7 +6,7 @@ import lombok.Setter;
 import java.time.Duration;
 
 @Getter
-public class CacheEntry<Value> {
+public final class CacheEntry<Value> {
 
     private static final long NEVER_EXPIRES = Long.MIN_VALUE;
 

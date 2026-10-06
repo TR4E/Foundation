@@ -19,7 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-public class RedisStorage<E extends Entity> implements Storage<UUID, E> {
+public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
 
     private final RedisDriver redisDriver;
 

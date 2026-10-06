@@ -61,7 +61,7 @@ public final class DependencyResolver extends AbstractResolver {
             return new Dependency(DependencyKind.SET, elementType);
         }
 
-        if (rawType == Map.class && arguments[1] instanceof final Class<?> valueType) {
+        if (rawType == Map.class && arguments[0] instanceof final ParameterizedType keyType && keyType.getRawType() == Class.class && arguments[1] instanceof final Class<?> valueType) {
             return new Dependency(DependencyKind.MAP, valueType);
         }
 

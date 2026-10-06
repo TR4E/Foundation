@@ -1,6 +1,7 @@
 package me.trae.foundation.injector.core.container.collection;
 
 import lombok.AllArgsConstructor;
+import lombok.NonNull;
 import me.trae.foundation.injector.core.container.ComponentContainer;
 
 import java.util.AbstractMap;
@@ -34,7 +35,7 @@ public final class LiveMap<T> extends AbstractMap<Class<? extends T>, T> {
     }
 
     @Override
-    public Set<Entry<Class<? extends T>, T>> entrySet() {
+    public @NonNull Set<Entry<Class<? extends T>, T>> entrySet() {
         return this.getMap().entrySet().stream()
                 .map(entry -> Map.<Class<? extends T>, T>entry(entry.getKey().asSubclass(this.type), this.type.cast(entry.getValue())))
                 .collect(Collectors.toCollection(LinkedHashSet::new));

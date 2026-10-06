@@ -1,6 +1,7 @@
 package me.trae.foundation.injector.core.container.collection;
 
 import lombok.AllArgsConstructor;
+import lombok.NonNull;
 import me.trae.foundation.injector.core.container.ComponentContainer;
 
 import java.util.AbstractSet;
@@ -23,7 +24,7 @@ public final class LiveSet<T> extends AbstractSet<T> {
     }
 
     @Override
-    public Iterator<T> iterator() {
+    public @NonNull Iterator<T> iterator() {
         final Iterator<Object> iterator = this.componentContainer.getAssignable(this.type).getSet().iterator();
 
         return new Iterator<>() {

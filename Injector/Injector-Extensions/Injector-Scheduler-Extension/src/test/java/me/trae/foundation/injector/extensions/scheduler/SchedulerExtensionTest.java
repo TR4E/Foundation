@@ -4,13 +4,16 @@ import me.trae.foundation.injector.api.annotation.Application;
 import me.trae.foundation.injector.api.callback.ApplicationCallback;
 import me.trae.foundation.injector.core.CoreInjector;
 import me.trae.foundation.injector.extensions.scheduler.annotation.Scheduler;
+import me.trae.foundation.injector.extensions.scheduler.callback.SchedulerCallback;
 import me.trae.foundation.injector.extensions.scheduler.exception.SchedulerException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,6 +23,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class SchedulerExtensionTest {
 
     private final CoreInjector injector = new CoreInjector();
+
+    private final SchedulerCallback schedulerCallback = new SchedulerCallback() {};
+
+    @Test
+    void synchronousExecutorRunsInline() {
+        final AtomicBoolean ran = new AtomicBoolean();
+
+        this.schedulerCallback.getSynchronousExecutor().execute(() -> ran.set(true));
+
+        assertTrue(ran.get());
+    }
+
+    @Test
+    void asynchronousExecutorUsesVirtualThreads() throws Exception {
+        final CompletableFuture<Thread> thread = new CompletableFuture<>();
+
+        this.schedulerCallback.getAsynchronousExecutor().execute(() -> thread.complete(Thread.currentThread()));
+
+        assertTrue(thread.get(2, TimeUnit.SECONDS).isVirtual());
+    }
 
     @Test
     void runsScheduledMethodRepeatedly() throws InterruptedException {
@@ -123,7 +146,7 @@ final class SchedulerExtensionTest {
     }
 
     @Application
-    private static final class TestApplication implements ApplicationCallback {
+    private static final class TestApplication implements ApplicationCallback, SchedulerCallback {
 
         private final AtomicInteger asynchronousCount = new AtomicInteger();
 

@@ -1,6 +1,7 @@
 package me.trae.foundation.injector.extensions.configuration.resolver;
 
 import me.trae.foundation.injector.extensions.configuration.annotation.Configuration;
+import me.trae.foundation.injector.extensions.configuration.callback.ConfigurationCallback;
 import me.trae.foundation.injector.extensions.configuration.entry.ConfigurationEntry;
 import me.trae.foundation.injector.extensions.configuration.enums.ConfigType;
 import me.trae.foundation.injector.extensions.configuration.exception.ConfigurationException;
@@ -18,13 +19,14 @@ public final class ConfigurationResolver {
 
     private final LinkedHashMap<Class<?>, ConfigurationEntry> entryMap = new LinkedHashMap<>();
 
-    public synchronized Object load(final Class<?> applicationClass, final Path dataFolder, final Class<?> type) {
+    public synchronized Object load(final Class<?> applicationClass, final ConfigurationCallback configurationCallback, final Class<?> type) {
         final Configuration configuration = type.getAnnotation(Configuration.class);
 
-        final Path path = dataFolder.resolve(configuration.value() + configuration.type().getExtension()).toAbsolutePath();
+        final Path path = configurationCallback.getDataFolder().toPath().resolve(configuration.value() + configuration.type().getExtension()).toAbsolutePath();
 
         final ConfigurationEntry configurationEntry = new ConfigurationEntry(
                 applicationClass,
+                configurationCallback,
                 path,
                 configuration.type(),
                 this.read(path, configuration.type(), type).orElseGet(() -> this.createDefault(type))
@@ -53,21 +55,27 @@ public final class ConfigurationResolver {
     }
 
     public synchronized void saveConfiguration(final Class<?> type) {
-        this.write(this.getEntry(type));
+        final ConfigurationEntry configurationEntry = this.getEntry(type);
+
+        this.write(configurationEntry);
+
+        configurationEntry.getConfigurationCallback().onConfigurationSave(type);
     }
 
     public synchronized void remove(final Class<?> applicationClass) {
         this.entryMap.values().removeIf(entry -> entry.getApplicationClass() == applicationClass);
     }
 
-    private void reload(final ConfigurationEntry entry) {
+    private void reload(final ConfigurationEntry configurationEntry) {
         this.read(
-                entry.getPath(),
-                entry.getConfigType(),
-                entry.getInstance().getClass()
-        ).ifPresent(loaded -> FieldResolver.copy(loaded, entry.getInstance()));
+                configurationEntry.getPath(),
+                configurationEntry.getConfigType(),
+                configurationEntry.getInstance().getClass()
+        ).ifPresent(loaded -> FieldResolver.copy(loaded, configurationEntry.getInstance()));
 
-        this.write(entry);
+        this.write(configurationEntry);
+
+        configurationEntry.getConfigurationCallback().onConfigurationReload(configurationEntry.getInstance().getClass());
     }
 
     private Optional<Object> read(final Path path, final ConfigType configType, final Class<?> type) {

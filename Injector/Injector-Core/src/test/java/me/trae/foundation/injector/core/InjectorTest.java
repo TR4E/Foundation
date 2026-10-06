@@ -195,7 +195,7 @@ final class InjectorTest {
         this.injector.initialize(application, List.of(Alpha.class, Beta.class));
         this.injector.shutdown(application);
 
-        assertEquals(List.of("create:ScannedService", "create:Alpha", "create:Beta", "initialize", "shutdown:Beta", "shutdown:Alpha", "shutdown:ScannedService", "shutdown"), RecordingExtension.getEvents(ObservedApplication.class));
+        assertEquals(List.of("create:Alpha", "create:Beta", "create:ScannedService", "initialize", "shutdown:ScannedService", "shutdown:Beta", "shutdown:Alpha", "shutdown"), RecordingExtension.getEvents(ObservedApplication.class));
     }
 
     @Test

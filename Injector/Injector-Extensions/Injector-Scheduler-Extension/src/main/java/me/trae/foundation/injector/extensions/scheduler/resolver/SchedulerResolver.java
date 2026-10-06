@@ -2,6 +2,7 @@ package me.trae.foundation.injector.extensions.scheduler.resolver;
 
 import me.trae.foundation.injector.api.callback.ApplicationCallback;
 import me.trae.foundation.injector.extensions.scheduler.annotation.Scheduler;
+import me.trae.foundation.injector.extensions.scheduler.callback.SchedulerCallback;
 import me.trae.foundation.injector.extensions.scheduler.exception.SchedulerException;
 import me.trae.foundation.injector.extensions.scheduler.task.ScheduledTask;
 
@@ -18,6 +19,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class SchedulerResolver {
+
+    private static final SchedulerCallback DEFAULT_CALLBACK = new SchedulerCallback() {};
 
     private final Map<Object, List<ScheduledFuture<?>>> scheduledFutureMap = new IdentityHashMap<>();
     private final Map<Class<?>, List<ScheduledTask>> pendingTaskMap = new HashMap<>();
@@ -83,7 +86,9 @@ public final class SchedulerResolver {
         final long period = scheduler.unit().toMillis(scheduler.period());
         final long initialDelay = scheduler.clock() ? period - System.currentTimeMillis() % period : scheduler.initialDelay() > 0 ? scheduler.unit().toMillis(scheduler.initialDelay()) : period;
 
-        final Executor executor = scheduler.asynchronous() ? applicationCallback.getAsynchronousExecutor() : applicationCallback.getSynchronousExecutor();
+        final SchedulerCallback schedulerCallback = applicationCallback instanceof final SchedulerCallback callback ? callback : DEFAULT_CALLBACK;
+
+        final Executor executor = scheduler.asynchronous() ? schedulerCallback.getAsynchronousExecutor() : schedulerCallback.getSynchronousExecutor();
 
         final ScheduledFuture<?> scheduledFuture = this.getScheduledExecutorService().scheduleAtFixedRate(() -> {
             executor.execute(scheduledTask::run);

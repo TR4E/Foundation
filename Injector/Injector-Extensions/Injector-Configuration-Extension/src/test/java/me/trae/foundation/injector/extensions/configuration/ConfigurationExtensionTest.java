@@ -5,11 +5,13 @@ import me.trae.foundation.injector.api.callback.ApplicationCallback;
 import me.trae.foundation.injector.core.CoreInjector;
 import me.trae.foundation.injector.extensions.configuration.annotation.Comment;
 import me.trae.foundation.injector.extensions.configuration.annotation.Configuration;
+import me.trae.foundation.injector.extensions.configuration.callback.ConfigurationCallback;
 import me.trae.foundation.injector.extensions.configuration.enums.ConfigType;
 import me.trae.foundation.injector.extensions.configuration.exception.ConfigurationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -146,7 +148,7 @@ final class ConfigurationExtensionTest {
     }
 
     @Application
-    private static final class TestApplication implements ApplicationCallback {
+    private static final class TestApplication implements ApplicationCallback, ConfigurationCallback {
 
         private final Path dataFolder;
 
@@ -155,8 +157,8 @@ final class ConfigurationExtensionTest {
         }
 
         @Override
-        public Path getDataFolder() {
-            return this.dataFolder;
+        public File getDataFolder() {
+            return this.dataFolder.toFile();
         }
     }
 

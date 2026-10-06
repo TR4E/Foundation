@@ -4,9 +4,11 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import me.trae.foundation.database.api.entity.Entity;
+import me.trae.foundation.database.api.exception.QueryException;
 import me.trae.foundation.database.api.property.EntityProperty;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
@@ -28,8 +30,21 @@ public final class Query<E extends Entity> {
         return new Query<E>().and(entityProperty, operator, value);
     }
 
+    public static <E extends Entity, Value> Query<E> whereIn(final EntityProperty<? super E, Value> entityProperty, final Collection<? extends Value> values) {
+        return new Query<E>().andIn(entityProperty, values);
+    }
+
     public <Value> Query<E> and(final EntityProperty<? super E, Value> entityProperty, final Operator operator, final Value value) {
+        if (operator == Operator.IN) {
+            throw new QueryException("Use whereIn or andIn for IN conditions on %s".formatted(entityProperty.getName()));
+        }
+
         this.conditionList.add(new Condition<>(entityProperty, operator, value));
+        return this;
+    }
+
+    public <Value> Query<E> andIn(final EntityProperty<? super E, Value> entityProperty, final Collection<? extends Value> values) {
+        this.conditionList.add(new Condition<>(entityProperty, Operator.IN, List.copyOf(values)));
         return this;
     }
 

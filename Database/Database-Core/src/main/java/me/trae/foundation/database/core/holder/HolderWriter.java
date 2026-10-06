@@ -11,10 +11,14 @@ import me.trae.foundation.database.storage.redis.RedisStorage;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @AllArgsConstructor
 public final class HolderWriter<E extends Entity> {
+
+    private final Object[] lockArray = Stream.generate(Object::new).limit(64).toArray();
 
     private final AbstractEntityRepository<E> repository;
     private final LocalStorage<UUID, E> localStorage;
@@ -35,32 +39,39 @@ public final class HolderWriter<E extends Entity> {
     }
 
     public void writeFull(final E entity) {
-        final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, this.repository.getProperties());
+        synchronized (this.getLock(entity.getId())) {
+            final Map<String, String> encodedMap = this.changeTracker.encode(entity);
+            final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, this.repository.getProperties());
 
-        if (this.redisStorage != null) {
-            this.redisStorage.put(entity.getId(), entity);
+            if (this.redisStorage != null) {
+                this.redisStorage.put(entity.getId(), entity);
+            }
+
+            this.repository.save(entity, callbackList);
+
+            this.changeTracker.snapshot(entity.getId(), encodedMap);
         }
-
-        this.repository.save(entity, callbackList);
-
-        this.changeTracker.snapshot(entity);
     }
 
     public void writeChanged(final E entity) {
-        final List<EntityProperty<?, ?>> changedList = this.changeTracker.diff(entity);
-        if (changedList.isEmpty()) {
-            return;
+        synchronized (this.getLock(entity.getId())) {
+            final Map<String, String> encodedMap = this.changeTracker.encode(entity);
+
+            final List<EntityProperty<?, ?>> changedList = this.changeTracker.diff(entity.getId(), encodedMap);
+            if (changedList.isEmpty()) {
+                return;
+            }
+
+            final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, changedList);
+
+            if (this.redisStorage != null) {
+                this.redisStorage.putProperties(entity, changedList);
+            }
+
+            this.repository.update(entity, changedList, callbackList);
+
+            this.changeTracker.commit(entity.getId(), encodedMap, changedList);
         }
-
-        final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, changedList);
-
-        if (this.redisStorage != null) {
-            this.redisStorage.putProperties(entity, changedList);
-        }
-
-        this.repository.update(entity, changedList, callbackList);
-
-        this.changeTracker.commit(entity, changedList);
     }
 
     public void delete(final E entity) {
@@ -80,17 +91,25 @@ public final class HolderWriter<E extends Entity> {
     }
 
     public long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta) {
-        final Number current = entityProperty.getValue(entity);
+        synchronized (this.getLock(entity.getId())) {
+            final Number current = entityProperty.getValue(entity);
 
-        final long value = this.redisStorage != null ? this.redisStorage.increment(entity.getId(), entityProperty, delta) : (current == null ? 0L : current.longValue()) + delta;
+            final long value = this.redisStorage != null ? this.redisStorage.increment(entity.getId(), entityProperty, delta) : (current == null ? 0L : current.longValue()) + delta;
 
-        this.apply(entityProperty, entity, value);
+            this.apply(entityProperty, entity, value);
 
-        this.repository.update(entity, List.of(entityProperty), Collections.emptyList());
+            final Map<String, String> encodedMap = this.changeTracker.encode(entity);
 
-        this.changeTracker.commit(entity, List.of(entityProperty));
+            this.repository.update(entity, List.of(entityProperty), Collections.emptyList());
 
-        return value;
+            this.changeTracker.commit(entity.getId(), encodedMap, List.of(entityProperty));
+
+            return value;
+        }
+    }
+
+    private Object getLock(final UUID id) {
+        return this.lockArray[Math.floorMod(id.hashCode(), this.lockArray.length)];
     }
 
     private <Owner extends Entity, Amount extends Number> void apply(final EntityProperty<Owner, Amount> entityProperty, final Entity entity, final long value) {

@@ -6,8 +6,8 @@ import lombok.Getter;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,11 +17,11 @@ import java.util.Set;
 public final class AssignableCache {
 
     private final List<Object> list;
-    private final Set<Object> set;
     private final Map<Class<?>, Object> map;
 
     public static AssignableCache of(final Class<?> type, final Collection<Object> instances) {
-        final List<Object> list = instances.stream().filter(type::isInstance).distinct().toList();
+        final Set<Object> seenSet = Collections.newSetFromMap(new IdentityHashMap<>());
+        final List<Object> list = instances.stream().filter(type::isInstance).filter(seenSet::add).toList();
 
         final LinkedHashMap<Class<?>, Object> map = new LinkedHashMap<>();
 
@@ -29,10 +29,6 @@ public final class AssignableCache {
             map.putIfAbsent(instance.getClass(), instance);
         }
 
-        return new AssignableCache(
-                list,
-                Collections.unmodifiableSet(new LinkedHashSet<>(list)),
-                Collections.unmodifiableMap(map)
-        );
+        return new AssignableCache(list, Collections.unmodifiableMap(map));
     }
 }

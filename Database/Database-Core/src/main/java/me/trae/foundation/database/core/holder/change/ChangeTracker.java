@@ -32,12 +32,20 @@ public final class ChangeTracker<E extends Entity> {
         return this.snapshotStorage.contains(id);
     }
 
-    public void snapshot(final E entity) {
+    public Map<String, String> encode(final E entity) {
+        return this.entityCodec.encode(entity);
+    }
+
+    public void snapshot(final UUID id, final Map<String, String> encodedMap) {
         final Map<String, Long> hashMap = new HashMap<>();
 
-        this.entityCodec.encode(entity).forEach((name, value) -> hashMap.put(name, hash(value)));
+        encodedMap.forEach((name, value) -> hashMap.put(name, hash(value)));
 
-        this.snapshotStorage.put(entity.getId(), hashMap);
+        this.snapshotStorage.put(id, hashMap);
+    }
+
+    public void snapshot(final E entity) {
+        this.snapshot(entity.getId(), this.encode(entity));
     }
 
     public void snapshotIfAbsent(final E entity) {
@@ -46,22 +54,30 @@ public final class ChangeTracker<E extends Entity> {
         }
     }
 
-    public List<EntityProperty<?, ?>> diff(final E entity) {
-        final Map<String, String> encodedMap = this.entityCodec.encode(entity);
-
-        final Map<String, Long> snapshotMap = this.snapshotStorage.get(entity.getId()).orElse(Collections.emptyMap());
+    public List<EntityProperty<?, ?>> diff(final UUID id, final Map<String, String> encodedMap) {
+        final Map<String, Long> snapshotMap = this.snapshotStorage.get(id).orElse(Collections.emptyMap());
 
         return this.entityCodec.getProperties().stream()
                 .filter(entityProperty -> !snapshotMap.containsKey(entityProperty.getName()) || !Objects.equals(snapshotMap.get(entityProperty.getName()), hash(encodedMap.get(entityProperty.getName()))))
                 .toList();
     }
 
+    public List<EntityProperty<?, ?>> diff(final E entity) {
+        return this.diff(entity.getId(), this.encode(entity));
+    }
+
+    public void commit(final UUID id, final Map<String, String> encodedMap, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
+        final Map<String, Long> hashMap = new HashMap<>(this.snapshotStorage.get(id).orElse(Collections.emptyMap()));
+
+        for (final EntityProperty<?, ?> entityProperty : entityProperties) {
+            hashMap.put(entityProperty.getName(), hash(encodedMap.get(entityProperty.getName())));
+        }
+
+        this.snapshotStorage.put(id, hashMap);
+    }
+
     public void commit(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
-        final Map<String, Long> hashMap = new HashMap<>(this.snapshotStorage.get(entity.getId()).orElse(Collections.emptyMap()));
-
-        this.entityCodec.encode(entity, entityProperties).forEach((name, value) -> hashMap.put(name, hash(value)));
-
-        this.snapshotStorage.put(entity.getId(), hashMap);
+        this.commit(entity.getId(), this.encode(entity), entityProperties);
     }
 
     public void forget(final UUID id) {

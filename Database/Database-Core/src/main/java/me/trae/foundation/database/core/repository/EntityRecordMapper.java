@@ -5,6 +5,7 @@ import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.core.schema.TableSchema;
 import me.trae.foundation.database.core.value.ColumnValueMapper;
 import me.trae.foundation.database.storage.codec.EntityInstantiator;
+import org.jooq.Field;
 import org.jooq.Record;
 
 public final class EntityRecordMapper<E extends Entity> {
@@ -21,7 +22,8 @@ public final class EntityRecordMapper<E extends Entity> {
         final E entity = this.entityInstantiator.instantiate(record.get(TableSchema.ID_FIELD));
 
         for (final EntityProperty<?, ?> entityProperty : this.tableSchema.getPersistentProperties()) {
-            final Object stored = record.get(this.tableSchema.getField(entityProperty));
+            final Field<?> field = this.tableSchema.getField(entityProperty);
+            final Object stored = record.get(field, field.getType());
 
             if (stored != null) {
                 ColumnValueMapper.writeStored(entityProperty, entity, stored);

@@ -20,7 +20,9 @@ public final class ScheduledTask {
         try {
             this.method.invoke(this.component);
         } catch (final ReflectiveOperationException exception) {
-            throw new SchedulerException("Failed to run @Scheduler method %s".formatted(this.getName()), exception instanceof final InvocationTargetException invocationTargetException ? invocationTargetException.getCause() : exception);
+            final Thread thread = Thread.currentThread();
+
+            thread.getUncaughtExceptionHandler().uncaughtException(thread, new SchedulerException("Failed to run @Scheduler method %s".formatted(this.getName()), exception instanceof final InvocationTargetException invocationTargetException ? invocationTargetException.getCause() : exception));
         }
     }
 

@@ -6,6 +6,7 @@ import me.trae.foundation.injector.core.container.ComponentContainer;
 
 import java.util.AbstractSet;
 import java.util.Iterator;
+import java.util.List;
 
 @AllArgsConstructor
 public final class LiveSet<T> extends AbstractSet<T> {
@@ -15,28 +16,22 @@ public final class LiveSet<T> extends AbstractSet<T> {
 
     @Override
     public boolean contains(final Object object) {
-        return this.componentContainer.getAssignable(this.type).getSet().contains(object);
+        return this.getList().stream().anyMatch(instance -> instance == object);
     }
 
     @Override
     public int size() {
-        return this.componentContainer.getAssignable(this.type).getSet().size();
+        return this.getList().size();
     }
 
     @Override
     public @NonNull Iterator<T> iterator() {
-        final Iterator<Object> iterator = this.componentContainer.getAssignable(this.type).getSet().iterator();
+        return this.getList().stream()
+                .map(this.type::cast)
+                .iterator();
+    }
 
-        return new Iterator<>() {
-            @Override
-            public boolean hasNext() {
-                return iterator.hasNext();
-            }
-
-            @Override
-            public T next() {
-                return LiveSet.this.type.cast(iterator.next());
-            }
-        };
+    private List<Object> getList() {
+        return this.componentContainer.getAssignable(this.type).getList();
     }
 }

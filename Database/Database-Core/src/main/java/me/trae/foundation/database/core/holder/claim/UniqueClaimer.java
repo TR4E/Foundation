@@ -68,14 +68,8 @@ public final class UniqueClaimer<E extends Entity> {
         final String id = entity.getId().toString();
         final String owner = ClaimScripts.claim(this.redisDriver, key, id, LEASE);
 
-        if (!id.equals(owner)) {
-            if (owner != null && this.isStillOwner(entityProperty, value, UUID.fromString(owner))) {
-                throw this.taken(entityProperty, value);
-            }
-
-            if (!ClaimScripts.steal(this.redisDriver, key, String.valueOf(owner), id, LEASE)) {
-                throw this.taken(entityProperty, value);
-            }
+        if (!id.equals(owner) && !this.steal(entityProperty, value, key, owner, id)) {
+            throw this.taken(entityProperty, value);
         }
 
         if (entityProperty.isPersistent()) {
@@ -93,6 +87,16 @@ public final class UniqueClaimer<E extends Entity> {
         if (value != null && this.redisDriver != null) {
             ClaimScripts.release(this.redisDriver, this.getKey(entityProperty, value), entity.getId().toString());
         }
+    }
+
+    private <Value> boolean steal(final EntityProperty<? super E, Value> entityProperty, final Value value, final String key, final String owner, final String id) {
+        if (owner == null) {
+            return false;
+        }
+
+        return this.holderLookups.getIdLookup().lookup(UUID.fromString(owner))
+                .map(found -> !Objects.equals(entityProperty.getValue(found), value) && ClaimScripts.steal(this.redisDriver, key, owner, id, LEASE, false))
+                .orElseGet(() -> ClaimScripts.steal(this.redisDriver, key, owner, id, LEASE, true));
     }
 
     private <Value> boolean isStillOwner(final EntityProperty<? super E, Value> entityProperty, final Value value, final UUID ownerId) {

@@ -19,6 +19,7 @@
         <module>Utilities</module>
         <module>Injector</module>
         <module>Database</module>
+        <module>Minecraft</module>
     </modules>
 
     <dependencies>

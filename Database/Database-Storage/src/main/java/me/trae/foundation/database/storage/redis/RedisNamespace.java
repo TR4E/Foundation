@@ -1,15 +1,15 @@
 package me.trae.foundation.database.storage.redis;
 
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.api.tenant.Tenant;
 import me.trae.foundation.database.api.tenant.TenantScope;
 
 import java.util.Optional;
 import java.util.UUID;
 
-@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Getter
 public class RedisNamespace {
 

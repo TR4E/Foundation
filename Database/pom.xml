@@ -17,7 +17,7 @@
     <modules>
         <module>Database-API</module>
         <module>Database-Storage</module>
-<!--        <module>Database-Lookup</module>-->
+        <module>Database-Lookup</module>
 <!--        <module>Database-Core</module>-->
     </modules>
 

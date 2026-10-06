@@ -27,7 +27,7 @@ public interface EntityHolder<E extends Entity> {
         return this.getById(id, EnumSet.allOf(LookupTier.class));
     }
 
-    <V> Optional<E> getByProperty(final EntityProperty<? super E, V> entityProperty, final V value);
+    <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value);
 
     List<E> getPinned();
 

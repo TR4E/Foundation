@@ -24,16 +24,16 @@ public final class Query<E extends Entity> {
         return new Query<>();
     }
 
-    public static <E extends Entity, V> Query<E> where(final EntityProperty<E, V> entityProperty, final Operator operator, final V value) {
+    public static <E extends Entity, V> Query<E> where(final EntityProperty<? super E, V> entityProperty, final Operator operator, final V value) {
         return new Query<E>().and(entityProperty, operator, value);
     }
 
-    public <V> Query<E> and(final EntityProperty<E, V> entityProperty, final Operator operator, final V value) {
+    public <V> Query<E> and(final EntityProperty<? super E, V> entityProperty, final Operator operator, final V value) {
         this.conditionList.add(new Condition<>(entityProperty, operator, value));
         return this;
     }
 
-    public Query<E> orderBy(final EntityProperty<E, ?> entityProperty, final Direction direction) {
+    public Query<E> orderBy(final EntityProperty<? super E, ?> entityProperty, final Direction direction) {
         this.orderList.add(new Order<>(entityProperty, direction));
         return this;
     }

@@ -23,7 +23,7 @@ public interface EntityRepository<E extends Entity> {
 
     List<EntityProperty<?, ?>> getProperties();
 
-    default Map<EntityProperty<E, ?>, IndexType> getIndexes() {
+    default Map<EntityProperty<? super E, ?>, IndexType> getIndexes() {
         return Collections.emptyMap();
     }
 

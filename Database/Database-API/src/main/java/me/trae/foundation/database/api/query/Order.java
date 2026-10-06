@@ -9,6 +9,6 @@ import me.trae.foundation.database.api.property.EntityProperty;
 @Getter
 public final class Order<E extends Entity> {
 
-    private final EntityProperty<E, ?> entityProperty;
+    private final EntityProperty<? super E, ?> entityProperty;
     private final Direction direction;
 }

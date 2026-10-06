@@ -9,7 +9,7 @@ import me.trae.foundation.database.api.property.EntityProperty;
 @Getter
 public final class Condition<E extends Entity> {
 
-    private final EntityProperty<E, ?> entityProperty;
+    private final EntityProperty<? super E, ?> entityProperty;
     private final Operator operator;
     private final Object value;
 }

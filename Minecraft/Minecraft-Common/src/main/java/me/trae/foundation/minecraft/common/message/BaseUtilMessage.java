@@ -10,6 +10,18 @@ import java.util.UUID;
 
 public abstract class BaseUtilMessage {
 
+    public static String serialize(final Component component) {
+        return Message.getMiniMessage().serialize(component);
+    }
+
+    public static String serializeWithReset(final Component component) {
+        return Message.getMiniMessage().serialize(component) + "<reset>";
+    }
+
+    public static Component deserialize(final String string) {
+        return Message.getMiniMessage().deserialize(string);
+    }
+
     public static void message(final Audience audience, final Component message) {
         audience.sendMessage(Message.render(null, message));
     }

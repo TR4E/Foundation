@@ -16,6 +16,7 @@
 
     <modules>
         <module>Minecraft-Paper-Addon-Tablist</module>
+        <module>Minecraft-Paper-Addon-Team</module>
     </modules>
 
     <dependencies>

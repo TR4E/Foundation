@@ -16,11 +16,13 @@ import me.trae.foundation.minecraft.velocity.plugin.framework.config.events.Conf
 import me.trae.foundation.minecraft.velocity.plugin.framework.event.internal.Listener;
 import me.trae.foundation.minecraft.velocity.plugin.framework.plugin.events.PluginInitializeEvent;
 import me.trae.foundation.minecraft.velocity.plugin.framework.plugin.events.PluginShutdownEvent;
+import me.trae.foundation.minecraft.velocity.plugin.framework.provider.ProxyServerProvider;
 import me.trae.foundation.minecraft.velocity.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.velocity.plugin.framework.utility.registry.PluginRegistry;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 @CustomLog
@@ -36,7 +38,7 @@ public abstract class VelocityPlugin implements ApplicationCallback, SchedulerCa
         try {
             PluginRegistry.registerInternalPlugin(this);
 
-            Injector.INSTANCE.initialize(this);
+            Injector.INSTANCE.initialize(this, List.of(ProxyServerProvider.class));
 
             UtilEvent.dispatch(this, new PluginInitializeEvent(this));
         } catch (final RuntimeException | Error throwable) {

@@ -42,7 +42,7 @@ public final class ItemService implements Lifecycle {
     }
 
     public List<CustomItem> getItems() {
-        return List.copyOf(this.identifierItemMap.values());
+        return List.copyOf(this.items);
     }
 
     public Optional<CustomItem> getItemByIdentifier(final String identifier) {

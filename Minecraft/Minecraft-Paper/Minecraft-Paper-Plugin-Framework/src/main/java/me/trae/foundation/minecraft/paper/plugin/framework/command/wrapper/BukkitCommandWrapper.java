@@ -1,6 +1,9 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.command.wrapper;
 
 import me.trae.foundation.minecraft.paper.plugin.framework.command.BaseCommand;
+import me.trae.foundation.minecraft.paper.plugin.framework.command.events.CommandExecuteEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.command.events.CommandTabCompleteEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.defaults.BukkitCommand;
 import org.jetbrains.annotations.NotNull;
@@ -65,6 +68,10 @@ public final class BukkitCommandWrapper extends BukkitCommand {
             return false;
         }
 
+        if (UtilEvent.supply(new CommandExecuteEvent(baseCommand, commandSender)).isCancelled()) {
+            return false;
+        }
+
         baseCommand.execute(baseCommand.getSenderType().cast(commandSender), args);
 
         return true;
@@ -76,6 +83,10 @@ public final class BukkitCommandWrapper extends BukkitCommand {
         }
 
         if (!baseCommand.hasPermission(commandSender, false)) {
+            return Collections.emptyList();
+        }
+
+        if (UtilEvent.supply(new CommandTabCompleteEvent(baseCommand, commandSender)).isCancelled()) {
             return Collections.emptyList();
         }
 

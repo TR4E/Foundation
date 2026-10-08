@@ -9,7 +9,8 @@ Depends on Spring-Common only. It does not depend on Spring-Security, so the two
 | Type | Purpose |
 | --- | --- |
 | `@RateLimit` | Per method limit, its own bucket |
-| `@RateLimitShared` | Per controller limit, one bucket shared by every method in it |
+| `@RateLimitShared` | Controller wide limit, either one shared bucket or the same numbers per method |
+| `RateLimitTarget` | Which of those two a `@RateLimitShared` means |
 | `RateLimitScope` | Whether the bucket is keyed by IP or by account |
 | `RateLimitStore` | The storage contract, one atomic call |
 | `MemoryRateLimitStore` | In memory default, single instance |
@@ -19,7 +20,9 @@ Depends on Spring-Common only. It does not depend on Spring-Security, so the two
 
 ## Annotations
 
-Per method, each endpoint getting its own bucket:
+### Per method
+
+Each endpoint gets its own bucket:
 
 ```java
 @RestController
@@ -34,10 +37,14 @@ public final class InvoiceController {
 }
 ```
 
-Per controller, every method in it sharing one bucket:
+### Per controller
+
+`@RateLimitShared` declares the limit once for the whole controller, and `target` decides what that means.
+
+`RateLimitTarget.TYPE` is one bucket for the lot:
 
 ```java
-@RateLimitShared(scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
+@RateLimitShared(target = RateLimitTarget.TYPE, scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
 @RestController
 @RequestMapping("/api/order")
 public final class OrderController {
@@ -54,12 +61,28 @@ public final class OrderController {
 }
 ```
 
-Thirty requests across both endpoints combined, not thirty each.
+Thirty requests across both endpoints combined, not thirty each. Use this to cap what one client can do to a whole area of the application regardless of which endpoint they pick.
 
-A method level `@RateLimit` inside a `@RateLimitShared` controller replaces the shared limit for that method entirely. It does not stack, and the method no longer counts against the controller's bucket:
+`RateLimitTarget.METHOD` applies the same numbers to each method separately:
 
 ```java
-@RateLimitShared(scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
+@RateLimitShared(target = RateLimitTarget.METHOD, scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
+@RestController
+@RequestMapping("/api/order")
+public final class OrderController {
+}
+```
+
+Thirty each. This is the one to reach for when every endpoint in a controller wants the same limit and you do not want them competing for one budget, since it saves repeating `@RateLimit` on every method.
+
+Only the key changes between the two. `TYPE` gives every method in the controller the same key so they share one window, `METHOD` gives each its own.
+
+### Precedence
+
+A method level `@RateLimit` replaces whatever the controller declared, for that method only. It does not stack, and the method no longer counts against the controller's bucket:
+
+```java
+@RateLimitShared(target = RateLimitTarget.TYPE, scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
 @RestController
 @RequestMapping("/api/order")
 public final class OrderController {
@@ -73,6 +96,30 @@ public final class OrderController {
 ```
 
 Every attribute except `name` is required, so a limit can never be half declared.
+
+### Base controllers
+
+`@RateLimitShared` is `@Inherited`, so a limit declared on an abstract base controller applies to everything extending it:
+
+```java
+@RateLimitShared(target = RateLimitTarget.METHOD, scope = RateLimitScope.IP_ADDRESS, attempts = 60, duration = 1, unit = TimeUnit.MINUTES)
+public abstract class AbstractApiController {
+}
+
+@RestController
+@RequestMapping("/api/order")
+public final class OrderController extends AbstractApiController {
+
+    @PostMapping("/create")
+    public ResponseEntity<?> create(@Valid @RequestBody final CreateOrderRequest request) {
+        return ResponseEntity.ok().build();
+    }
+}
+```
+
+Every controller extending the base gets the floor, and writes its own annotation only when it wants something tighter. A subclass declaring `@RateLimitShared` itself replaces the inherited one rather than adding to it.
+
+Two limits of Java's `@Inherited`, worth knowing before you lean on it. It follows class inheritance only, so a limit on an interface is not inherited by implementors. And it does nothing for `@RateLimit`, which is read straight off the method, so a method declared on a superclass or an interface needs its annotation on the declaration the handler mapping actually resolves to.
 
 ## Scope
 
@@ -111,6 +158,8 @@ A limited request never reaches the controller. It gets `429` with `Retry-After`
 {"message":"Too many requests.","retryAfter":42}
 ```
 
+The bucket key never appears in the response. It exists only as a map key inside the store.
+
 A client already over its limit stops incrementing the counter, so hammering a limited endpoint cannot extend its own lockout.
 
 ## Storage
@@ -138,6 +187,8 @@ public RateLimitStore rateLimitStore(final StringRedisTemplate stringRedisTempla
     return new RedisRateLimitStore(stringRedisTemplate);
 }
 ```
+
+Keys carry the declaring class and, for method scoped limits, the method signature. That is internal detail, so keep it out of anything user facing if you log rejections.
 
 Fixed windows are deliberate over sliding windows. A sliding window needs a sorted set per key and a trim on every call, which is far more traffic for a guarantee an API limiter does not need.
 

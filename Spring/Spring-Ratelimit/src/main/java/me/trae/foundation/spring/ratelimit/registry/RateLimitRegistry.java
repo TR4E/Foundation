@@ -3,6 +3,7 @@ package me.trae.foundation.spring.ratelimit.registry;
 import me.trae.foundation.spring.ratelimit.RateLimitData;
 import me.trae.foundation.spring.ratelimit.annotation.RateLimit;
 import me.trae.foundation.spring.ratelimit.annotation.RateLimitShared;
+import me.trae.foundation.spring.ratelimit.scope.RateLimitTarget;
 import org.springframework.web.method.HandlerMethod;
 
 import java.lang.reflect.Method;
@@ -42,7 +43,9 @@ public final class RateLimitRegistry {
 
             final RateLimitShared rateLimitShared = type.getAnnotation(RateLimitShared.class);
             if (rateLimitShared != null) {
-                rateLimitDataMap.put(method, new RateLimitData(type.getName(), rateLimitShared.scope(), rateLimitShared.unit().toMillis(rateLimitShared.duration()), rateLimitShared.attempts()));
+                final String key = rateLimitShared.target() == RateLimitTarget.TYPE ? type.getName() : method.toString();
+
+                rateLimitDataMap.put(method, new RateLimitData(key, rateLimitShared.scope(), rateLimitShared.unit().toMillis(rateLimitShared.duration()), rateLimitShared.attempts()));
             }
         }
 

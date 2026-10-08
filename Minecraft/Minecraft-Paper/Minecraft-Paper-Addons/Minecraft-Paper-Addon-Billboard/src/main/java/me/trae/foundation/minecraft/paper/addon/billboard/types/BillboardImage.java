@@ -25,7 +25,7 @@ public abstract non-sealed class BillboardImage extends Billboard {
     protected abstract BufferedImage loadImage() throws IOException;
 
     @Override
-    final void load() throws IOException {
+    public void load() throws IOException {
         final BufferedImage image = this.loadImage();
         if (image == null) {
             throw new IOException("Unsupported image format");

@@ -51,7 +51,8 @@ public abstract class BaseCommand<Parent, Sender extends CommandSource> {
 
     private final String label, description;
     private final List<String> aliases;
-    private final String permission;
+
+    private String permission;
 
     private final LinkedHashMap<String, BaseCommand<?, ?>> childCommandMap = new LinkedHashMap<>();
 
@@ -64,6 +65,10 @@ public abstract class BaseCommand<Parent, Sender extends CommandSource> {
 
     public BaseCommand(final String label, final String description, final List<String> aliases) {
         this(label, description, aliases, null);
+
+        final BaseCommand<?, ?> parentCommand = this.getParentCommand();
+
+        this.permission = parentCommand != null ? parentCommand.getPermission() : null;
     }
 
     public final Parent getParent() {
@@ -75,7 +80,7 @@ public abstract class BaseCommand<Parent, Sender extends CommandSource> {
     }
 
     public final BaseCommand<?, ?> getParentCommand() {
-        return BaseCommand.class.cast(this.getParent());
+        return BaseCommand.class.isInstance(this.getParent()) ? BaseCommand.class.cast(this.getParent()) : null;
     }
 
     public final int getArgStart() {

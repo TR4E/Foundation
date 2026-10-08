@@ -6,16 +6,19 @@ import me.trae.foundation.injector.api.callback.ApplicationCallback;
 import me.trae.foundation.injector.extensions.configuration.callback.ConfigurationCallback;
 import me.trae.foundation.injector.extensions.scheduler.callback.SchedulerCallback;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.AddonRegistry;
+import me.trae.foundation.minecraft.paper.plugin.framework.command.BaseCommand;
 import me.trae.foundation.minecraft.paper.plugin.framework.config.events.ConfigReloadEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.config.events.ConfigSaveEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.plugin.events.PluginInitializeEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.plugin.events.PluginShutdownEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.registry.CommandRegistry;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.registry.PluginRegistry;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.Comparator;
 import java.util.concurrent.Executor;
 
 @CustomLog
@@ -50,9 +53,26 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
     }
 
     @Override
+    public final Comparator<Class<?>> getComponentSorter() {
+        final Comparator<Class<?>> componentSorter = ApplicationCallback.super.getComponentSorter();
+
+        return (first, second) -> {
+            if (BaseCommand.class.isAssignableFrom(first) && BaseCommand.class.isAssignableFrom(second)) {
+                return BaseCommand.COMPARATOR_ORDER.compare(first, second);
+            }
+
+            return componentSorter.compare(first, second);
+        };
+    }
+
+    @Override
     public final void onComponentRegister(final Object component) {
         if (component instanceof final Listener listener) {
             this.getServer().getPluginManager().registerEvents(listener, this);
+        }
+
+        if (component instanceof final BaseCommand<?, ?> baseCommand) {
+            CommandRegistry.registerCommand(this, baseCommand);
         }
     }
 
@@ -60,6 +80,10 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
     public final void onComponentUnregister(final Object component) {
         if (component instanceof final Listener listener) {
             HandlerList.unregisterAll(listener);
+        }
+
+        if (component instanceof final BaseCommand<?, ?> baseCommand) {
+            CommandRegistry.unregisterCommand(baseCommand);
         }
     }
 

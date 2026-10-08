@@ -1,6 +1,7 @@
 package me.trae.foundation.spring.common.address;
 
 import jakarta.servlet.http.HttpServletRequest;
+import me.trae.foundation.spring.common.FoundationProperties;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -9,12 +10,12 @@ import java.util.Optional;
 
 public final class IpAddressResolver {
 
-    private final IpAddressProperties properties;
+    private final FoundationProperties foundationProperties;
     private final List<String> headerList;
 
-    public IpAddressResolver(final IpAddressProperties properties) {
-        this.properties = properties;
-        this.headerList = List.copyOf(this.properties.isProduction() ? properties.getProxyHeaderList() : this.properties.getHeaderList());
+    public IpAddressResolver(final FoundationProperties foundationProperties, final IpAddressProperties ipAddressProperties) {
+        this.foundationProperties = foundationProperties;
+        this.headerList = List.copyOf(this.foundationProperties.isProduction() ? ipAddressProperties.getProxyHeaderList() : ipAddressProperties.getHeaderList());
     }
 
     public Optional<String> getIpAddressByRequest(final HttpServletRequest httpServletRequest) {
@@ -45,7 +46,7 @@ public final class IpAddressResolver {
             return false;
         }
 
-        return !this.properties.isProduction() || this.isPublic(inetAddress);
+        return !this.foundationProperties.isProduction() || this.isPublic(inetAddress);
     }
 
     private InetAddress parseLiteral(final String address) {

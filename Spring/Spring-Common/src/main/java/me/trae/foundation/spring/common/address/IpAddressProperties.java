@@ -12,8 +12,6 @@ import java.util.List;
 @ConfigurationProperties(prefix = "foundation.ip-address")
 public class IpAddressProperties {
 
-    private boolean production = false;
-
     private List<String> proxyHeaderList = Collections.singletonList("CF-Connecting-IP");
     private List<String> headerList = List.of("X-Forwarded-For", "X-Real-IP", "X-Client-IP", "Forwarded");
 }

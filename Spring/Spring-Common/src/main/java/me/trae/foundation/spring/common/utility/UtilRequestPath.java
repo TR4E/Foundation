@@ -9,14 +9,14 @@ import java.util.regex.Pattern;
 @UtilityClass
 public class UtilRequestPath {
 
-    private final String SLASH = "/";
-    private final Pattern SLASH_RUN_PATTERN = Pattern.compile("/{2,}");
+    private static final String SLASH = "/";
+    private static final Pattern SLASH_RUN_PATTERN = Pattern.compile("/{2,}");
 
-    public String getCanonicalPath(final HttpServletRequest httpServletRequest) {
+    public static String getCanonicalPath(final HttpServletRequest httpServletRequest) {
         return canonicalise(UrlPathHelper.defaultInstance.getPathWithinApplication(httpServletRequest));
     }
 
-    public String canonicalise(final String path) {
+    public static String canonicalise(final String path) {
         if (path == null || path.isBlank()) {
             return SLASH;
         }
@@ -31,7 +31,7 @@ public class UtilRequestPath {
         return collapsed;
     }
 
-    public boolean matchesPrefix(final String path, final String prefix) {
+    public static boolean matchesPrefix(final String path, final String prefix) {
         if (!path.startsWith(prefix)) {
             return false;
         }

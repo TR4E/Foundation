@@ -1,5 +1,6 @@
 package me.trae.foundation.spring.ratelimit;
 
+import me.trae.foundation.spring.common.CommonAutoConfiguration;
 import me.trae.foundation.spring.common.address.IpAddressResolver;
 import me.trae.foundation.spring.ratelimit.account.EmptyRateLimitAccountResolver;
 import me.trae.foundation.spring.ratelimit.account.RateLimitAccountResolver;
@@ -9,6 +10,7 @@ import me.trae.foundation.spring.ratelimit.store.MemoryRateLimitStore;
 import me.trae.foundation.spring.ratelimit.store.RateLimitStore;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -16,7 +18,8 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
-@AutoConfiguration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+@AutoConfiguration(after = CommonAutoConfiguration.class)
 public class RateLimitAutoConfiguration {
 
     @Bean

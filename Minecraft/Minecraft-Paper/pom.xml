@@ -15,8 +15,8 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>Minecraft-Paper-Plugin-Framework</module>
         <module>Minecraft-Paper-Addons</module>
+        <module>Minecraft-Paper-Plugin-Framework</module>
     </modules>
 
     <properties>

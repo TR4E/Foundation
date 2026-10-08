@@ -16,10 +16,10 @@
     </properties>
 
     <modules>
-        <module>Utilities</module>
-        <module>Injector</module>
         <module>Database</module>
+        <module>Injector</module>
         <module>Minecraft</module>
+        <module>Utilities</module>
     </modules>
 
     <dependencies>

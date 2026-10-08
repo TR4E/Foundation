@@ -16,6 +16,7 @@
 
     <modules>
         <module>Minecraft-Paper-Addon-Hologram</module>
+        <module>Minecraft-Paper-Addon-Item</module>
         <module>Minecraft-Paper-Addon-Sidebar</module>
         <module>Minecraft-Paper-Addon-Tablist</module>
         <module>Minecraft-Paper-Addon-Team</module>

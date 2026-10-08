@@ -7,6 +7,7 @@ import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.holder.LookupTier;
 import me.trae.foundation.database.api.property.EntityProperty;
+import me.trae.foundation.database.api.query.EntityPage;
 import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.repository.EntityRepository;
 import me.trae.foundation.database.api.tenant.TenantScope;
@@ -149,6 +150,17 @@ final class LookupTest {
         assertTrue(this.localStorage.get(stored.getId()).isPresent());
     }
 
+    @Test
+    void findPageClampsPastTheEnd() {
+        this.repository.add("alice");
+
+        final EntityPage<Member> entityPage = this.repository.findPage(Query.of(Member.class), 999, 10);
+
+        assertEquals(1, entityPage.getPage());
+        assertEquals(1L, entityPage.getTotalCount());
+        assertEquals(1, entityPage.getEntities().size());
+    }
+
     private static void awaitQuietly(final CountDownLatch latch) {
         try {
             latch.await();
@@ -229,6 +241,17 @@ final class LookupTest {
         @Override
         public boolean exists(final Query<Member> query) {
             return this.findOne(query).isPresent();
+        }
+
+        @Override
+        public EntityPage<Member> findPage(final Query<Member> query, final int page, final int size) {
+            final List<Member> entityList = this.findMany(query);
+
+            final long totalCount = entityList.size();
+            final int totalPages = Math.max(1, (int) Math.ceil((double) totalCount / (double) size));
+            final int current = Math.clamp(page, 1, totalPages);
+
+            return new EntityPage<>(entityList.stream().skip((long) (current - 1) * size).limit(size).toList(), totalCount, current, size);
         }
 
         @Override

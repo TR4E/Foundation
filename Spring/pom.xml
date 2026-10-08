@@ -18,7 +18,7 @@
         <module>Spring-Common</module>
         <!--        <module>Spring-Pages</module>-->
         <module>Spring-Ratelimit</module>
-        <!--        <module>Spring-Security</module>-->
+        <module>Spring-Security</module>
     </modules>
 
     <dependencyManagement>

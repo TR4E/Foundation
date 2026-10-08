@@ -19,10 +19,12 @@
         <module>Database</module>
         <module>Injector</module>
         <module>Minecraft</module>
+        <module>Spring</module>
         <module>Utilities</module>
     </modules>
 
     <dependencies>
+        <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

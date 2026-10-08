@@ -7,4 +7,7 @@ public interface Lifecycle {
 
     default void onComponentShutdown() {
     }
+
+    default void onLiveDependencyUpdate() {
+    }
 }

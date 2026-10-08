@@ -7,6 +7,7 @@ import me.trae.foundation.injector.api.exception.ApplicationAlreadyInitializedEx
 import me.trae.foundation.injector.api.exception.ApplicationNotAnnotatedException;
 import me.trae.foundation.injector.api.exception.ApplicationNotInitializedException;
 import me.trae.foundation.injector.api.exception.MissingDependencyException;
+import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.injector.core.application.ApplicationContext;
 import me.trae.foundation.injector.core.application.ApplicationRegistry;
 import me.trae.foundation.injector.core.application.PendingApplication;
@@ -53,6 +54,8 @@ public final class CoreInjector implements Injector {
         this.start(new ApplicationContext(application), componentClasses);
 
         this.applicationRegistry.pollReady().ifPresent(this::startPending);
+
+        this.notifyLiveDependencyUpdate();
     }
 
     @Override
@@ -62,6 +65,8 @@ public final class CoreInjector implements Injector {
         this.applicationRegistry.removePending(applicationClass);
 
         this.applicationRegistry.getContext(applicationClass).ifPresent(this::stop);
+
+        this.notifyLiveDependencyUpdate();
     }
 
     @Override
@@ -102,6 +107,8 @@ public final class CoreInjector implements Injector {
 
             throw exception;
         }
+
+        this.notifyLiveDependencyUpdate();
     }
 
     @Override
@@ -109,6 +116,8 @@ public final class CoreInjector implements Injector {
         final ApplicationContext applicationContext = this.getContext(application.getClass());
 
         this.componentLifecycle.detach(applicationContext, applicationContext.getComponentClassList().stream().filter(componentClasses::contains).toList());
+
+        this.notifyLiveDependencyUpdate();
     }
 
     private ApplicationContext getContext(final Class<?> applicationClass) {
@@ -171,5 +180,9 @@ public final class CoreInjector implements Injector {
 
     private boolean isComponent(final Class<?> type) {
         return type.isAnnotationPresent(Singleton.class) || this.extensionRegistry.isComponent(type);
+    }
+
+    private void notifyLiveDependencyUpdate() {
+        this.getAll(Lifecycle.class).forEach(Lifecycle::onLiveDependencyUpdate);
     }
 }

@@ -11,6 +11,7 @@ import me.trae.foundation.injector.api.Injector;
 import me.trae.foundation.injector.api.callback.ApplicationCallback;
 import me.trae.foundation.injector.extensions.configuration.callback.ConfigurationCallback;
 import me.trae.foundation.injector.extensions.scheduler.callback.SchedulerCallback;
+import me.trae.foundation.minecraft.velocity.plugin.framework.command.BaseCommand;
 import me.trae.foundation.minecraft.velocity.plugin.framework.config.events.ConfigReloadEvent;
 import me.trae.foundation.minecraft.velocity.plugin.framework.config.events.ConfigSaveEvent;
 import me.trae.foundation.minecraft.velocity.plugin.framework.event.internal.Listener;
@@ -18,10 +19,12 @@ import me.trae.foundation.minecraft.velocity.plugin.framework.plugin.events.Plug
 import me.trae.foundation.minecraft.velocity.plugin.framework.plugin.events.PluginShutdownEvent;
 import me.trae.foundation.minecraft.velocity.plugin.framework.provider.ProxyServerProvider;
 import me.trae.foundation.minecraft.velocity.plugin.framework.utility.UtilEvent;
+import me.trae.foundation.minecraft.velocity.plugin.framework.utility.registry.CommandRegistry;
 import me.trae.foundation.minecraft.velocity.plugin.framework.utility.registry.PluginRegistry;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Executor;
 
@@ -61,9 +64,26 @@ public abstract class VelocityPlugin implements ApplicationCallback, SchedulerCa
     }
 
     @Override
+    public final Comparator<Class<?>> getComponentSorter() {
+        final Comparator<Class<?>> componentSorter = ApplicationCallback.super.getComponentSorter();
+
+        return (first, second) -> {
+            if (BaseCommand.class.isAssignableFrom(first) && BaseCommand.class.isAssignableFrom(second)) {
+                return BaseCommand.COMPARATOR_ORDER.compare(first, second);
+            }
+
+            return componentSorter.compare(first, second);
+        };
+    }
+
+    @Override
     public final void onComponentRegister(final Object component) {
         if (component instanceof final Listener listener) {
             this.proxyServer.getEventManager().register(this, listener);
+        }
+
+        if (component instanceof final BaseCommand<?, ?> baseCommand) {
+            CommandRegistry.registerCommand(this, baseCommand);
         }
     }
 
@@ -71,6 +91,10 @@ public abstract class VelocityPlugin implements ApplicationCallback, SchedulerCa
     public final void onComponentUnregister(final Object component) {
         if (component instanceof final Listener listener) {
             this.proxyServer.getEventManager().unregisterListener(this, listener);
+        }
+
+        if (component instanceof final BaseCommand<?, ?> baseCommand) {
+            CommandRegistry.unregisterCommand(this, baseCommand);
         }
     }
 

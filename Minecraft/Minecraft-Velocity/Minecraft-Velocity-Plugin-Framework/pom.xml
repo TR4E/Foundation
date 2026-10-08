@@ -13,6 +13,13 @@
     <artifactId>Minecraft-Velocity-Plugin-Framework</artifactId>
 
     <dependencies>
+        <!-- Utilities -->
+        <dependency>
+            <groupId>me.trae.foundation</groupId>
+            <artifactId>Utilities</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
         <!-- Injector API -->
         <dependency>
             <groupId>me.trae.foundation.injector</groupId>

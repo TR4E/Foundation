@@ -1,6 +1,7 @@
 package me.trae.foundation.database.core.repository;
 
 import me.trae.foundation.database.api.entity.Entity;
+import me.trae.foundation.database.api.query.EntityPage;
 import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.query.TenantSelection;
 import me.trae.foundation.database.core.driver.PostgresDriver;
@@ -74,6 +75,29 @@ public final class RepositoryReader<E extends Entity> {
 
     public boolean exists(final Query<E> query) {
         return this.getDslContext().fetchExists(this.tableSchema.getTable(), QueryRenderer.toCondition(this.tableSchema, query, this.tenantId));
+    }
+
+    public EntityPage<E> findPage(final Query<E> query, final int page, final int size) {
+        if (size < 1) {
+            throw new IllegalArgumentException("Page size must be at least 1");
+        }
+
+        final long totalCount = this.count(query);
+
+        final int totalPages = Math.max(1, (int) Math.ceil((double) totalCount / (double) size));
+
+        final int current = Math.clamp(page, 1, totalPages);
+
+        if (totalCount == 0L) {
+            return new EntityPage<>(Collections.emptyList(), 0L, current, size);
+        }
+
+        final SelectQuery<Record> selectQuery = this.createSelect(query);
+
+        selectQuery.addLimit(size);
+        selectQuery.addOffset((current - 1) * size);
+
+        return new EntityPage<>(selectQuery.fetch(this.entityRecordMapper::map), totalCount, current, size);
     }
 
     private SelectQuery<Record> createSelect(final Query<E> query) {

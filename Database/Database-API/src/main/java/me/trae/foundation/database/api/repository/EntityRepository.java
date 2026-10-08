@@ -2,6 +2,7 @@ package me.trae.foundation.database.api.repository;
 
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.property.EntityProperty;
+import me.trae.foundation.database.api.query.EntityPage;
 import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.repository.index.IndexType;
 import me.trae.foundation.database.api.tenant.TenantScope;
@@ -38,6 +39,8 @@ public interface EntityRepository<E extends Entity> {
     long count(final Query<E> query);
 
     boolean exists(final Query<E> query);
+
+    EntityPage<E> findPage(final Query<E> query, final int page, final int size);
 
     void save(final E entity);
 

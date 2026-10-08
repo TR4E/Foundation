@@ -6,6 +6,7 @@ import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.property.EntityPropertyRegistry;
+import me.trae.foundation.database.api.query.EntityPage;
 import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.repository.EntityRepository;
 import me.trae.foundation.database.api.repository.index.IndexType;
@@ -99,6 +100,11 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     @Override
     public boolean exists(final Query<E> query) {
         return this.repositoryReader.exists(query);
+    }
+
+    @Override
+    public EntityPage<E> findPage(final Query<E> query, final int page, final int size) {
+        return this.repositoryReader.findPage(query, page, size);
     }
 
     public void save(final E entity, final List<Runnable> commitCallbackList) {

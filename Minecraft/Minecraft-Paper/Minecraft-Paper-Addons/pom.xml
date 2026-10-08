@@ -15,6 +15,7 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>Minecraft-Paper-Addon-Death</module>
         <module>Minecraft-Paper-Addon-Hologram</module>
         <module>Minecraft-Paper-Addon-Item</module>
         <module>Minecraft-Paper-Addon-Sidebar</module>

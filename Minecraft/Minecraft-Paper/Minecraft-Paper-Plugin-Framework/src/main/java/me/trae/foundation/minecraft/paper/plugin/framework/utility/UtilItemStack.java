@@ -1,8 +1,12 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.utility;
 
 import lombok.experimental.UtilityClass;
+import net.kyori.adventure.text.Component;
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -124,5 +128,24 @@ public class UtilItemStack {
         }
 
         return true;
+    }
+
+    public static Optional<ItemStack> getItemInMainHand(final Entity entity) {
+        return Optional.ofNullable(entity)
+                .filter(LivingEntity.class::isInstance)
+                .map(LivingEntity.class::cast)
+                .map(LivingEntity::getEquipment)
+                .map(EntityEquipment::getItemInMainHand)
+                .filter(itemStack -> !itemStack.isEmpty());
+    }
+
+    public static Component getDisplayName(final ItemStack itemStack, final boolean hoverable) {
+        if (itemStack == null || itemStack.isEmpty()) {
+            return null;
+        }
+
+        final Component effectiveName = itemStack.effectiveName();
+
+        return hoverable ? effectiveName.hoverEvent(itemStack.asHoverEvent()) : effectiveName;
     }
 }

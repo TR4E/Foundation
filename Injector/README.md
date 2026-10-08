@@ -136,6 +136,8 @@ public final class FeatureRegistry {
 
 `List<T>`, `Set<T>` and `Map<Class<? extends T>, T>` are live views of the container, not copies. When another application starts later and registers more `Feature` components, they appear in the collection straight away, and they disappear again when that application shuts down. Iterating while an application starts or stops is safe. Any other collection type throws `UnsupportedDependencyTypeException`.
 
+A component that keeps its own lookup built from a live collection can rebuild it in `onLiveDependencyUpdate`, see [Lifecycle](#lifecycle).
+
 ### Providers
 
 A method annotated with `@Provider` on a component registers its return value as a component. Its parameters are injected like a constructor's.
@@ -177,10 +179,14 @@ public final class ConnectionPool implements Lifecycle {
     @Override
     public void onComponentShutdown() {
     }
+
+    @Override
+    public void onLiveDependencyUpdate() {
+    }
 }
 ```
 
-`onComponentInitialize` runs once every component of the application has been created, in creation order. `onComponentShutdown` runs in reverse order. Both are optional defaults.
+`onComponentInitialize` runs once every component of the application has been created, in creation order. `onComponentShutdown` runs in reverse order. `onLiveDependencyUpdate` runs on every component after any `initialize`, `shutdown`, `attach` or `detach` finishes, so a component that builds its own index from a live collection, such as a map keyed by name, can rebuild it. All three are optional defaults.
 
 ### ApplicationCallback
 
@@ -263,6 +269,7 @@ When an application starts, Core:
 4. Creates each one, creating `@DependsOn` targets, constructor dependencies and providers first, and detecting cycles along the way.
 5. Calls `onComponentInitialize` and `onComponentRegister` on every component, then lets extensions run their application hooks.
 6. Starts any deferred applications that were waiting on this one.
+7. Calls `onLiveDependencyUpdate` on every component.
 
 Shutdown runs the same steps backwards, after first shutting down dependent applications. `initialize`, `shutdown`, `attach` and `detach` are synchronized, and lookups are safe from any thread.
 

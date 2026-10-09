@@ -29,6 +29,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -84,29 +85,33 @@ final class LookupTest {
     void inFlightLookupCoalescesConcurrentCallers() throws Exception {
         final InFlightLookup<String> inFlightLookup = new InFlightLookup<>();
         final AtomicInteger calls = new AtomicInteger();
+        final CountDownLatch started = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
 
         try (final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
             final Future<Optional<String>> first = executorService.submit(() -> inFlightLookup.compute("key", () -> {
                 calls.incrementAndGet();
+                started.countDown();
                 awaitQuietly(release);
                 return Optional.of("value");
             }));
 
-            while (inFlightLookup.getInFlightCount() == 0) {
-                Thread.onSpinWait();
+            try {
+                assertTrue(started.await(5, TimeUnit.SECONDS));
+
+                final Future<Optional<String>> second = executorService.submit(() -> inFlightLookup.compute("key", () -> {
+                    calls.incrementAndGet();
+                    return Optional.of("other");
+                }));
+
+                Thread.sleep(100);
+                release.countDown();
+
+                assertEquals(Optional.of("value"), first.get(5, TimeUnit.SECONDS));
+                assertEquals(Optional.of("value"), second.get(5, TimeUnit.SECONDS));
+            } finally {
+                release.countDown();
             }
-
-            final Future<Optional<String>> second = executorService.submit(() -> inFlightLookup.compute("key", () -> {
-                calls.incrementAndGet();
-                return Optional.of("other");
-            }));
-
-            Thread.sleep(100);
-            release.countDown();
-
-            assertEquals(Optional.of("value"), first.get());
-            assertEquals(Optional.of("value"), second.get());
         }
 
         assertEquals(1, calls.get());

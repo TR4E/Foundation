@@ -17,6 +17,7 @@ import me.trae.foundation.injector.core.lifecycle.ComponentLifecycle;
 import me.trae.foundation.injector.core.resolver.ConstructorResolver;
 import me.trae.foundation.injector.core.resolver.ScanResolver;
 
+import java.lang.reflect.Type;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -84,7 +85,10 @@ public final class CoreInjector implements Injector {
     @Override
     public synchronized List<Class<?>> getComponents(final Class<?> applicationClass) {
         return this.applicationRegistry.getContext(applicationClass)
-                .map(applicationContext -> List.copyOf(applicationContext.getComponentClassList()))
+                .map(applicationContext -> applicationContext.getComponentTypeList().stream()
+                        .<Class<?>>map(ApplicationContext::getRawType)
+                        .distinct()
+                        .toList())
                 .orElseThrow(() -> new ApplicationNotInitializedException("%s is not initialized".formatted(applicationClass.getName())));
     }
 
@@ -92,7 +96,7 @@ public final class CoreInjector implements Injector {
     public synchronized void attach(final Object application, final List<Class<?>> componentClasses) {
         final ApplicationContext applicationContext = this.getContext(application.getClass());
 
-        final int index = applicationContext.getComponentClassList().size();
+        final int index = applicationContext.getComponentTypeList().size();
 
         try {
             new ConstructorResolver(this.componentContainer, this.extensionRegistry, applicationContext, componentClasses.stream().distinct().sorted(applicationContext.getApplicationCallback().getComponentSorter()).toList()).createAll();
@@ -115,7 +119,7 @@ public final class CoreInjector implements Injector {
     public synchronized void detach(final Object application, final List<Class<?>> componentClasses) {
         final ApplicationContext applicationContext = this.getContext(application.getClass());
 
-        this.componentLifecycle.detach(applicationContext, applicationContext.getComponentClassList().stream().filter(componentClasses::contains).toList());
+        this.componentLifecycle.detach(applicationContext, applicationContext.getComponentTypeList().stream().filter(type -> componentClasses.contains(ApplicationContext.getRawType(type))).toList());
 
         this.notifyLiveDependencyUpdate();
     }
@@ -124,8 +128,8 @@ public final class CoreInjector implements Injector {
         return this.applicationRegistry.getContext(applicationClass).orElseThrow(() -> new ApplicationNotInitializedException("%s is not initialized".formatted(applicationClass.getName())));
     }
 
-    private List<Class<?>> getAttached(final ApplicationContext applicationContext, final int index) {
-        return List.copyOf(applicationContext.getComponentClassList().subList(index, applicationContext.getComponentClassList().size()));
+    private List<Type> getAttached(final ApplicationContext applicationContext, final int index) {
+        return List.copyOf(applicationContext.getComponentTypeList().subList(index, applicationContext.getComponentTypeList().size()));
     }
 
     private void start(final ApplicationContext applicationContext, final List<Class<?>> componentClasses) {

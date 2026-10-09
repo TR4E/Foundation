@@ -23,6 +23,7 @@ public final class DependsOnResolver {
         }
 
         final DependsOn dependsOn = type.getDeclaredAnnotation(DependsOn.class);
+
         if (dependsOn != null) {
             dependencySet.addAll(List.of(dependsOn.value()));
         }

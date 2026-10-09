@@ -6,13 +6,17 @@ import me.trae.foundation.injector.api.exception.ConstructorException;
 import me.trae.foundation.injector.api.exception.MissingDependencyException;
 import me.trae.foundation.injector.core.application.ApplicationContext;
 import me.trae.foundation.injector.core.container.ComponentContainer;
+import me.trae.foundation.injector.core.container.ComponentRegistration;
 import me.trae.foundation.injector.core.extension.ExtensionRegistry;
 import me.trae.foundation.injector.core.resolver.abstracts.AbstractResolver;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Type;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -20,6 +24,7 @@ import java.util.stream.Stream;
 public final class ConstructorResolver extends AbstractResolver {
 
     private final Set<Class<?>> resolvingSet = new LinkedHashSet<>();
+    private final Map<Type, List<Class<?>>> assignableClassCacheMap = new LinkedHashMap<>();
 
     private final ExtensionRegistry extensionRegistry;
     private final ApplicationContext applicationContext;
@@ -53,50 +58,62 @@ public final class ConstructorResolver extends AbstractResolver {
         }
 
         try {
-            this.dependsOnResolver.resolve(type).forEach(dependency -> this.require(type, dependency));
+            final LinkedHashSet<Type> dependencyTypeSet = new LinkedHashSet<>();
 
-            final Object instance = this.extensionRegistry.instantiate(this.applicationContext, type).orElseGet(() -> this.construct(type));
+            this.dependsOnResolver.resolve(type).forEach(dependency -> this.require(type, dependency, dependencyTypeSet));
 
-            this.getComponentContainer().register(type, instance);
+            final Object instance = this.extensionRegistry.instantiate(this.applicationContext, type).orElseGet(() -> this.construct(type, dependencyTypeSet));
 
-            this.applicationContext.getComponentClassList().add(type);
+            this.getComponentContainer().register(type, instance, this.applicationContext, null, dependencyTypeSet);
+
+            this.applicationContext.getComponentTypeList().add(type);
 
             this.extensionRegistry.onComponentCreate(this.applicationContext, instance);
 
-            this.providerResolver.provide(instance, this::ensure);
+            this.providerResolver.provide(instance, type, this::ensure);
         } finally {
             this.resolvingSet.remove(type);
         }
     }
 
-    private void ensure(final Class<?> dependencyType) {
-        final List<Class<?>> candidateList = this.pendingClassList.stream().filter(dependencyType::isAssignableFrom).toList();
+    private void ensure(final Type dependencyType) {
+        this.providerResolver.findExactOwner(dependencyType).ifPresent(this::create);
 
-        if (candidateList.isEmpty()) {
-            this.providerResolver.findOwner(dependencyType).ifPresent(this::create);
+        if (this.getComponentContainer().getInstance(dependencyType).isPresent()) {
             return;
         }
 
+        final List<Class<?>> candidateList = this.assignableClassCacheMap.computeIfAbsent(dependencyType, requestedType -> this.pendingClassList.stream()
+                .filter(candidate -> TypeResolver.isAssignable(requestedType, candidate))
+                .toList());
+
         candidateList.forEach(this::create);
+
+        this.providerResolver.findOwner(dependencyType).ifPresent(this::create);
     }
 
-    private void require(final Class<?> type, final Class<?> dependency) {
+    private void require(final Class<?> type, final Class<?> dependency, final Set<Type> dependencyTypeSet) {
         this.ensure(dependency);
 
-        if (this.getComponentContainer().getAssignable(dependency).getList().isEmpty()) {
+        final List<ComponentRegistration> registrationList = this.getComponentContainer().getAssignableRegistrations(dependency);
+
+        if (registrationList.isEmpty()) {
             throw new MissingDependencyException("%s depends on %s but none was found".formatted(type.getName(), dependency.getName()));
         }
+
+        registrationList.stream().map(ComponentRegistration::getType).forEach(dependencyTypeSet::add);
     }
 
-    private Object construct(final Class<?> type) {
+    private Object construct(final Class<?> type, final Set<Type> dependencyTypeSet) {
         final Constructor<?>[] constructors = type.getDeclaredConstructors();
+
         if (constructors.length != 1) {
             throw new ConstructorException("%s must declare exactly one constructor".formatted(type.getName()));
         }
 
         final Constructor<?> constructor = constructors[0];
 
-        final Object[] arguments = this.dependencyResolver.resolveArguments(constructor.getGenericParameterTypes(), this::ensure);
+        final Object[] arguments = this.dependencyResolver.resolveArguments(constructor.getGenericParameterTypes(), this::ensure, dependencyTypeSet);
 
         try {
             constructor.setAccessible(true);

@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.NonNull;
 import me.trae.foundation.injector.core.container.ComponentContainer;
 
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.AbstractMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -15,13 +17,11 @@ import java.util.stream.Collectors;
 public final class LiveMap<T> extends AbstractMap<Class<? extends T>, T> {
 
     private final ComponentContainer componentContainer;
-    private final Class<T> type;
+    private final Type type;
 
     @Override
     public T get(final Object key) {
-        return Optional.ofNullable(this.getMap().get(key))
-                .map(this.type::cast)
-                .orElse(null);
+        return Optional.ofNullable(this.getMap().get(key)).map(this.rawType()::cast).orElse(null);
     }
 
     @Override
@@ -37,11 +37,16 @@ public final class LiveMap<T> extends AbstractMap<Class<? extends T>, T> {
     @Override
     public @NonNull Set<Entry<Class<? extends T>, T>> entrySet() {
         return this.getMap().entrySet().stream()
-                .map(entry -> Map.<Class<? extends T>, T>entry(entry.getKey().asSubclass(this.type), this.type.cast(entry.getValue())))
+                .map(entry -> Map.<Class<? extends T>, T>entry(entry.getKey().asSubclass(this.rawType()), this.rawType().cast(entry.getValue())))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private Map<Class<?>, Object> getMap() {
         return this.componentContainer.getAssignable(this.type).getMap();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<T> rawType() {
+        return (Class<T>) (this.type instanceof final Class<?> clazz ? clazz : ((ParameterizedType) this.type).getRawType());
     }
 }

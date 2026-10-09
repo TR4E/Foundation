@@ -21,6 +21,7 @@ public final class AssignableCache {
 
     public static AssignableCache of(final Class<?> type, final Collection<Object> instances) {
         final Set<Object> seenSet = Collections.newSetFromMap(new IdentityHashMap<>());
+
         final List<Object> list = instances.stream().filter(type::isInstance).filter(seenSet::add).toList();
 
         final LinkedHashMap<Class<?>, Object> map = new LinkedHashMap<>();

@@ -1,8 +1,29 @@
-# Spring-Common
+<h1 align="center">Spring-Common</h1>
 
 Shared foundation for the `me.trae.foundation.spring` modules. Holds the pieces that more than one Spring module needs: the global production flag, client IP resolution, request path canonicalisation, and the filter order constants that keep the chain declared in one place.
 
 Every other Spring module depends on this one. It depends on nothing but Spring itself.
+
+<p align="center">
+  <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
+  <a href="https://spring.io/projects/spring-boot"><img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-Servlet%20web-6DB33F?logo=springboot&logoColor=white"></a>
+  <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet%20applications-0769AD?logo=jakartaee&logoColor=white"></a>
+</p>
+
+
+
+<details>
+<summary>On this page</summary>
+
+- [Contents](#contents)
+- [Production flag](#production-flag)
+- [IP address resolution](#ip-address-resolution)
+- [Path canonicalisation](#path-canonicalisation)
+- [Filter order](#filter-order)
+- [How to Wire into a Spring Boot Application](#how-to-wire-into-a-spring-boot-application)
+</details>
+
+
 
 ## Contents
 

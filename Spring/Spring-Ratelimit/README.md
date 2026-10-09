@@ -1,8 +1,31 @@
-# Spring-Ratelimit
+<h1 align="center">Spring-Ratelimit</h1>
 
 Annotation driven rate limiting for Spring Boot controllers. Put `@RateLimit` on a method or `@RateLimitShared` on a controller, and the limit is enforced before the handler runs.
 
 Depends on Spring-Common only. It does not depend on Spring-Security, so the two can be used independently.
+
+<p align="center">
+  <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
+  <a href="https://spring.io/projects/spring-boot"><img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-Servlet%20web-6DB33F?logo=springboot&logoColor=white"></a>
+  <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet%20applications-0769AD?logo=jakartaee&logoColor=white"></a>
+</p>
+
+
+
+<details>
+<summary>On this page</summary>
+
+- [Contents](#contents)
+- [Annotations](#annotations)
+- [Scope](#scope)
+- [When the IP cannot be resolved](#when-the-ip-cannot-be-resolved)
+- [Response](#response)
+- [Storage](#storage)
+- [What it does not cover](#what-it-does-not-cover)
+- [How to Wire into a Spring Boot Application](#how-to-wire-into-a-spring-boot-application)
+</details>
+
+
 
 ## Contents
 
@@ -155,7 +178,10 @@ The request is rejected. An unresolvable IP means the request did not arrive thr
 A limited request never reaches the controller. It gets `429` with `Retry-After` in seconds, `Cache-Control: no-store`, and a UTF-8 JSON body:
 
 ```json
-{"message":"Too many requests.","retryAfter":42}
+{
+  "message":" Too many requests.",
+  "retryAfter": 42
+}
 ```
 
 The bucket key never appears in the response. It exists only as a map key inside the store.

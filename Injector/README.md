@@ -1,8 +1,29 @@
-# Injector
+<h1 align="center">Injector</h1>
 
 A lightweight dependency injection framework for Java 25, built from scratch with no Spring or Guice underneath. Components are plain classes wired through their constructor, grouped into applications that start and stop as a unit, and extended through a small SPI that the Configuration, Scheduler and Commons modules are built on.
 
 Any Java application, service or tool can use it.
+
+<p align="center">
+  <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
+  <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Multi--module-C71A36?logo=apachemaven&logoColor=white"></a>
+  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/reflect/Type.html"><img alt="Generic types" src="https://img.shields.io/badge/Java-Generic%20injection-4479A1?logo=java&logoColor=white"></a>
+</p>
+
+
+
+<details>
+<summary>On this page</summary>
+
+- [Modules](#modules)
+- [Installation and quick start](#installation)
+- [Injector API](#injector-api)
+- [Core runtime](#injector-core)
+- [Commons, Scheduler, and Configuration extensions](#injector-commons-extension)
+- [Building and testing](#building-and-testing)
+</details>
+
+
 
 ## Modules
 
@@ -115,7 +136,7 @@ public final class InvoiceService {
 
 - **Constructor injection only.** Every component declares exactly one constructor, otherwise `ConstructorException` is thrown. There is no field injection.
 - **One instance.** Every component is a singleton, created once and shared by everyone that depends on it.
-- **Resolving a parameter:** an exact class match wins. Otherwise the parameter may be an interface or superclass, and it resolves to the single component assignable to it. No match throws `MissingDependencyException`, more than one throws `AmbiguousDependencyException`.
+- **Resolving a parameter:** exact generic `Type` matches win, including parameterized provider return types. Compatible generic superclass and interface types are resolved with their type arguments; wildcards are matched by their bounds, and raw dependencies retain class-based assignability. No match throws `MissingDependencyException`, more than one throws `AmbiguousDependencyException`.
 - **Across applications:** resolution is global, so a component in `ReportingApplication` can inject a component owned by `BillingApplication`.
 - **Built in:** the `Injector` itself, every running application and every loaded extension are components too.
 - **Ordering:** dependencies are always created first. Components with no dependency on each other are created in the order chosen by the application's sorter, which defaults to class name order (see [ApplicationCallback](#applicationcallback)).
@@ -153,7 +174,7 @@ public final class SerializationModule {
 }
 ```
 
-The provided value is registered under the method's return type. A `void` return or a `null` result throws `ComponentCreationException`. Anything that depends on the provided type causes its owning component to be created first.
+The provided value is registered under the method's complete generic return `Type`, so providers with the same raw class and different type arguments can be resolved independently. A `void` return or a `null` result throws `ComponentCreationException`. Anything that depends on the provided type causes its owning component to be created first.
 
 ### @DependsOn
 

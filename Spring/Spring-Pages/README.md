@@ -1,8 +1,35 @@
-# Spring-Pages
+<h1 align="center">Spring-Pages</h1>
 
 A page layer for Spring Boot. A page is a class, not a controller method: it declares its own route, the role needed to see it, the assets it owns and how it caches, and registers itself at boot. The route string appears once.
 
 Depends on Spring-Common only. It does not depend on Spring-Security, so the two can be used independently.
+
+<p align="center">
+  <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
+  <a href="https://spring.io/projects/spring-boot"><img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-Servlet%20web-6DB33F?logo=springboot&logoColor=white"></a>
+  <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet%20applications-0769AD?logo=jakartaee&logoColor=white"></a>
+</p>
+
+
+
+<details>
+<summary>On this page</summary>
+
+- [Contents](#contents)
+- [The role contract](#the-role-contract)
+- [Writing a page](#writing-a-page)
+- [Assets](#assets)
+- [Cache control](#cache-control)
+- [Navbar](#navbar)
+- [Pagination](#pagination)
+- [Path canonicalisation](#path-canonicalisation)
+- [Login redirects](#login-redirects)
+- [Configuration](#configuration)
+- [Filter order](#filter-order)
+- [How to Wire into a Spring Boot Application](#how-to-wire-into-a-spring-boot-application)
+</details>
+
+
 
 ## Contents
 
@@ -110,14 +137,14 @@ public final class OrdersPage extends Page {
 Path variables go in the route itself:
 
 ```java
-    public OrderPage(final OrderManager orderManager) {
-        super("/order/{id}", AccountRole.STANDARD);
-    }
+public OrderPage(final OrderManager orderManager) {
+    super("/order/{id}", AccountRole.STANDARD);
+}
 
-    @Render
-    public String render(@PathVariable("id") final UUID id, final Model model) {
-        ...
-    }
+@Render
+public String render(@PathVariable("id") final UUID id, final Model model) {
+    ...
+}
 ```
 
 `getBaseRoute()` cuts at the first brace, so `/order/{id}` contributes `/order` to navbar matching.
@@ -215,12 +242,12 @@ When an unauthenticated viewer hits a gated page, the interceptor sends them to 
 Your login page must run that parameter through `UtilRedirect` before using it, or you have an open redirect:
 
 ```java
-    @Render
-    public String render(@RequestParam(name = "redirect", required = false) final String redirect, final Model model) {
-        model.addAttribute("redirect", UtilRedirect.sanitise(redirect));
+@Render
+public String render(@RequestParam(name = "redirect", required = false) final String redirect, final Model model) {
+    model.addAttribute("redirect", UtilRedirect.sanitise(redirect));
 
-        return "auth";
-    }
+    return "auth";
+}
 ```
 
 `sanitise` returns the value when it is a safe same site path and `null` otherwise. It rejects anything not starting with a single slash, which covers `//evil.example.com` and `/\evil.example.com`, plus header injection attempts and unexpanded path variables.

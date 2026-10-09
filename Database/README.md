@@ -1,8 +1,31 @@
-# Database
+<h1 align="center">Database</h1>
 
 An entity persistence library for PostgreSQL, with an optional Redis layer for caching and coordination between servers. You describe an entity's properties once, and Database creates and migrates the table, writes changes behind the scenes in batches, serves reads from a local cache, Redis or PostgreSQL in that order, keeps unique values unique across every server, and separates data per tenant.
 
 It is plain Java with no framework of its own, so it can be wired by hand, through [Injector](https://github.com/TR4E/Foundation/tree/master/Injector), or through Spring and Spring Boot. See [Dependency injection](#dependency-injection).
+
+<p align="center">
+  <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
+  <a href="https://www.postgresql.org/"><img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-Persistence-4169E1?logo=postgresql&logoColor=white"></a>
+  <a href="https://redis.io/"><img alt="Redis" src="https://img.shields.io/badge/Redis-Optional%20cache-DC382D?logo=redis&logoColor=white"></a>
+  <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Multi--module-C71A36?logo=apachemaven&logoColor=white"></a>
+</p>
+
+
+
+<details>
+<summary>On this page</summary>
+
+- [Modules](#modules)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Database API](#database-api)
+- [Storage, lookup, and core](#database-storage)
+- [Dependency injection](#dependency-injection)
+- [Building and testing](#building-and-testing)
+</details>
+
+
 
 ## Modules
 
@@ -301,6 +324,7 @@ final RedisDriver redisDriver = new RedisDriver(new RedisSettings("localhost", 6
 redisDriver.connect();
 
 redisDriver.subscribe("app:events", message -> System.out.println(message));
+
 redisDriver.publish("app:events", "Cache cleared");
 ```
 

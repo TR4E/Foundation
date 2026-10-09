@@ -1,8 +1,30 @@
-# Spring-Security
+<h1 align="center">Spring-Security</h1>
 
 The request hardening layer every Spring Boot site needs and nobody wants to write twice: security response headers with a per directive Content Security Policy, and double submit CSRF protection that fails closed.
 
 Depends on Spring-Common only.
+
+<p align="center">
+  <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
+  <a href="https://spring.io/projects/spring-boot"><img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-Servlet%20web-6DB33F?logo=springboot&logoColor=white"></a>
+  <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet%20applications-0769AD?logo=jakartaee&logoColor=white"></a>
+</p>
+
+
+
+<details>
+<summary>On this page</summary>
+
+- [Contents](#contents)
+- [Security headers](#security-headers)
+- [Content Security Policy](#content-security-policy)
+- [CSRF](#csrf)
+- [Excluding endpoints](#excluding-endpoints)
+- [Filter order](#filter-order)
+- [How to Wire into a Spring Boot Application](#how-to-wire-into-a-spring-boot-application)
+</details>
+
+
 
 ## Contents
 

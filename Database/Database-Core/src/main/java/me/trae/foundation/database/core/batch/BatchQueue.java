@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.core.driver.PostgresDriver;
+import me.trae.foundation.database.storage.driver.RedisDriver;
 
 import java.time.Duration;
 import java.util.List;
@@ -18,11 +19,12 @@ public final class BatchQueue {
     private static final int MAXIMUM_DRAIN_ATTEMPTS = 10;
 
     @Getter
-    private final PendingWriteStore pendingWriteStore = new PendingWriteStore();
+    private final PendingWriteStore pendingWriteStore;
 
     private final List<Runnable> preFlushTaskList = new CopyOnWriteArrayList<>();
 
     private final BatchExecutor batchExecutor;
+    private final CacheInvalidationOutbox cacheInvalidationOutbox;
     private final Duration flushInterval;
     private final int chunkSize;
 
@@ -31,10 +33,22 @@ public final class BatchQueue {
 
     private ScheduledExecutorService scheduledExecutorService;
 
-    public BatchQueue(final PostgresDriver postgresDriver, final Duration flushInterval, final int chunkSize) {
+    public BatchQueue(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Duration flushInterval, final int chunkSize) {
+        this(postgresDriver, redisDriver, flushInterval, chunkSize, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
+    }
+
+    public BatchQueue(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
+        this.pendingWriteStore = new PendingWriteStore(maximumPendingWrites);
         this.batchExecutor = new BatchExecutor(postgresDriver, this::reportFailure);
+        this.cacheInvalidationOutbox = redisDriver == null ? null : new CacheInvalidationOutbox(postgresDriver, redisDriver);
         this.flushInterval = flushInterval;
         this.chunkSize = chunkSize;
+    }
+
+    public void synchronizeOutbox() {
+        if (this.cacheInvalidationOutbox != null) {
+            this.cacheInvalidationOutbox.synchronize();
+        }
     }
 
     public synchronized void start() {
@@ -44,9 +58,7 @@ public final class BatchQueue {
 
         this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("database-batch-queue").factory());
 
-        this.scheduledExecutorService.scheduleWithFixedDelay(() -> {
-            this.runSafely(this::flush);
-        }, this.flushInterval.toMillis(), this.flushInterval.toMillis(), TimeUnit.MILLISECONDS);
+        this.scheduledExecutorService.scheduleWithFixedDelay(this::flushSafely, this.flushInterval.toMillis(), this.flushInterval.toMillis(), TimeUnit.MILLISECONDS);
     }
 
     public void stop() {
@@ -78,7 +90,24 @@ public final class BatchQueue {
         final List<PendingWrite> writeList = this.pendingWriteStore.drain();
 
         for (int index = 0; index < writeList.size(); index += this.chunkSize) {
-            this.batchExecutor.execute(writeList.subList(index, Math.min(index + this.chunkSize, writeList.size()))).forEach(this.pendingWriteStore::requeue);
+            final List<PendingWrite> chunkList = writeList.subList(index, Math.min(index + this.chunkSize, writeList.size()));
+            final List<PendingWrite> retryList = this.batchExecutor.execute(chunkList);
+
+            for (final PendingWrite pendingWrite : chunkList) {
+                if (retryList.contains(pendingWrite)) {
+                    this.pendingWriteStore.requeue(pendingWrite);
+                } else {
+                    this.pendingWriteStore.complete(pendingWrite);
+                }
+            }
+        }
+
+        if (this.cacheInvalidationOutbox != null) {
+            try {
+                this.cacheInvalidationOutbox.dispatch();
+            } catch (final RuntimeException exception) {
+                this.reportFailure(new DatabaseException("Failed to dispatch cache invalidation outbox", exception));
+            }
         }
     }
 
@@ -92,5 +121,9 @@ public final class BatchQueue {
         } catch (final RuntimeException exception) {
             this.reportFailure(new DatabaseException("Batch queue task failed", exception));
         }
+    }
+
+    private void flushSafely() {
+        this.runSafely(this::flush);
     }
 }

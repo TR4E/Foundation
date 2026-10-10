@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.holder.LookupTier;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.query.EntityPage;
@@ -121,7 +120,7 @@ final class LookupTest {
     @Test
     void singletonCachesDatabaseHitsLocally() {
         final Member member = this.repository.add("trae");
-        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(InstanceMode.SINGLETON, this.localStorage, null, this.repository);
+        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 
         assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
         assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
@@ -129,15 +128,15 @@ final class LookupTest {
     }
 
     @Test
-    void multiInstanceAlwaysReadsTheDatabase() {
+    void multiInstanceCachesDatabaseHitsLocally() {
         final Member member = this.repository.add("trae");
-        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(InstanceMode.MULTI_INSTANCE, this.localStorage, null, this.repository);
+        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 
-        idLookup.lookup(member.getId());
-        idLookup.lookup(member.getId());
+        assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
+        assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
 
-        assertEquals(2, this.repository.readCount.get());
-        assertTrue(this.localStorage.get(member.getId()).isEmpty());
+        assertEquals(1, this.repository.readCount.get());
+        assertTrue(this.localStorage.get(member.getId()).isPresent());
     }
 
     @Test
@@ -147,7 +146,7 @@ final class LookupTest {
         this.localStorage.put(cached.getId(), cached);
         final Member stored = this.repository.add("stored");
 
-        final TieredLookup<String, Member> nameLookup = EntityLookups.byProperty(InstanceMode.SINGLETON, NAME, this.localStorage, null, null, this.repository);
+        final TieredLookup<String, Member> nameLookup = EntityLookups.byProperty(NAME, this.localStorage, null, null, this.repository);
 
         assertSame(cached, nameLookup.lookup("cached").orElseThrow());
         assertEquals(0, this.repository.readCount.get());

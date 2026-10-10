@@ -3,6 +3,8 @@ package me.trae.foundation.database.storage.driver;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisException;
 import io.lettuce.core.RedisURI;
+import io.lettuce.core.ScriptOutputType;
+import io.lettuce.core.SetArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -11,12 +13,16 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.api.exception.ConnectionException;
 
+import java.time.Duration;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 @RequiredArgsConstructor
 public final class RedisDriver {
 
     private final RedisSubscriptionDispatcher subscriptionDispatcher = new RedisSubscriptionDispatcher();
+
+    private final String instanceId = UUID.randomUUID().toString();
 
     @Getter
     private final RedisSettings redisSettings;
@@ -87,6 +93,18 @@ public final class RedisDriver {
 
     public void unsubscribe(final String channel) {
         this.subscriptionDispatcher.unsubscribe(channel);
+    }
+
+    public String getInstanceId() {
+        return this.instanceId;
+    }
+
+    public boolean tryAcquireLock(final String key, final String owner, final Duration lease) {
+        return "OK".equals(this.getCommands().set(key, owner, SetArgs.Builder.nx().px(lease.toMillis())));
+    }
+
+    public void releaseLock(final String key, final String owner) {
+        this.getCommands().eval("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end", ScriptOutputType.INTEGER, new String[]{key}, owner);
     }
 
     private StatefulRedisConnection<String, String> getConnection() {

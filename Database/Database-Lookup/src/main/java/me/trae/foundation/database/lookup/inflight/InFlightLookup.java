@@ -1,36 +1,30 @@
 package me.trae.foundation.database.lookup.inflight;
 
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.function.Supplier;
 
 public final class InFlightLookup<Value> {
 
-    private final ConcurrentMap<Object, CompletableFuture<Optional<Value>>> inFlightMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Object, FutureTask<Optional<Value>>> inFlightMap = new ConcurrentHashMap<>();
 
     public Optional<Value> compute(final Object key, final Supplier<Optional<Value>> supplier) {
-        final CompletableFuture<Optional<Value>> future = new CompletableFuture<>();
+        final FutureTask<Optional<Value>> task = new FutureTask<>(supplier::get);
 
-        final CompletableFuture<Optional<Value>> existing = this.inFlightMap.putIfAbsent(key, future);
+        final FutureTask<Optional<Value>> existing = this.inFlightMap.putIfAbsent(key, task);
         if (existing != null) {
             return this.await(existing);
         }
 
         try {
-            final Optional<Value> result = supplier.get();
+            task.run();
 
-            future.complete(result);
-
-            return result;
-        } catch (final Throwable throwable) {
-            future.completeExceptionally(throwable);
-
-            throw throwable;
+            return this.await(task);
         } finally {
-            this.inFlightMap.remove(key, future);
+            this.inFlightMap.remove(key, task);
         }
     }
 
@@ -38,10 +32,13 @@ public final class InFlightLookup<Value> {
         return this.inFlightMap.size();
     }
 
-    private Optional<Value> await(final CompletableFuture<Optional<Value>> future) {
+    private Optional<Value> await(final FutureTask<Optional<Value>> task) {
         try {
-            return future.join();
-        } catch (final CompletionException exception) {
+            return task.get();
+        } catch (final InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for an in-flight lookup", exception);
+        } catch (final ExecutionException exception) {
             if (exception.getCause() instanceof final RuntimeException runtimeException) {
                 throw runtimeException;
             }
@@ -50,7 +47,7 @@ public final class InFlightLookup<Value> {
                 throw error;
             }
 
-            throw exception;
+            throw new IllegalStateException("In-flight lookup failed", exception.getCause());
         }
     }
 }

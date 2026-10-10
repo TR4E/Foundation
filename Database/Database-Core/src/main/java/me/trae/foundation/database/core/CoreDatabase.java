@@ -9,6 +9,7 @@ import me.trae.foundation.database.api.repository.EntityRepository;
 import me.trae.foundation.database.api.tenant.Tenant;
 import me.trae.foundation.database.api.tenant.TenantScope;
 import me.trae.foundation.database.core.batch.BatchQueue;
+import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.registry.RepositoryRegistry;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
@@ -34,10 +35,14 @@ public final class CoreDatabase implements Database {
     private volatile boolean started;
 
     public CoreDatabase(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Tenant tenant, final Duration flushInterval, final int chunkSize) {
+        this(postgresDriver, redisDriver, tenant, flushInterval, chunkSize, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
+    }
+
+    public CoreDatabase(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Tenant tenant, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
         this.postgresDriver = postgresDriver;
         this.redisDriver = redisDriver;
         this.tenant = tenant;
-        this.batchQueue = new BatchQueue(postgresDriver, flushInterval, chunkSize);
+        this.batchQueue = new BatchQueue(postgresDriver, redisDriver, flushInterval, chunkSize, maximumPendingWrites);
         this.repositoryRegistry = new RepositoryRegistry(postgresDriver);
     }
 
@@ -55,6 +60,7 @@ public final class CoreDatabase implements Database {
         }
 
         this.repositoryRegistry.synchronizeAll();
+        this.batchQueue.synchronizeOutbox();
 
         this.batchQueue.start();
 

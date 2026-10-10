@@ -30,6 +30,28 @@ public final class RedisHashWriter {
                     """
     );
 
+    private static final RedisScript LOCKED_WRITE_SCRIPT = new RedisScript(
+            """
+                    if redis.call('GET', KEYS[2]) ~= ARGV[1] then
+                        return 0
+                    end
+                    local setCount = tonumber(ARGV[2])
+                    for index = 0, setCount - 1 do
+                        redis.call('HSET', KEYS[1], ARGV[3 + index * 2], ARGV[4 + index * 2])
+                    end
+                    local deleteStart = 3 + setCount * 2
+                    local deleteCount = tonumber(ARGV[deleteStart])
+                    for index = 1, deleteCount do
+                        redis.call('HDEL', KEYS[1], ARGV[deleteStart + index])
+                    end
+                    local expiry = tonumber(ARGV[deleteStart + deleteCount + 1])
+                    if expiry > 0 and redis.call('EXISTS', KEYS[1]) == 1 then
+                        redis.call('PEXPIRE', KEYS[1], expiry)
+                    end
+                    return 1
+                    """
+    );
+
     private static final RedisScript INCREMENT_SCRIPT = new RedisScript(
             """
                     local value = redis.call('HINCRBY', KEYS[1], ARGV[1], ARGV[2])
@@ -50,6 +72,18 @@ public final class RedisHashWriter {
     }
 
     public void write(final String key, final Map<String, String> fieldMap) {
+        WRITE_SCRIPT.execute(this.redisDriver, ScriptOutputType.INTEGER, new String[]{key}, this.createArguments(fieldMap).toArray(String[]::new));
+    }
+
+    public boolean writeIfLockOwner(final String key, final String lockKey, final String owner, final Map<String, String> fieldMap) {
+        final List<String> argumentList = new ArrayList<>();
+        argumentList.add(owner);
+        argumentList.addAll(this.createArguments(fieldMap));
+
+        return LOCKED_WRITE_SCRIPT.<Long>execute(this.redisDriver, ScriptOutputType.INTEGER, new String[]{key, lockKey}, argumentList.toArray(String[]::new)) > 0L;
+    }
+
+    private List<String> createArguments(final Map<String, String> fieldMap) {
         final List<String> setList = new ArrayList<>();
         final List<String> deleteList = new ArrayList<>();
 
@@ -71,7 +105,7 @@ public final class RedisHashWriter {
         argumentList.addAll(deleteList);
         argumentList.add(String.valueOf(this.expiryMillis));
 
-        WRITE_SCRIPT.execute(this.redisDriver, ScriptOutputType.INTEGER, new String[]{key}, argumentList.toArray(String[]::new));
+        return argumentList;
     }
 
     public long increment(final String key, final String field, final long delta) {

@@ -1,6 +1,7 @@
 package me.trae.foundation.database.core.repository;
 
 import me.trae.foundation.database.api.entity.Entity;
+import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.core.schema.TableSchema;
 import me.trae.foundation.database.core.value.ColumnValueMapper;
@@ -28,6 +29,10 @@ public final class EntityRecordMapper<E extends Entity> {
             if (stored != null) {
                 ColumnValueMapper.writeStored(entityProperty, entity, stored);
             }
+        }
+
+        if (this.tableSchema.isOptimisticLocking()) {
+            ((RevisionedEntity) entity).setRevision(record.get(TableSchema.REVISION_FIELD));
         }
 
         return entity;

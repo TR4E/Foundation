@@ -13,6 +13,8 @@ import me.trae.foundation.database.api.repository.index.IndexType;
 import me.trae.foundation.database.api.tenant.TenantScope;
 import me.trae.foundation.database.core.CoreDatabase;
 import me.trae.foundation.database.core.schema.TableSchema;
+import me.trae.foundation.database.storage.driver.RedisDriver;
+import me.trae.foundation.database.storage.redis.RedisNamespace;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -37,6 +39,10 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     private final RepositoryWriter<E> repositoryWriter;
 
     protected AbstractEntityRepository(final CoreDatabase coreDatabase, final Class<E> entityType, final String table, final TenantScope tenantScope, final Class<?>... propertyHolders) {
+        this(coreDatabase, entityType, table, tenantScope, false, propertyHolders);
+    }
+
+    protected AbstractEntityRepository(final CoreDatabase coreDatabase, final Class<E> entityType, final String table, final TenantScope tenantScope, final boolean optimisticLocking, final Class<?>... propertyHolders) {
         PropertyHolderLoader.load(propertyHolders);
 
         this.coreDatabase = coreDatabase;
@@ -48,10 +54,14 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
             throw new SchemaException("No properties registered for %s, pass its property holder to the repository".formatted(entityType.getName()));
         }
 
-        this.tableSchema = new TableSchema<>(entityType, table, tenantScope, this.properties);
+        this.tableSchema = new TableSchema<>(entityType, table, tenantScope, this.properties, optimisticLocking);
         this.tenantId = coreDatabase.resolveTenantId(tenantScope).orElse(null);
         this.repositoryReader = new RepositoryReader<>(coreDatabase.getPostgresDriver(), this.tableSchema, this.tenantId);
-        this.repositoryWriter = new RepositoryWriter<>(coreDatabase.getBatchQueue().getPendingWriteStore(), this.tableSchema, this.tenantId);
+
+        final RedisDriver redisDriver = coreDatabase.getRedisDriver().orElse(null);
+        final RedisNamespace redisNamespace = redisDriver == null ? null : RedisNamespace.of(table, this.tenantId);
+
+        this.repositoryWriter = new RepositoryWriter<>(coreDatabase.getBatchQueue().getPendingWriteStore(), this.tableSchema, this.tenantId, redisNamespace, redisDriver == null ? null : redisDriver.getInstanceId());
 
         coreDatabase.register(this);
     }
@@ -123,5 +133,9 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     @Override
     public void delete(final E entity) {
         this.repositoryWriter.delete(entity);
+    }
+
+    public void delete(final E entity, final List<Runnable> commitCallbackList) {
+        this.repositoryWriter.delete(entity, commitCallbackList);
     }
 }

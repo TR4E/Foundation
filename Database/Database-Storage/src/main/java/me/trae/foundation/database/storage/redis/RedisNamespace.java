@@ -47,4 +47,19 @@ public final class RedisNamespace {
 
         return "%s:%s:%s".formatted(this.table, this.tenantId, suffix);
     }
+
+    public String getInvalidationChannel() {
+        return this.getKey("cache:invalidate");
+    }
+
+    public RedisInvalidation getInvalidation(final UUID id, final String instanceId) {
+        return new RedisInvalidation(
+                this.getKey(id),
+                this.getKey("cache:missing:%s".formatted(id)),
+                this.getKey("cache:fill:%s".formatted(id)),
+                this.getInvalidationChannel(),
+                id,
+                instanceId
+        );
+    }
 }

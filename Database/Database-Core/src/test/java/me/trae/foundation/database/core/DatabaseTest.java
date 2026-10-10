@@ -4,8 +4,10 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
+import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.api.exception.DatabaseException;
+import me.trae.foundation.database.api.exception.OptimisticLockException;
 import me.trae.foundation.database.api.exception.QueryException;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.exception.UniqueValueTakenException;
@@ -57,8 +59,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -102,6 +104,64 @@ final class DatabaseTest {
     }
 
     @Test
+    void pendingWriteStoreRejectsOverflowAndCountsInFlightWrites() {
+        final PendingWriteStore pendingWriteStore = new PendingWriteStore(1);
+        final TableSchema<Account> tableSchema = new TableSchema<>(Account.class, "accounts", TenantScope.NONE, EntityPropertyRegistry.getProperties(Account.class));
+        final UUID first = UUID.randomUUID();
+
+        pendingWriteStore.queueUpsert(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "first"), List.of());
+        pendingWriteStore.queueUpsert(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "updated"), List.of());
+
+        final PendingWrite pendingWrite = pendingWriteStore.drain().getFirst();
+        assertThrows(DatabaseException.class, () -> pendingWriteStore.queueUpsert(tableSchema, null, UUID.randomUUID(), Map.<Field<?>, Object>of(tableSchema.getField(NAME), "overflow"), List.of()));
+
+        pendingWriteStore.complete(pendingWrite);
+        pendingWriteStore.queueUpsert(tableSchema, null, UUID.randomUUID(), Map.<Field<?>, Object>of(tableSchema.getField(NAME), "accepted"), List.of());
+        assertEquals(1, pendingWriteStore.size());
+    }
+
+    @Test
+    void optimisticLockingRejectsStaleEntityWrites() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, "revision_accounts_%s".formatted(UUID.randomUUID().toString().replace("-", "")), TenantScope.NONE, true);
+        final List<DatabaseException> failureList = new ArrayList<>();
+        database.setFailureHandler(failureList::add);
+        database.start();
+
+        final Account initial = this.createAccount("initial");
+        repository.save(initial);
+        database.getBatchQueue().flush();
+        assertTrue(failureList.isEmpty());
+
+        final Account stale = repository.findById(initial.getId()).orElseThrow();
+        final Account current = repository.findById(initial.getId()).orElseThrow();
+        assertEquals(1L, current.getRevision());
+
+        current.setName("current");
+        repository.save(current);
+        database.getBatchQueue().flush();
+        assertEquals(2L, current.getRevision());
+        assertEquals(2L, repository.findById(initial.getId()).orElseThrow().getRevision());
+        assertEquals(1L, stale.getRevision());
+
+        repository.save(current);
+        database.getBatchQueue().flush();
+
+        assertEquals(2L, current.getRevision());
+        assertEquals(2L, repository.findById(initial.getId()).orElseThrow().getRevision());
+
+        stale.setName("stale");
+        repository.save(stale);
+        database.getBatchQueue().flush();
+
+        final Account stored = repository.findById(initial.getId()).orElseThrow();
+        assertEquals("current", stored.getName());
+        assertEquals(2L, stored.getRevision());
+        assertEquals(2L, current.getRevision());
+        assertTrue(failureList.stream().anyMatch(OptimisticLockException.class::isInstance));
+    }
+
+    @Test
     void changeTrackerFindsOnlyChangedProperties() {
         final ChangeTracker<Account> changeTracker = new ChangeTracker<>(Account.class, null);
         final Account account = this.createAccount("trae");
@@ -110,9 +170,14 @@ final class DatabaseTest {
         changeTracker.snapshot(account);
         assertTrue(changeTracker.diff(account).isEmpty());
 
+        account.setName("temporary");
+        account.setName("trae");
+        assertTrue(changeTracker.diff(account).isEmpty());
+
         account.setCoins(500L);
         account.setRank(Rank.MEMBER);
-        account.setTags(List.of("member"));
+        account.setTags(new ArrayList<>(List.of("member")));
+        account.getTags().add("mutable");
 
         final List<EntityProperty<?, ?>> changedList = changeTracker.diff(account);
         assertEquals(List.of(COINS, RANK, TAGS), changedList);
@@ -160,9 +225,107 @@ final class DatabaseTest {
         assertEquals(account.getCreatedAt(), loaded.getCreatedAt());
         assertNull(loaded.getSession());
 
-        final Account cached = new AccountHolder(repository).getById(account.getId(), EnumSet.of(LookupTier.REDIS)).orElseThrow();
-        assertEquals("session", cached.getSession());
+        final AccountHolder restartedHolder = new AccountHolder(repository);
+        final Account cached = restartedHolder.getById(account.getId()).orElseThrow();
+        assertNull(cached.getSession());
         assertEquals(account.getTags(), cached.getTags());
+        assertTrue(restartedHolder.getById(account.getId(), EnumSet.of(LookupTier.REDIS)).isPresent());
+    }
+
+    @Test
+    void unchangedEntityDoesNotInvalidateRedisCache() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        final AccountHolder reader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
+        database.start();
+
+        final Account account = this.createAccount("trae");
+        holder.save(account);
+        database.getBatchQueue().flush();
+
+        reader.getById(account.getId());
+        final String cacheKey = RedisNamespace.of(this.table).getKey(account.getId());
+        assertTrue(this.redisDriver.getCommands().exists(cacheKey) > 0L);
+
+        holder.save(account);
+        database.getBatchQueue().flush();
+
+        assertTrue(this.redisDriver.getCommands().exists(cacheKey) > 0L);
+
+        account.setSession("transient");
+        holder.save(account);
+        database.getBatchQueue().flush();
+
+        assertTrue(this.redisDriver.getCommands().exists(cacheKey) > 0L);
+    }
+
+    @Test
+    void committedWriteRemainsInOutboxUntilRedisRecovers() throws InterruptedException {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
+        database.setFailureHandler(failureList::add);
+        database.start();
+
+        final Account account = this.createAccount("trae");
+        holder.save(account);
+        this.redisDriver.disconnect();
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findById(account.getId()).isPresent());
+        assertEquals(1, this.getOutboxCount(account.getId()));
+        assertFalse(failureList.isEmpty());
+
+        this.redisDriver.connect();
+        Thread.sleep(1_050L);
+        database.getBatchQueue().flush();
+
+        assertEquals(0, this.getOutboxCount(account.getId()));
+    }
+
+    @Test
+    void outboxInsertFailureRollsBackEntityWrite() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
+        database.setFailureHandler(failureList::add);
+        database.start();
+
+        final Account account = this.createAccount("trae");
+        holder.save(account);
+        this.postgresDriver.getDslContext().dropTableIfExists(DSL.name("foundation_cache_invalidation_outbox")).execute();
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findById(account.getId()).isEmpty());
+        assertFalse(failureList.isEmpty());
+
+        database.getBatchQueue().synchronizeOutbox();
+    }
+
+    @Test
+    void entityLookupsFallBackToPostgresWhenRedisIsUnavailable() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder writer = new AccountHolder(repository);
+        database.start();
+
+        final Account account = this.createAccount("trae");
+        writer.save(account);
+        database.getBatchQueue().flush();
+        this.redisDriver.disconnect();
+
+        try {
+            final AccountHolder idReader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
+            assertEquals("trae", idReader.getById(account.getId()).orElseThrow().getName());
+
+            final AccountHolder propertyReader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
+            assertEquals(account.getId(), propertyReader.getByProperty(NAME, "trae").orElseThrow().getId());
+        } finally {
+            this.redisDriver.connect();
+        }
     }
 
     @Test
@@ -318,7 +481,7 @@ final class DatabaseTest {
     }
 
     @Test
-    void multiInstanceHolderAlwaysLoadsFreshCopies() {
+    void multiInstanceHolderCachesCopiesLocallyAndCannotPinThem() {
         final CoreDatabase database = this.openDatabase(null);
         final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
         final AccountHolder writer = new AccountHolder(repository);
@@ -330,7 +493,7 @@ final class DatabaseTest {
         database.getBatchQueue().flush();
 
         final Account first = reader.getById(account.getId()).orElseThrow();
-        assertNotSame(first, reader.getById(account.getId()).orElseThrow());
+        assertSame(first, reader.getById(account.getId()).orElseThrow());
         assertTrue(reader.getPinned().isEmpty());
         assertThrows(UnsupportedOperationException.class, () -> reader.pin(first));
     }
@@ -490,6 +653,13 @@ final class DatabaseTest {
         return account;
     }
 
+    private int getOutboxCount(final UUID id) {
+        return this.postgresDriver.getDslContext().fetchCount(
+                DSL.table(DSL.name("foundation_cache_invalidation_outbox")),
+                DSL.field(DSL.name("entity_id"), UUID.class).eq(id)
+        );
+    }
+
     public enum Rank {
         MEMBER, ADMIN
     }
@@ -497,7 +667,7 @@ final class DatabaseTest {
     @RequiredArgsConstructor
     @Getter
     @Setter
-    private static final class Account implements Entity {
+    private static final class Account implements RevisionedEntity {
 
         private final UUID id;
         private String name;
@@ -506,6 +676,7 @@ final class DatabaseTest {
         private List<String> tags;
         private Instant createdAt;
         private String session;
+        private long revision;
     }
 
     @RequiredArgsConstructor
@@ -520,7 +691,11 @@ final class DatabaseTest {
     private static final class AccountRepository extends AbstractEntityRepository<Account> {
 
         private AccountRepository(final CoreDatabase coreDatabase, final String table, final TenantScope tenantScope) {
-            super(coreDatabase, Account.class, table, tenantScope);
+            this(coreDatabase, table, tenantScope, false);
+        }
+
+        private AccountRepository(final CoreDatabase coreDatabase, final String table, final TenantScope tenantScope, final boolean optimisticLocking) {
+            super(coreDatabase, Account.class, table, tenantScope, optimisticLocking);
         }
 
         @Override

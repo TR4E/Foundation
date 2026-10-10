@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
+import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
@@ -11,6 +12,7 @@ import me.trae.foundation.database.storage.codec.EntityCodec;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.driver.RedisSettings;
 import me.trae.foundation.database.storage.local.LocalStorage;
+import me.trae.foundation.database.storage.redis.RedisInvalidation;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 import org.junit.jupiter.api.Assumptions;
@@ -23,8 +25,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -53,6 +59,37 @@ final class StorageTest {
 
         localStorage.unpin("pinned");
         assertTrue(localStorage.get("pinned").isEmpty());
+    }
+
+    @Test
+    void localStorageCanRefreshItsIdleExpiryOnRead() throws InterruptedException {
+        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(150), true);
+        localStorage.put("active", "value");
+
+        Thread.sleep(100);
+        assertEquals(Optional.of("value"), localStorage.get("active"));
+
+        Thread.sleep(100);
+        assertEquals(Optional.of("value"), localStorage.get("active"));
+
+        Thread.sleep(200);
+        assertTrue(localStorage.get("active").isEmpty());
+    }
+
+    @Test
+    void localStorageReadRefreshCannotExtendAbsoluteMaximumAge() throws InterruptedException {
+        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(90), true, Duration.ofMillis(300));
+        localStorage.put("active", "value");
+
+        Thread.sleep(70);
+        assertEquals(Optional.of("value"), localStorage.get("active"));
+        Thread.sleep(70);
+        assertEquals(Optional.of("value"), localStorage.get("active"));
+        Thread.sleep(70);
+        assertEquals(Optional.of("value"), localStorage.get("active"));
+        Thread.sleep(110);
+
+        assertTrue(localStorage.get("active").isEmpty());
     }
 
     @Test
@@ -123,16 +160,191 @@ final class StorageTest {
     }
 
     @Test
-    void redisDeliversPublishedMessages() throws Exception {
+    void redisPreservesRevisionForOptimisticallyLockedEntities() {
         final RedisDriver redisDriver = connect();
-        final CompletableFuture<String> received = new CompletableFuture<>();
+        final String table = "revision_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+        final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1), true);
+        final Wallet wallet = this.createWallet("revisioned", 7L);
+        wallet.setRevision(42L);
 
         try {
-            redisDriver.subscribe("test-channel", received::complete);
+            redisStorage.put(wallet.getId(), wallet);
+
+            assertEquals(42L, redisStorage.get(wallet.getId()).orElseThrow().getRevision());
+        } finally {
+            redisStorage.remove(wallet.getId());
+            redisDriver.disconnect();
+        }
+    }
+
+    @Test
+    void redisCoalescesConcurrentColdLoadsAcrossStorageInstances() throws Exception {
+        final RedisDriver redisDriver = connect();
+        final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+        final RedisStorage<Wallet> firstStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
+        final RedisStorage<Wallet> secondStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
+        final UUID id = UUID.randomUUID();
+        final Wallet wallet = new Wallet(id);
+        wallet.setOwner("trae");
+        wallet.setCoins(100L);
+        final AtomicInteger loadCount = new AtomicInteger();
+        final int requestCount = 64;
+        final CountDownLatch ready = new CountDownLatch(requestCount);
+        final CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            final List<Future<Optional<Wallet>>> futureList = new java.util.ArrayList<>();
+            for (int index = 0; index < requestCount; index++) {
+                final RedisStorage<Wallet> redisStorage = index % 2 == 0 ? firstStorage : secondStorage;
+                futureList.add(executorService.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    return redisStorage.getOrLoad(id, () -> {
+                        loadCount.incrementAndGet();
+                        try {
+                            Thread.sleep(100);
+                        } catch (final InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(exception);
+                        }
+                        return Optional.of(wallet);
+                    });
+                }));
+            }
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            for (final Future<Optional<Wallet>> future : futureList) {
+                assertEquals("trae", future.get(10, TimeUnit.SECONDS).orElseThrow().getOwner());
+            }
+        } finally {
+            final List<String> keyList = redisDriver.getCommands().keys("%s*".formatted(table));
+            if (!keyList.isEmpty()) {
+                redisDriver.getCommands().del(keyList.toArray(String[]::new));
+            }
+            redisDriver.disconnect();
+        }
+
+        assertEquals(1, loadCount.get());
+    }
+
+    @Test
+    void expiredFillLockCannotLetFormerOwnerOverwriteNewerCache() throws Exception {
+        final RedisDriver redisDriver = connect();
+        final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+        final RedisNamespace redisNamespace = RedisNamespace.of(table);
+        final RedisStorage<Wallet> firstStorage = new RedisStorage<>(redisDriver, redisNamespace, Wallet.class, Duration.ofMinutes(1));
+        final RedisStorage<Wallet> secondStorage = new RedisStorage<>(redisDriver, redisNamespace, Wallet.class, Duration.ofMinutes(1));
+        final UUID id = UUID.randomUUID();
+        final Wallet staleWallet = new Wallet(id);
+        staleWallet.setOwner("stale");
+        staleWallet.setCoins(1L);
+        final Wallet freshWallet = new Wallet(id);
+        freshWallet.setOwner("fresh");
+        freshWallet.setCoins(2L);
+        final AtomicInteger loadCount = new AtomicInteger();
+        final CountDownLatch staleLoadStarted = new CountDownLatch(1);
+
+        try (final ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            final Future<Optional<Wallet>> staleFuture = executorService.submit(() -> firstStorage.getOrLoad(id, () -> {
+                loadCount.incrementAndGet();
+                staleLoadStarted.countDown();
+                try {
+                    Thread.sleep(31_000L);
+                } catch (final InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                return Optional.of(staleWallet);
+            }));
+
+            assertTrue(staleLoadStarted.await(2, TimeUnit.SECONDS));
+            final Future<Optional<Wallet>> freshFuture = executorService.submit(() -> secondStorage.getOrLoad(id, () -> {
+                loadCount.incrementAndGet();
+                return Optional.of(freshWallet);
+            }));
+
+            assertEquals("fresh", freshFuture.get(34, TimeUnit.SECONDS).orElseThrow().getOwner());
+            assertEquals("fresh", staleFuture.get(5, TimeUnit.SECONDS).orElseThrow().getOwner());
+            assertEquals("fresh", firstStorage.get(id).orElseThrow().getOwner());
+            assertEquals(2, loadCount.get());
+        } finally {
+            final List<String> keyList = redisDriver.getCommands().keys("%s*".formatted(table));
+            if (!keyList.isEmpty()) {
+                redisDriver.getCommands().del(keyList.toArray(String[]::new));
+            }
+            redisDriver.disconnect();
+        }
+    }
+
+    @Test
+    void formerLockOwnerCannotReleaseCurrentOwnersLock() {
+        final RedisDriver redisDriver = connect();
+        final String lockKey = "test-lock:%s".formatted(UUID.randomUUID());
+
+        try {
+            assertTrue(redisDriver.tryAcquireLock(lockKey, "first-owner", Duration.ofSeconds(10)));
+            redisDriver.releaseLock(lockKey, "former-owner");
+
+            assertEquals("first-owner", redisDriver.getCommands().get(lockKey));
+
+            redisDriver.releaseLock(lockKey, "first-owner");
+            assertFalse(redisDriver.getCommands().exists(lockKey) > 0L);
+        } finally {
+            redisDriver.disconnect();
+        }
+    }
+
+    @Test
+    void redisDeliversPublishedMessages() throws Exception {
+        final RedisDriver redisDriver = connect();
+        final CountDownLatch receivedLatch = new CountDownLatch(1);
+        final AtomicReference<String> received = new AtomicReference<>();
+
+        try {
+            redisDriver.subscribe("test-channel", message -> {
+                received.set(message);
+                receivedLatch.countDown();
+            });
             redisDriver.publish("test-channel", "hello");
 
-            assertEquals("hello", received.get(2, TimeUnit.SECONDS));
+            assertTrue(receivedLatch.await(2, TimeUnit.SECONDS));
+            assertEquals("hello", received.get());
         } finally {
+            redisDriver.disconnect();
+        }
+    }
+
+    @Test
+    void redisInvalidationRemovesCachedAndNegativeValues() throws Exception {
+        final RedisDriver redisDriver = connect();
+        final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+        final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
+        final Wallet wallet = this.createWallet("trae", 10L);
+        final String missingKey = redisStorage.getRedisNamespace().getKey("cache:missing:%s".formatted(wallet.getId()));
+        final CountDownLatch receivedLatch = new CountDownLatch(1);
+        final AtomicReference<String> received = new AtomicReference<>();
+
+        try {
+            redisStorage.put(wallet.getId(), wallet);
+            redisDriver.getCommands().set(missingKey, "missing");
+            redisDriver.subscribe(redisStorage.getRedisNamespace().getInvalidationChannel(), message -> {
+                received.set(message);
+                receivedLatch.countDown();
+            });
+
+            final RedisInvalidation invalidation = redisStorage.createInvalidation(wallet.getId());
+            invalidation.dispatch(redisDriver);
+
+            assertTrue(receivedLatch.await(2, TimeUnit.SECONDS));
+            assertTrue(redisStorage.get(wallet.getId()).isEmpty());
+            assertFalse(redisDriver.getCommands().exists(missingKey) > 0);
+            assertEquals("%s|%s".formatted(redisDriver.getInstanceId(), wallet.getId()), received.get());
+        } finally {
+            final List<String> keyList = redisDriver.getCommands().keys("%s*".formatted(table));
+            if (!keyList.isEmpty()) {
+                redisDriver.getCommands().del(keyList.toArray(String[]::new));
+            }
             redisDriver.disconnect();
         }
     }
@@ -163,7 +375,7 @@ final class StorageTest {
     @RequiredArgsConstructor
     @Getter
     @Setter
-    private static final class Wallet implements Entity {
+    private static final class Wallet implements RevisionedEntity {
 
         private final UUID id;
         private String owner;
@@ -171,6 +383,7 @@ final class StorageTest {
         private BigDecimal balance;
         private Instant createdAt;
         private Rank rank;
+        private long revision;
     }
 
     private static final class Orphan implements Entity {

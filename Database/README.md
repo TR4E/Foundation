@@ -286,7 +286,7 @@ Queries only see the repository's own tenant by default. `tenant("api-2")` targe
 | `pin(entity)`, `unpin(entity)`, `getPinned()` | Keep an entity cached until unpinned, for example while a user is logged in |
 | `increment(entity, property, delta)` | Atomically add to a `Long` or `Integer` property |
 
-`InstanceMode.SINGLETON` keeps a local copy of each entity and tracks changes to it. `InstanceMode.MULTI_INSTANCE` skips the local cache, so every lookup returns a fresh copy from Redis or PostgreSQL. Use it when the same entity is edited on several servers at once. Pinning is not available in that mode.
+`InstanceMode.SINGLETON` keeps a local copy of each entity and tracks changes to it. Its existing pinning behavior is unchanged. `InstanceMode.MULTI_INSTANCE` uses a short-lived local cache when Redis is configured; reads refresh that entry's idle expiry, but cannot extend its absolute age. The default maximum age is five minutes and can be changed through the `HolderComponents.create` overload. A Redis Pub/Sub invalidation evicts changed entries on other instances; the absolute age bounds stale data if a notification is missed. Pinning is not available in that mode. Without Redis, MULTI_INSTANCE reads directly from PostgreSQL.
 
 `LookupTier` is `LOCAL`, `REDIS` or `DATABASE`.
 
@@ -332,7 +332,7 @@ redisDriver.publish("app:events", "Cache cleared");
 
 ### Local cache
 
-`LocalStorage` is an in memory map with per entry expiry and pinning. Pinned entries never expire, and unpinning puts the normal expiry back.
+`LocalStorage` is an in memory map with per entry expiry and pinning. Pinned entries never expire, and unpinning puts the normal expiry back. Sliding expiry is opt-in; MULTI_INSTANCE holders use it while SINGLETON holders retain their existing fixed expiry behavior.
 
 ### Redis storage
 
@@ -346,11 +346,13 @@ redisDriver.publish("app:events", "Cache cleared");
 
 `TieredLookup` walks the tiers in order and stops at the first hit:
 
-1. **Local:** the in memory cache, in `SINGLETON` holders only.
+1. **Local:** the in memory cache, in both holder modes when configured. MULTI_INSTANCE local entries use sliding expiry and Redis invalidation.
 2. **Redis:** when a Redis driver is configured.
 3. **Database:** PostgreSQL.
 
-A value found in a later tier is written back into every earlier tier it missed, so the next lookup is served locally. Concurrent lookups for the same key share a single trip instead of each hitting PostgreSQL, and batch lookups fetch every missing id in one query.
+A value found in a later tier is written back into every earlier tier it missed, so the next lookup is served locally. Concurrent same-JVM lookups for the same key share one lookup. For an id missing from Redis, instances coordinate a short-lived Redis fill lock, recheck Redis after acquiring it, and only the lock owner loads from PostgreSQL. Other instances wait for that Redis result. The lock is a load-reduction mechanism, not a database correctness lock; its lease and fenced cache write prevent a late loader from replacing a newer cache value. Batch lookups coordinate per id and load the ids owned by that caller in one database query.
+
+Redis caches short-lived negative lookups and briefly shares a failed-fill marker, so concurrent requests do not immediately stampede PostgreSQL when an id is absent or a fill fails. A later request retries after those markers expire.
 
 Lookups by property work the same way. Properties with a `UNIQUE` index also keep a Redis index from value to id, so another server can find an entity by name without touching PostgreSQL.
 
@@ -403,16 +405,17 @@ Every write goes through a write behind queue instead of hitting PostgreSQL stra
 
 - **Coalescing:** several saves of the same entity between flushes become one write, keeping the newest value of each column. A delete replaces anything queued before it.
 - **Upserts:** saves are written as `INSERT ... ON CONFLICT DO UPDATE`, touching only the changed columns.
-- **Transactions:** writes are sent in chunks, each in its own transaction.
+- **Transactions:** writes are sent in chunks, each in its own transaction. When Redis is configured, cache invalidations are added to a PostgreSQL outbox in the same transaction as the entity write.
 - **Retries:** if PostgreSQL is unreachable, or fails with a temporary error such as a lost connection, a deadlock or running out of resources, the writes stay queued and are tried again on the next flush.
 - **Bad writes:** a write PostgreSQL rejects outright, such as a duplicate unique value, is retried on its own so the rest of the chunk still lands, then dropped and reported to the failure handler.
 - **Shutdown:** `stop()` flushes up to ten more times to empty the queue, and reports anything it still could not write.
+- **Capacity:** the queue holds at most 10,000 distinct outstanding entity keys by default, including writes currently being flushed. Pass `maximumPendingWrites` to the extended `CoreDatabase` constructor to change the limit. When full, a new distinct write throws `DatabaseException` synchronously; the caller must handle or retry it. Writes for an already queued key continue to coalesce. The queue is in memory, so this is bounded overload protection, not durable write storage.
 
 Reads go straight to PostgreSQL, so a value saved through the repository is visible there after the next flush.
 
 ### Holders
 
-`AbstractEntityHolder` keeps entities in the local cache for 30 minutes and in Redis for an hour by default. Both can be changed through its other constructor:
+`AbstractEntityHolder` keeps entities in the local cache for 30 minutes and in Redis for an hour by default. In MULTI_INSTANCE, the 30-minute local expiry is an idle timeout refreshed on reads. Both can be changed through its other constructor:
 
 ```java
 super(accountRepository, InstanceMode.SINGLETON, Duration.ofMinutes(10), Duration.ofHours(6));
@@ -421,7 +424,10 @@ super(accountRepository, InstanceMode.SINGLETON, Duration.ofMinutes(10), Duratio
 - **Change tracking:** the holder remembers each entity's values when it is loaded or saved. Saving writes only the properties that changed.
 - **Automatic writes:** on every flush, changes made to entities in the local cache are written without calling `save`, including entities whose cache entry just expired.
 - **Unique claims:** saving a value for a `UNIQUE` property claims it in Redis with a short lease. A value owned by another entity throws `UniqueValueTakenException` before anything is written. A claim held by an entity that no longer has that value is taken over, and a claim still being made on another server is respected. Deleting an entity releases its claims.
-- **Increments:** `increment` adds to the value with an atomic Redis `HINCRBY` when Redis is configured, so servers incrementing the same entity never lose an update.
+- **Cache invalidation:** committed writes and deletes enqueue an outbox event in the PostgreSQL transaction. A Redis-coordinated dispatcher removes the entity hash and negative-cache marker, then publishes the id so MULTI_INSTANCE local caches evict it. Events are idempotent and remain in PostgreSQL if Redis dispatch fails; reconnecting Pub/Sub listeners clear their local Multi caches to recover missed messages. Delivery is eventual, so reads can briefly observe a cached value between commit and invalidation. Outbox dispatch is throttled and batched.
+- **Increments:** `increment` uses Redis `HINCRBY` when Redis is configured and queues the resulting entity value for PostgreSQL persistence. The Redis operation is atomic, but this is not a PostgreSQL compare-and-swap protocol; concurrent absolute writes from different JVMs still use last committed write semantics. Use a database-native atomic update for counters that must remain correct across failures or conflicting writers.
+
+Last-write-wins remains the default. To reject stale edits for a repository, implement `RevisionedEntity` on its entity and construct its repository with the optimistic-locking option enabled. The database adds a `revision` column, reads and Redis cache entries carry the revision, and each changed write updates only when its expected revision still matches. A stale write is rejected and reported to the configured failure handler as `OptimisticLockException`; reload or merge the entity before retrying. The revision increments only when persisted values change. Existing tables receive the revision column with a default of zero. Optimistic locking detects conflicting entity snapshots; it does not merge independent field edits automatically.
 
 ## Dependency injection
 
@@ -536,17 +542,30 @@ Spring destroys beans in reverse dependency order, so holders and repositories g
 
 ## Building and testing
 
-The tests run against a real PostgreSQL and Redis. Start both, for example with Docker:
+The tests use real PostgreSQL and Redis. Start the isolated, disposable Docker Compose environment from the repository root:
 
 ```
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=foundation_test postgres
-docker run -d -p 6379:6379 redis
+docker compose -p foundation-db-audit -f Database/docker-compose.audit.yml up -d --wait
 ```
 
-Then from the repository root:
+It binds only to localhost on ports `55432` and `56379`, creates no persistent volumes, and uses dedicated test credentials. Run the database suite with:
 
 ```
-mvn -f Database/pom.xml test
+mvn -f Database/pom.xml test `
+  "-Dpostgres.host=localhost" `
+  "-Dpostgres.port=55432" `
+  "-Dpostgres.database=foundation_audit" `
+  "-Dpostgres.username=foundation_audit" `
+  "-Dpostgres.password=foundation_audit_test_only" `
+  "-Dredis.host=localhost" `
+  "-Dredis.port=56379" `
+  "-Dredis.database=0"
+```
+
+Stop and remove only this test project when finished:
+
+```
+docker compose -p foundation-db-audit -f Database/docker-compose.audit.yml down
 ```
 
 Connection details default to `localhost` and can be changed with system properties:
@@ -560,4 +579,4 @@ Connection details default to `localhost` and can be changed with system propert
 | `redis.password` | None |
 | `redis.database` | `15` |
 
-On Windows PowerShell, quote each one, for example `"-Dpostgres.port=5433"`. Tests that need PostgreSQL or Redis are skipped, not failed, when either cannot be reached.
+Tests that need PostgreSQL or Redis are skipped when either cannot be reached. Use the Compose command above to ensure the integration tests actually run.

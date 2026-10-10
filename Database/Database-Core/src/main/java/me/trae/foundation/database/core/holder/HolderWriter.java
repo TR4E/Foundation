@@ -43,10 +43,6 @@ public final class HolderWriter<E extends Entity> {
             final Map<String, String> encodedMap = this.changeTracker.encode(entity);
             final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, this.repository.getProperties());
 
-            if (this.redisStorage != null) {
-                this.redisStorage.put(entity.getId(), entity);
-            }
-
             this.repository.save(entity, callbackList);
 
             this.changeTracker.snapshot(entity.getId(), encodedMap);
@@ -64,10 +60,6 @@ public final class HolderWriter<E extends Entity> {
 
             final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, changedList);
 
-            if (this.redisStorage != null) {
-                this.redisStorage.putProperties(entity, changedList);
-            }
-
             this.repository.update(entity, changedList, callbackList);
 
             this.changeTracker.commit(entity.getId(), encodedMap, changedList);
@@ -79,13 +71,9 @@ public final class HolderWriter<E extends Entity> {
             this.localStorage.remove(entity.getId());
         }
 
-        if (this.redisStorage != null) {
-            this.redisStorage.remove(entity.getId());
-        }
-
         this.uniqueClaimer.release(entity);
 
-        this.repository.delete(entity);
+        this.repository.delete(entity, Collections.emptyList());
 
         this.changeTracker.forget(entity.getId());
     }

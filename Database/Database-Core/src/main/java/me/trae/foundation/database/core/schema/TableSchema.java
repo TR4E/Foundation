@@ -2,6 +2,7 @@ package me.trae.foundation.database.core.schema;
 
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
+import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.exception.QueryException;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
@@ -25,19 +26,30 @@ public final class TableSchema<E extends Entity> {
 
     public static final Field<UUID> ID_FIELD = DSL.field(DSL.name("id"), SQLDataType.UUID.nullable(false));
     public static final Field<String> TENANT_FIELD = DSL.field(DSL.name("tenant_id"), SQLDataType.VARCHAR(64).nullable(false));
+    public static final Field<Long> REVISION_FIELD = DSL.field(DSL.name("revision"), SQLDataType.BIGINT.defaultValue(DSL.inline(0L)).nullable(false));
 
-    private static final Set<String> RESERVED_NAMES = Set.of(ID_FIELD.getName(), TENANT_FIELD.getName());
+    private static final Set<String> RESERVED_NAMES = Set.of(ID_FIELD.getName(), TENANT_FIELD.getName(), REVISION_FIELD.getName());
 
     private final Class<E> entityType;
     private final Table<Record> table;
     private final TenantScope tenantScope;
+    private final boolean optimisticLocking;
     private final List<EntityProperty<?, ?>> persistentProperties;
     private final Map<String, Field<?>> fieldMap = new LinkedHashMap<>();
 
     public TableSchema(final Class<E> entityType, final String tableName, final TenantScope tenantScope, final List<EntityProperty<?, ?>> entityProperties) {
+        this(entityType, tableName, tenantScope, entityProperties, false);
+    }
+
+    public TableSchema(final Class<E> entityType, final String tableName, final TenantScope tenantScope, final List<EntityProperty<?, ?>> entityProperties, final boolean optimisticLocking) {
         this.entityType = entityType;
         this.table = DSL.table(DSL.name(tableName));
         this.tenantScope = tenantScope;
+        this.optimisticLocking = optimisticLocking;
+
+        if (optimisticLocking && !RevisionedEntity.class.isAssignableFrom(entityType)) {
+            throw new SchemaException("Optimistic locking requires %s to implement RevisionedEntity".formatted(entityType.getName()));
+        }
         this.persistentProperties = entityProperties.stream().filter(EntityProperty::isPersistent).toList();
 
         for (final EntityProperty<?, ?> entityProperty : this.persistentProperties) {
@@ -62,7 +74,7 @@ public final class TableSchema<E extends Entity> {
     }
 
     public Collection<Field<?>> getColumnFields() {
-        return this.fieldMap.values();
+        return this.optimisticLocking ? java.util.stream.Stream.concat(this.fieldMap.values().stream(), java.util.stream.Stream.of(REVISION_FIELD)).toList() : this.fieldMap.values();
     }
 
     public Field<?> getField(final EntityProperty<?, ?> entityProperty) {

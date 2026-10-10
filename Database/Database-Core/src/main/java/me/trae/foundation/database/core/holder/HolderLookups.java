@@ -2,7 +2,6 @@ package me.trae.foundation.database.core.holder;
 
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.lookup.EntityLookups;
@@ -21,7 +20,6 @@ public final class HolderLookups<E extends Entity> {
 
     private final Map<String, TieredLookup<?, E>> propertyLookupMap = new ConcurrentHashMap<>();
 
-    private final InstanceMode instanceMode;
     private final AbstractEntityRepository<E> repository;
     private final LocalStorage<UUID, E> localStorage;
     private final RedisStorage<E> redisStorage;
@@ -30,13 +28,12 @@ public final class HolderLookups<E extends Entity> {
     @Getter
     private final TieredLookup<UUID, E> idLookup;
 
-    public HolderLookups(final InstanceMode instanceMode, final AbstractEntityRepository<E> repository, final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final RedisDriver redisDriver) {
-        this.instanceMode = instanceMode;
+    public HolderLookups(final AbstractEntityRepository<E> repository, final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final RedisDriver redisDriver) {
         this.repository = repository;
         this.localStorage = localStorage;
         this.redisStorage = redisStorage;
         this.redisDriver = redisDriver;
-        this.idLookup = EntityLookups.byId(instanceMode, localStorage, redisStorage, repository);
+        this.idLookup = EntityLookups.byId(localStorage, redisStorage, repository);
     }
 
     public <Value> Optional<E> lookup(final EntityProperty<? super E, Value> entityProperty, final Value value) {
@@ -57,6 +54,6 @@ public final class HolderLookups<E extends Entity> {
 
     @SuppressWarnings("unchecked")
     private <Value> TieredLookup<Value, E> getPropertyLookup(final EntityProperty<? super E, Value> entityProperty) {
-        return (TieredLookup<Value, E>) this.propertyLookupMap.computeIfAbsent(entityProperty.getName(), _ -> EntityLookups.byProperty(this.instanceMode, entityProperty, this.localStorage, this.redisStorage, this.getPropertyIndex(entityProperty).orElse(null), this.repository));
+        return (TieredLookup<Value, E>) this.propertyLookupMap.computeIfAbsent(entityProperty.getName(), _ -> EntityLookups.byProperty(entityProperty, this.localStorage, this.redisStorage, this.getPropertyIndex(entityProperty).orElse(null), this.repository));
     }
 }

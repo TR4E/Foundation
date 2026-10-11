@@ -96,7 +96,7 @@ final class StorageTest {
     void codecRoundTripsEveryValueType() {
         final EntityCodec<Wallet> entityCodec = new EntityCodec<>(Wallet.class);
 
-        final Wallet wallet = this.createWallet("trae", 1_000_000_000_000L);
+        final Wallet wallet = this.createWallet("sample-value", 1_000_000_000_000L);
         wallet.setBalance(new BigDecimal("12.50"));
         wallet.setCreatedAt(Instant.parse("2026-10-06T10:15:30.123456789Z"));
         wallet.setRank(Rank.ADMIN);
@@ -135,9 +135,9 @@ final class StorageTest {
         final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
 
         try {
-            final Wallet wallet = this.createWallet("trae", 10L);
+            final Wallet wallet = this.createWallet("sample-value", 10L);
             redisStorage.put(wallet.getId(), wallet);
-            assertEquals("trae", redisStorage.get(wallet.getId()).orElseThrow().getOwner());
+            assertEquals("sample-value", redisStorage.get(wallet.getId()).orElseThrow().getOwner());
             assertTrue(redisDriver.getCommands().pttl(redisStorage.getRedisNamespace().getKey(wallet.getId())) > 0);
 
             wallet.setOwner(null);
@@ -215,7 +215,7 @@ final class StorageTest {
         final UUID id = UUID.randomUUID();
 
         final Wallet wallet = new Wallet(id);
-        wallet.setOwner("trae");
+        wallet.setOwner("sample-value");
         wallet.setCoins(100L);
         final AtomicInteger loadCount = new AtomicInteger();
 
@@ -248,7 +248,7 @@ final class StorageTest {
             assertTrue(ready.await(5, TimeUnit.SECONDS));
             start.countDown();
             for (final Future<Optional<Wallet>> future : futureList) {
-                assertEquals("trae", future.get(10, TimeUnit.SECONDS).orElseThrow().getOwner());
+                assertEquals("sample-value", future.get(10, TimeUnit.SECONDS).orElseThrow().getOwner());
             }
         } finally {
             final List<String> keyList = redisDriver.getCommands().keys("%s*".formatted(table));
@@ -366,7 +366,7 @@ final class StorageTest {
 
         final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
 
-        final Wallet wallet = this.createWallet("trae", 10L);
+        final Wallet wallet = this.createWallet("sample-value", 10L);
 
         final String missingKey = redisStorage.getRedisNamespace().getKey("cache:missing:%s".formatted(wallet.getId()));
 

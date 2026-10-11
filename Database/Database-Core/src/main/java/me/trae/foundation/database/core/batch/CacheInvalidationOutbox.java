@@ -51,10 +51,13 @@ public final class CacheInvalidationOutbox {
     }
 
     public static void insert(final DSLContext dslContext, final List<PendingWrite> writeList) {
+        insertInvalidations(dslContext, writeList.stream().map(PendingWrite::getInvalidation).toList());
+    }
+
+    public static void insertInvalidations(final DSLContext dslContext, final List<RedisInvalidation> invalidationList) {
         final List<org.jooq.Query> queryList = new ArrayList<>();
 
-        for (final PendingWrite pendingWrite : writeList) {
-            final RedisInvalidation invalidation = pendingWrite.getInvalidation();
+        for (final RedisInvalidation invalidation : invalidationList) {
             if (invalidation == null) {
                 continue;
             }

@@ -9,7 +9,10 @@ import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.query.Operator;
 import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.repository.EntityRepository;
+import me.trae.foundation.database.api.repository.index.EntityIndex;
+import me.trae.foundation.database.lookup.index.EntityIndexKey;
 import me.trae.foundation.database.lookup.index.PropertyIndex;
+import me.trae.foundation.database.lookup.index.RedisEntityIndex;
 import me.trae.foundation.database.lookup.step.LookupStep;
 import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisStorage;
@@ -23,15 +26,20 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 @UtilityClass
 public final class EntityLookups {
 
     public static <E extends Entity> TieredLookup<UUID, E> byId(final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository) {
+        return byId(localStorage, redisStorage, entityRepository, entity -> localStorage.put(entity.getId(), entity));
+    }
+
+    public static <E extends Entity> TieredLookup<UUID, E> byId(final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository, final Consumer<E> localWriter) {
         final List<LookupStep<UUID, E>> stepList = new ArrayList<>();
 
         if (localStorage != null) {
-            stepList.add(LookupStep.of(LookupTier.LOCAL, localStorage));
+            stepList.add(LookupStep.of(LookupTier.LOCAL, localStorage::get, localStorage::getAll, (_, entity) -> localWriter.accept(entity)));
         }
 
         if (redisStorage != null) {
@@ -47,11 +55,31 @@ public final class EntityLookups {
         return new TieredLookup<>(stepList);
     }
 
+    public static <E extends Entity> TieredLookup<List<Object>, E> byIndex(final EntityIndex<E> entityIndex, final LocalStorage<UUID, E> localStorage, final java.util.function.Function<List<Object>, Optional<E>> localReader, final java.util.function.Consumer<E> localWriter, final RedisStorage<E> redisStorage, final RedisEntityIndex<E> redisEntityIndex, final EntityRepository<E> entityRepository) {
+        final List<LookupStep<List<Object>, E>> stepList = new ArrayList<>();
+
+        if (localStorage != null) {
+            stepList.add(LookupStep.of(LookupTier.LOCAL, localReader, (_, entity) -> localWriter.accept(entity)));
+        }
+
+        if (redisStorage != null && redisEntityIndex != null) {
+            stepList.add(LookupStep.of(LookupTier.REDIS, values -> findRedisByIndex(redisStorage, redisEntityIndex, entityIndex, values), (_, entity) -> writeRedisByIndex(redisStorage, redisEntityIndex, entityIndex, entity)));
+        }
+
+        stepList.add(LookupStep.of(LookupTier.DATABASE, values -> findByIndex(entityRepository, entityIndex, values)));
+
+        return new TieredLookup<>(stepList);
+    }
+
     public static <E extends Entity, Value> TieredLookup<Value, E> byProperty(final EntityProperty<? super E, Value> entityProperty, final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityRepository<E> entityRepository) {
+        return byProperty(entityProperty, localStorage, redisStorage, propertyIndex, entityRepository, entity -> localStorage.put(entity.getId(), entity));
+    }
+
+    public static <E extends Entity, Value> TieredLookup<Value, E> byProperty(final EntityProperty<? super E, Value> entityProperty, final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityRepository<E> entityRepository, final Consumer<E> localWriter) {
         final List<LookupStep<Value, E>> stepList = new ArrayList<>();
 
         if (localStorage != null) {
-            stepList.add(LookupStep.of(LookupTier.LOCAL, value -> findLocal(localStorage, entityProperty, value), (value, entity) -> localStorage.put(entity.getId(), entity)));
+            stepList.add(LookupStep.of(LookupTier.LOCAL, value -> findLocal(localStorage, entityProperty, value), (_, entity) -> localWriter.accept(entity)));
         }
 
         if (redisStorage != null && propertyIndex != null) {
@@ -150,6 +178,44 @@ public final class EntityLookups {
             return findRedis(redisStorage, propertyIndex, entityProperty, value);
         } catch (final RedisException | ConnectionException exception) {
             return Optional.empty();
+        }
+    }
+
+    private static <E extends Entity> Optional<E> findRedisByIndex(final RedisStorage<E> redisStorage, final RedisEntityIndex<E> redisEntityIndex, final EntityIndex<E> entityIndex, final List<Object> values) {
+        try {
+            final Optional<UUID> id = redisEntityIndex.find(values);
+            final Optional<E> entity = id.flatMap(redisStorage::get).filter(found -> entityIndex.hasValues(found) && EntityIndexKey.encode(entityIndex, entityIndex.getValues(found)).equals(EntityIndexKey.encode(entityIndex, entityIndex.getValues(values.toArray()))));
+
+            if (entity.isEmpty()) {
+                id.ifPresent(foundId -> redisEntityIndex.remove(values, foundId));
+            }
+
+            return entity;
+        } catch (final RedisException | ConnectionException exception) {
+            return Optional.empty();
+        }
+    }
+
+    private static <E extends Entity> Optional<E> findByIndex(final EntityRepository<E> entityRepository, final EntityIndex<E> entityIndex, final List<Object> values) {
+        final Query<E> query = Query.of(entityRepository.getEntityType());
+
+        for (int index = 0; index < values.size(); index++) {
+            addCondition(query, entityIndex.getProperties().get(index), values.get(index));
+        }
+
+        return entityRepository.findOne(query);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static <E extends Entity> void addCondition(final Query<E> query, final EntityProperty entityProperty, final Object value) {
+        query.and(entityProperty, Operator.EQUALS, value);
+    }
+
+    private static <E extends Entity> void writeRedisByIndex(final RedisStorage<E> redisStorage, final RedisEntityIndex<E> redisEntityIndex, final EntityIndex<E> entityIndex, final E entity) {
+        try {
+            redisStorage.put(entity.getId(), entity);
+            redisEntityIndex.put(entityIndex.getValues(entity), entity.getId());
+        } catch (final RedisException | ConnectionException ignored) {
         }
     }
 

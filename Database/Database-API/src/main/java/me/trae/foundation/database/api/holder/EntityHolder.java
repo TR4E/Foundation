@@ -3,6 +3,7 @@ package me.trae.foundation.database.api.holder;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.repository.EntityRepository;
+import me.trae.foundation.database.api.repository.index.EntityIndex;
 import me.trae.foundation.database.api.tenant.TenantScope;
 
 import java.util.EnumSet;
@@ -28,6 +29,14 @@ public interface EntityHolder<E extends Entity, R extends EntityRepository<E>> {
     }
 
     <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value);
+
+    default <Value> void transferUniqueProperty(final UUID claimantId, final UUID currentOwnerId, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue) {
+        throw new UnsupportedOperationException("This holder does not support unique property transfers");
+    }
+
+    default Optional<E> getByIndex(final EntityIndex<? super E> entityIndex, final Object... values) {
+        throw new UnsupportedOperationException("This holder does not support indexed lookups");
+    }
 
     List<E> getPinned();
 

@@ -85,7 +85,7 @@ public final class RepositoryWriter<E extends Entity> {
         this.pendingWriteStore.queueDelete(this.tableSchema, this.tenantId, entity.getId(), commitCallbackList, this.createInvalidation(entity.getId(), redisEnabled), expectedRevision, revisionState);
     }
 
-    private RedisInvalidation createInvalidation(final java.util.UUID id, final boolean redisEnabled) {
+    public RedisInvalidation createInvalidation(final java.util.UUID id, final boolean redisEnabled) {
         return !redisEnabled || this.redisNamespace == null ? null : this.redisNamespace.getInvalidation(id, this.redisInstanceId);
     }
 

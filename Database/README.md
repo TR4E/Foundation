@@ -426,6 +426,43 @@ Redis caches short-lived negative lookups and briefly shares a failed-fill marke
 
 Lookups by property work the same way. Properties with a `UNIQUE` index also keep a Redis index from value to id, so another server can find an entity by name without touching PostgreSQL.
 
+### ID and property indexes
+
+`getById(id)` is the primary-key lookup. It checks the local cache by UUID, then the Redis entity hash, then PostgreSQL's primary key. When it loads an entity from Redis or PostgreSQL, the holder fills the earlier cache tiers and populates every registered property and composite index for that entity.
+
+`getByProperty(property, value)` uses an O(1) local value-to-id map and, when Redis is enabled, a Redis value-to-id index only when that property is declared `UNIQUE` by the repository. It then loads the entity through the normal ID lookup. If the property is not indexed, the local fallback scans cached entities and PostgreSQL performs a property query; use a declared index when indexed lookup performance is required.
+
+For a case-insensitive property, register it with `EntityProperty.registerCaseInsensitive`. Foundation normalizes the value for local and Redis index keys, and PostgreSQL creates a unique index over the lowercased column. Changing only the letter casing does not change the normalized index key.
+
+```java
+@Override
+public Map<EntityProperty<? super Account, ?>, IndexType> getIndexes() {
+    return Map.of(AccountProperties.NAME, IndexType.UNIQUE);
+}
+
+final Optional<Account> byId = accountHolder.getById(accountId);
+final String lookupValue = "some-value";
+final Optional<Account> byName = accountHolder.getByProperty(AccountProperties.NAME, lookupValue);
+```
+
+The local index points to the entity in local storage; it is not a second entity cache. Its lookup is constant-time, and an expired or missing entity makes the holder discard that stale local reference. Pinning a single-instance entity also makes its indexed properties resolve locally until unpinned. Multi-instance holders do not support pinning. Redis entity and index entries use the holder's Redis expiry; local entries follow the holder's local expiry and maximum-age rules.
+
+Holder updates reindex the changed entity locally. After PostgreSQL commits, the outbox invalidates the entity hash and tells other multi-instance holders to evict their local copy. A Redis property pointer that no longer matches the loaded entity is removed and repaired on a later lookup. Invalidation is eventual, so a stale cached result may be visible briefly before delivery.
+
+When ownership of a unique indexed value must move between entities, use the holder's transfer operation instead of two independent `update` calls:
+
+```java
+holder.transferUniqueProperty(
+        claimantId,
+        currentOwnerId,
+        uniqueProperty,
+        claimedValue,
+        replacementValue
+);
+```
+
+The operation requires a persistent unique property and two existing, different entities. It changes both rows in one PostgreSQL transaction, verifies that the previous owner still holds the requested value, and records both invalidations in the outbox. A conflicting replacement or stale revision rolls the transaction back. The replacement value is chosen by the caller. Pending writes are flushed first, and the transfer fails if the database is still unable to drain them.
+
 ## Database-Core
 
 ### CoreDatabase

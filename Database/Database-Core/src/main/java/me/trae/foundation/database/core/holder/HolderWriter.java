@@ -23,6 +23,7 @@ public final class HolderWriter<E extends Entity> {
 
     private final AbstractEntityRepository<E> repository;
     private final LocalStorage<UUID, E> localStorage;
+    private final LocalEntityIndex<E> localEntityIndex;
     private final RedisStorage<E> redisStorage;
     private final ChangeTracker<E> changeTracker;
     private final UniqueClaimer<E> uniqueClaimer;
@@ -48,7 +49,7 @@ public final class HolderWriter<E extends Entity> {
             this.changeTracker.snapshot(entity, encodedMap);
 
             if (this.localStorage != null) {
-                this.localStorage.put(entity.getId(), entity);
+                this.localEntityIndex.put(entity, this.localStorage);
             }
         }
     }
@@ -67,7 +68,7 @@ public final class HolderWriter<E extends Entity> {
             this.writeChangedLocked(entity);
 
             if (this.localStorage != null) {
-                this.localStorage.put(entity.getId(), entity);
+                this.localEntityIndex.put(entity, this.localStorage);
             }
         }
     }
@@ -97,6 +98,7 @@ public final class HolderWriter<E extends Entity> {
         this.repository.update(entity, persistentChangedList, callbackList, List.of(() -> this.handleFailedWrite(entity, false)), this.redisEnabled);
 
         this.changeTracker.commit(entity, changedList);
+        this.localEntityIndex.index(entity);
     }
 
     public void delete(final E entity) {
@@ -104,7 +106,7 @@ public final class HolderWriter<E extends Entity> {
             this.repository.delete(entity, List.of(() -> this.uniqueClaimer.release(entity)), this.redisEnabled);
 
             if (this.localStorage != null) {
-                this.localStorage.remove(entity.getId());
+                this.localEntityIndex.remove(entity.getId(), this.localStorage);
             }
 
             this.changeTracker.forget(entity.getId());
@@ -124,6 +126,7 @@ public final class HolderWriter<E extends Entity> {
             this.repository.update(entity, List.of(entityProperty), Collections.emptyList(), Collections.emptyList(), this.redisEnabled);
 
             this.changeTracker.commit(entity.getId(), encodedMap, List.of(entityProperty));
+            this.localEntityIndex.index(entity);
 
             return value;
         }
@@ -137,13 +140,37 @@ public final class HolderWriter<E extends Entity> {
         synchronized (this.getLock(entity.getId())) {
             this.changeTracker.forget(entity.getId());
 
-            if (this.localStorage != null && this.localStorage.get(entity.getId()).orElse(null) == entity) {
-                this.localStorage.remove(entity.getId());
+            if (this.localStorage != null) {
+                final E localEntity = this.localStorage.get(entity.getId()).orElse(null);
+
+                if (localEntity == null || localEntity == entity) {
+                    this.localEntityIndex.remove(entity.getId(), this.localStorage);
+                }
             }
 
             if (releaseUniqueClaims) {
                 this.uniqueClaimer.release(entity);
             }
+        }
+    }
+
+    public synchronized <Value> void transferUniqueProperty(final E claimant, final E currentOwner, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue) {
+        final Value claimantPreviousValue = entityProperty.getValue(claimant);
+
+        this.repository.transferUniqueProperty(claimant, currentOwner, entityProperty, claimedValue, replacementValue, this.redisEnabled);
+        this.uniqueClaimer.transferProperty(entityProperty, claimantPreviousValue, claimedValue, claimant.getId(), currentOwner.getId());
+        this.changeTracker.snapshot(claimant);
+        this.changeTracker.snapshot(currentOwner);
+
+        if (this.localStorage != null) {
+            this.localEntityIndex.index(currentOwner);
+            this.localEntityIndex.index(claimant);
+        }
+    }
+
+    public void evictLocal(final UUID id) {
+        if (this.localStorage != null) {
+            this.localEntityIndex.remove(id, this.localStorage);
         }
     }
 

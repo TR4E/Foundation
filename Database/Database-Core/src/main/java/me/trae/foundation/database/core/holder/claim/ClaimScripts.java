@@ -14,6 +14,7 @@ public final class ClaimScripts {
     private final RedisScript STEAL_SCRIPT = new RedisScript("if redis.call('GET', KEYS[1]) == ARGV[1] and (ARGV[4] == '0' or redis.call('PTTL', KEYS[1]) == -1) then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 end return 0");
     private final RedisScript PERSIST_SCRIPT = new RedisScript("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PERSIST', KEYS[1]) end return 0");
     private final RedisScript RELEASE_SCRIPT = new RedisScript("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0");
+    private final RedisScript TRANSFER_SCRIPT = new RedisScript("if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2]) redis.call('PERSIST', KEYS[1]) return 1 end return 0");
 
     public String claim(final RedisDriver redisDriver, final String key, final String id, final Duration lease) {
         return CLAIM_SCRIPT.execute(redisDriver, ScriptOutputType.VALUE, new String[]{key}, id, String.valueOf(lease.toMillis()));
@@ -39,5 +40,9 @@ public final class ClaimScripts {
 
     public void release(final RedisDriver redisDriver, final String key, final String id) {
         RELEASE_SCRIPT.execute(redisDriver, ScriptOutputType.INTEGER, new String[]{key}, id);
+    }
+
+    public void transfer(final RedisDriver redisDriver, final String key, final String expectedOwner, final String id) {
+        TRANSFER_SCRIPT.execute(redisDriver, ScriptOutputType.INTEGER, new String[]{key}, expectedOwner, id);
     }
 }

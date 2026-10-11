@@ -107,6 +107,10 @@ public final class PendingWriteStore {
         this.pendingMap.merge(failed.getKey(), failed, (current, older) -> older.merge(current));
     }
 
+    public synchronized void executeExclusively(final Runnable operation) {
+        operation.run();
+    }
+
     public synchronized void complete(final PendingWrite completed) {
         if (this.inFlightMap.remove(completed.getKey(), completed)) {
             this.pendingCallbackCount -= this.callbackCount(completed);

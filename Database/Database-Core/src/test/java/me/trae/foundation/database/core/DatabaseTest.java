@@ -18,6 +18,7 @@ import me.trae.foundation.database.api.property.EntityPropertyRegistry;
 import me.trae.foundation.database.api.query.Direction;
 import me.trae.foundation.database.api.query.Operator;
 import me.trae.foundation.database.api.query.Query;
+import me.trae.foundation.database.api.repository.index.EntityIndex;
 import me.trae.foundation.database.api.repository.index.IndexType;
 import me.trae.foundation.database.api.tenant.Tenant;
 import me.trae.foundation.database.api.tenant.TenantScope;
@@ -28,14 +29,17 @@ import me.trae.foundation.database.core.converter.JsonValueConverter;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
 import me.trae.foundation.database.core.holder.AbstractEntityHolder;
+import me.trae.foundation.database.core.holder.LocalEntityIndex;
 import me.trae.foundation.database.core.holder.change.ChangeTracker;
 import me.trae.foundation.database.core.holder.claim.ClaimScripts;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.core.repository.QueryRenderer;
 import me.trae.foundation.database.core.schema.TableSchema;
+import me.trae.foundation.database.lookup.index.RedisEntityIndex;
 import me.trae.foundation.database.lookup.index.RedisPropertyIndex;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.driver.RedisSettings;
+import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -67,7 +71,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class DatabaseTest {
 
-    private static final EntityProperty<Account, String> NAME = EntityProperty.register(Account.class, "name", Account::getName, Account::setName, String.class, true);
+    private static final EntityProperty<Account, String> NAME = EntityProperty.registerCaseInsensitive(Account.class, "name", Account::getName, Account::setName, true);
+    private static final EntityProperty<Vehicle, String> VIN = EntityProperty.registerCaseInsensitive(Vehicle.class, "vin", Vehicle::getVin, Vehicle::setVin, true);
+    private static final EntityProperty<Vehicle, VehicleState> VEHICLE_STATE = EntityProperty.register(Vehicle.class, "state", Vehicle::getState, Vehicle::setState, VehicleState.class, true);
+    private static final EntityIndex<Vehicle> VIN_AND_STATE = EntityIndex.of("vin_state", VIN, VEHICLE_STATE);
     private static final EntityProperty<Account, Long> COINS = EntityProperty.register(Account.class, "coins", Account::getCoins, Account::setCoins, Long.class, true);
     private static final EntityProperty<Account, Rank> RANK = EntityProperty.register(Account.class, "rank", Account::getRank, Account::setRank, Rank.class, true);
     private static final EntityProperty<Account, List<String>> TAGS = EntityProperty.registerWithConverter(Account.class, "tags", Account::getTags, Account::setTags, JsonValueConverter.ofList(String.class), true);
@@ -243,14 +250,14 @@ final class DatabaseTest {
     void changeTrackerFindsOnlyChangedProperties() {
         final ChangeTracker<Account> changeTracker = new ChangeTracker<>(Account.class, null);
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
 
         assertFalse(changeTracker.isTracked(account.getId()));
         changeTracker.snapshot(account);
         assertTrue(changeTracker.diff(account).isEmpty());
 
         account.setName("temporary");
-        account.setName("trae");
+        account.setName("sample-value");
         assertTrue(changeTracker.diff(account).isEmpty());
 
         account.setCoins(500L);
@@ -275,6 +282,9 @@ final class DatabaseTest {
         assertTrue(sql.contains("\"tenant_id\" = 'lobby-1'"));
         assertTrue(sql.contains("\"rank\" = 'ADMIN'"));
         assertTrue(sql.contains("\"coins\" > 10"));
+
+        final String caseInsensitiveSql = dslContext.renderInlined(QueryRenderer.toCondition(tableSchema, Query.where(NAME, Operator.EQUALS, "SAMPLE-VALUE"), null));
+        assertTrue(caseInsensitiveSql.contains("lower(\"name\") = 'sample-value'"));
         assertFalse(dslContext.renderInlined(QueryRenderer.toCondition(tableSchema, Query.of(Account.class).allTenants(), "lobby-1")).contains("tenant_id"));
 
         assertEquals(Instant.class, tableSchema.getField(CREATED_AT).getType());
@@ -290,7 +300,7 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(new AccountRepository(database, this.table, TenantScope.NONE));
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         database.stop();
 
@@ -499,7 +509,7 @@ final class DatabaseTest {
         final AccountHolder reader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         database.getBatchQueue().flush();
 
@@ -673,7 +683,7 @@ final class DatabaseTest {
         database.setFailureHandler(failureList::add);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         this.redisDriver.disconnect();
         database.getBatchQueue().flush();
@@ -701,7 +711,7 @@ final class DatabaseTest {
         database.setFailureHandler(failureList::add);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         this.postgresDriver.getDslContext().dropTableIfExists(DSL.name("foundation_cache_invalidation_outbox")).execute();
         database.getBatchQueue().flush();
@@ -740,17 +750,17 @@ final class DatabaseTest {
         final AccountHolder writer = new AccountHolder(repository);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         writer.save(account);
         database.getBatchQueue().flush();
         this.redisDriver.disconnect();
 
         try {
             final AccountHolder idReader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
-            assertEquals("trae", idReader.getById(account.getId()).orElseThrow().getName());
+            assertEquals("sample-value", idReader.getById(account.getId()).orElseThrow().getName());
 
             final AccountHolder propertyReader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
-            assertEquals(account.getId(), propertyReader.getByProperty(NAME, "trae").orElseThrow().getId());
+            assertEquals(account.getId(), propertyReader.getByProperty(NAME, "sample-value").orElseThrow().getId());
         } finally {
             this.redisDriver.connect();
         }
@@ -765,7 +775,7 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(repository);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         account.setCoins(0L);
         holder.save(account);
         database.getBatchQueue().flush();
@@ -801,10 +811,10 @@ final class DatabaseTest {
         final AccountHolder secondHolder = new AccountHolder(new AccountRepository(second, this.table, TenantScope.NONE));
         second.start();
 
-        firstHolder.save(this.createAccount("trae"));
+        firstHolder.save(this.createAccount("sample-value"));
         first.getBatchQueue().flush();
 
-        assertThrows(UniqueValueTakenException.class, () -> secondHolder.save(this.createAccount("trae")));
+        assertThrows(UniqueValueTakenException.class, () -> secondHolder.save(this.createAccount("sample-value")));
     }
 
     @Test
@@ -814,10 +824,138 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(new AccountRepository(database, this.table, TenantScope.NONE));
         database.start();
 
-        final String key = new RedisPropertyIndex<>(this.redisDriver, RedisNamespace.of(this.table), NAME).getKey("trae");
+        final String key = new RedisPropertyIndex<>(this.redisDriver, RedisNamespace.of(this.table), NAME).getClaimKey("sample-value");
         ClaimScripts.claim(this.redisDriver, key, UUID.randomUUID().toString(), Duration.ofSeconds(30));
 
-        assertThrows(UniqueValueTakenException.class, () -> holder.save(this.createAccount("trae")));
+        assertThrows(UniqueValueTakenException.class, () -> holder.save(this.createAccount("sample-value")));
+    }
+
+    @Test
+    void localSecondaryIndexesSupportSingleAndCompositeKeysWithoutScanning() {
+        final EntityIndex<Account> nameIndex = EntityIndex.of("account_name", NAME);
+        final EntityIndex<Account> nameAndCoinsIndex = EntityIndex.of("name_coins", NAME, COINS);
+        final LocalStorage<UUID, Account> localStorage = new LocalStorage<>(Duration.ofMinutes(1));
+        final LocalEntityIndex<Account> localEntityIndex = new LocalEntityIndex<>(List.of(nameIndex, nameAndCoinsIndex));
+        final Account account = this.createAccount("sample-value");
+
+        localEntityIndex.put(account, localStorage);
+
+        assertSame(account, localEntityIndex.get(nameIndex, new Object[]{"sample-value"}, localStorage).orElseThrow());
+        assertSame(account, localEntityIndex.get(nameAndCoinsIndex, new Object[]{"SAMPLE-VALUE", 100L}, localStorage).orElseThrow());
+
+        account.setName("Updated");
+        localEntityIndex.put(account, localStorage);
+
+        assertTrue(localEntityIndex.get(nameIndex, new Object[]{"sample-value"}, localStorage).isEmpty());
+        assertSame(account, localEntityIndex.get(nameAndCoinsIndex, new Object[]{"updated", 100L}, localStorage).orElseThrow());
+
+        localEntityIndex.remove(account.getId(), localStorage);
+
+        assertTrue(localEntityIndex.get(nameIndex, new Object[]{"updated"}, localStorage).isEmpty());
+    }
+
+    @Test
+    void idLookupPopulatesRegisteredRedisIndexes() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder writer = new AccountHolder(repository);
+        database.start();
+
+        final Account account = this.createAccount("sample-value");
+        writer.save(account);
+        database.getBatchQueue().flush();
+
+        final EntityIndex<Account> nameIndex = EntityIndex.of(NAME.getName(), NAME);
+        final RedisEntityIndex<Account> redisEntityIndex = new RedisEntityIndex<>(this.redisDriver, RedisNamespace.of(this.table), nameIndex, Duration.ofHours(1));
+        redisEntityIndex.remove(nameIndex.getValues(account), account.getId());
+
+        final AccountHolder reader = new AccountHolder(repository);
+        assertEquals(account.getId(), reader.getById(account.getId()).orElseThrow().getId());
+        assertEquals(account.getId(), redisEntityIndex.find(nameIndex.getValues(account)).orElseThrow());
+    }
+
+    @Test
+    void transferUniquePropertyChangesBothRowsAndIndexesAtomically() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE, true);
+        final AccountHolder holder = new AccountHolder(repository);
+        database.start();
+
+        final Account claimant = this.createAccount("claimant-value");
+        final Account currentOwner = this.createAccount("sample-value");
+        holder.save(claimant);
+        holder.save(currentOwner);
+        database.getBatchQueue().flush();
+
+        final String replacement = "replacement-%s".formatted(currentOwner.getId());
+        holder.transferUniqueProperty(claimant.getId(), currentOwner.getId(), NAME, "SAMPLE-VALUE", replacement);
+
+        assertEquals("SAMPLE-VALUE", repository.findById(claimant.getId()).orElseThrow().getName());
+        assertEquals(replacement, repository.findById(currentOwner.getId()).orElseThrow().getName());
+        assertEquals(claimant.getId(), holder.getByProperty(NAME, "sample-value").orElseThrow().getId());
+        assertEquals(currentOwner.getId(), holder.getByProperty(NAME, replacement).orElseThrow().getId());
+        assertEquals(1, this.getOutboxCount(claimant.getId()));
+        assertEquals(1, this.getOutboxCount(currentOwner.getId()));
+        assertEquals(1L, database.getEntityRevisionStore().getState(claimant).getRevision());
+        assertEquals(1L, database.getEntityRevisionStore().getState(currentOwner).getRevision());
+    }
+
+    @Test
+    void transferUniquePropertyRollsBackWhenReplacementIsAlreadyTaken() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        database.start();
+
+        final Account claimant = this.createAccount("claimant-value");
+        final Account currentOwner = this.createAccount("sample-value");
+        final Account replacementOwner = this.createAccount("taken");
+        holder.save(claimant);
+        holder.save(currentOwner);
+        holder.save(replacementOwner);
+        database.getBatchQueue().flush();
+
+        assertThrows(RuntimeException.class, () -> holder.transferUniqueProperty(claimant.getId(), currentOwner.getId(), NAME, "sample-value", "taken"));
+
+        assertEquals("claimant-value", repository.findById(claimant.getId()).orElseThrow().getName());
+        assertEquals("sample-value", repository.findById(currentOwner.getId()).orElseThrow().getName());
+        assertEquals("taken", repository.findById(replacementOwner.getId()).orElseThrow().getName());
+    }
+
+    @Test
+    void compositeIndexLookupUsesLocalRedisAndDatabaseAndTracksChanges() {
+        final CoreDatabase database = this.openDatabase(null);
+        final VehicleRepository repository = new VehicleRepository(database, this.table);
+        final VehicleHolder holder = new VehicleHolder(repository, RedisMode.ENABLED);
+        database.start();
+
+        final Vehicle vehicle = new Vehicle(UUID.randomUUID());
+        vehicle.setVin("1abc234");
+        vehicle.setState(VehicleState.NSW);
+        holder.save(vehicle);
+        database.getBatchQueue().flush();
+
+        assertEquals(vehicle.getId(), holder.getByIndex(VIN_AND_STATE, "1ABC234", VehicleState.NSW).orElseThrow().getId());
+
+        final CoreDatabase secondDatabase = this.openDatabase(null);
+        final VehicleHolder secondHolder = new VehicleHolder(new VehicleRepository(secondDatabase, this.table), RedisMode.ENABLED);
+        secondDatabase.start();
+        final Vehicle cachedVehicle = secondHolder.getByIndex(VIN_AND_STATE, "1AbC234", VehicleState.NSW).orElseThrow();
+        assertEquals(vehicle.getId(), cachedVehicle.getId());
+        secondHolder.evict(cachedVehicle);
+        assertEquals(vehicle.getId(), secondHolder.getByIndex(VIN_AND_STATE, "1AbC234", VehicleState.NSW).orElseThrow().getId());
+
+        final Vehicle duplicate = new Vehicle(UUID.randomUUID());
+        duplicate.setVin("1ABC234");
+        duplicate.setState(VehicleState.NSW);
+        assertThrows(UniqueValueTakenException.class, () -> secondHolder.save(duplicate));
+
+        vehicle.setState(VehicleState.VIC);
+        holder.update(vehicle);
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findOne(Query.of(Vehicle.class).and(VIN, Operator.EQUALS, "1ABC234").and(VEHICLE_STATE, Operator.EQUALS, VehicleState.NSW)).isEmpty());
+        assertEquals(vehicle.getId(), holder.getByIndex(VIN_AND_STATE, "1ABC234", VehicleState.VIC).orElseThrow().getId());
     }
 
     @Test
@@ -834,8 +972,8 @@ final class DatabaseTest {
         final AccountHolder lobbyTwoHolder = new AccountHolder(new AccountRepository(lobbyTwo, this.table, TenantScope.INSTANCE));
         lobbyTwo.start();
 
-        lobbyOneHolder.save(this.createAccount("trae"));
-        lobbyTwoHolder.save(this.createAccount("trae"));
+        lobbyOneHolder.save(this.createAccount("sample-value"));
+        lobbyTwoHolder.save(this.createAccount("sample-value"));
         lobbyOne.getBatchQueue().flush();
         lobbyTwo.getBatchQueue().flush();
 
@@ -852,7 +990,7 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(repository);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         database.getBatchQueue().flush();
 
@@ -861,7 +999,7 @@ final class DatabaseTest {
 
         assertTrue(repository.findById(account.getId()).isEmpty());
         assertTrue(holder.getById(account.getId()).isEmpty());
-        holder.save(this.createAccount("trae"));
+        holder.save(this.createAccount("sample-value"));
     }
 
     @Test
@@ -876,11 +1014,11 @@ final class DatabaseTest {
         final AccountHolder secondHolder = new AccountHolder(new AccountRepository(second, this.table, TenantScope.NONE));
         second.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         firstHolder.save(account);
         first.getBatchQueue().flush();
 
-        assertEquals(account.getId(), secondHolder.getByProperty(NAME, "trae").orElseThrow().getId());
+        assertEquals(account.getId(), secondHolder.getByProperty(NAME, "sample-value").orElseThrow().getId());
         assertTrue(secondHolder.getByProperty(NAME, "nobody").isEmpty());
     }
 
@@ -893,7 +1031,7 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(repository);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         database.getBatchQueue().flush();
 
@@ -912,10 +1050,11 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(repository);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         holder.pin(account);
         assertEquals(List.of(account), holder.getPinned());
+        assertSame(account, holder.getByProperty(NAME, "SAMPLE-VALUE").orElseThrow());
 
         account.setCoins(999L);
         holder.unpin(account);
@@ -936,7 +1075,7 @@ final class DatabaseTest {
         final AccountHolder reader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         writer.save(account);
         database.getBatchQueue().flush();
 
@@ -986,8 +1125,8 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(repository);
         database.start();
 
-        holder.save(this.createAccount("trae"));
-        holder.save(this.createAccount("trae"));
+        holder.save(this.createAccount("sample-value"));
+        holder.save(this.createAccount("sample-value"));
         database.getBatchQueue().flush();
 
         assertEquals(1, repository.count(Query.of(Account.class)));
@@ -1030,7 +1169,7 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(repository, InstanceMode.SINGLE_INSTANCE, Duration.ZERO);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         account.setCoins(777L);
         database.getBatchQueue().flush();
@@ -1051,11 +1190,11 @@ final class DatabaseTest {
         final AccountHolder holder = new AccountHolder(repository);
         database.start();
 
-        final Account account = this.createAccount("trae");
+        final Account account = this.createAccount("sample-value");
         holder.save(account);
         database.getBatchQueue().flush();
 
-        assertEquals("trae", repository.findById(account.getId()).orElseThrow().getName());
+        assertEquals("sample-value", repository.findById(account.getId()).orElseThrow().getName());
     }
 
     @AfterEach
@@ -1153,6 +1292,22 @@ final class DatabaseTest {
         private String label;
     }
 
+    @RequiredArgsConstructor
+    @Getter
+    @Setter
+    private static final class Vehicle implements Entity {
+
+        private final UUID id;
+        private String vin;
+        private VehicleState state;
+    }
+
+    private enum VehicleState {
+        VIC,
+        NSW,
+        QLD
+    }
+
     private static final class AccountRepository extends AbstractEntityRepository<Account> {
 
         private AccountRepository(final CoreDatabase coreDatabase, final String table, final TenantScope tenantScope) {
@@ -1166,6 +1321,18 @@ final class DatabaseTest {
         @Override
         public Map<EntityProperty<? super Account, ?>, IndexType> getIndexes() {
             return Map.of(NAME, IndexType.UNIQUE);
+        }
+    }
+
+    private static final class VehicleRepository extends AbstractEntityRepository<Vehicle> {
+
+        private VehicleRepository(final CoreDatabase coreDatabase, final String table) {
+            super(coreDatabase, Vehicle.class, table, TenantScope.NONE, false);
+        }
+
+        @Override
+        public List<EntityIndex<Vehicle>> getCompositeIndexes() {
+            return List.of(VIN_AND_STATE);
         }
     }
 
@@ -1185,6 +1352,13 @@ final class DatabaseTest {
 
         private AccountHolder(final AccountRepository repository) {
             this(repository, InstanceMode.SINGLE_INSTANCE);
+        }
+    }
+
+    private static final class VehicleHolder extends AbstractEntityHolder<Vehicle, VehicleRepository> {
+
+        private VehicleHolder(final VehicleRepository repository, final RedisMode redisMode) {
+            super(repository, InstanceMode.SINGLE_INSTANCE, redisMode, Duration.ofMinutes(30), Duration.ofHours(1));
         }
     }
 }

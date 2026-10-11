@@ -5,6 +5,8 @@ import lombok.Setter;
 import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.storage.driver.RedisDriver;
+import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 
 import java.time.Duration;
 import java.util.List;
@@ -24,6 +26,7 @@ public final class BatchQueue {
     private final List<Runnable> preFlushTaskList = new CopyOnWriteArrayList<>();
 
     private final BatchExecutor batchExecutor;
+    private final PostgresDriver postgresDriver;
     private final CacheInvalidationOutbox cacheInvalidationOutbox;
     private final Duration flushInterval;
     private final int chunkSize;
@@ -39,6 +42,7 @@ public final class BatchQueue {
 
     public BatchQueue(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
         this.pendingWriteStore = new PendingWriteStore(maximumPendingWrites);
+        this.postgresDriver = postgresDriver;
         this.batchExecutor = new BatchExecutor(postgresDriver, this::reportFailure);
         this.cacheInvalidationOutbox = redisDriver == null ? null : new CacheInvalidationOutbox(postgresDriver, redisDriver);
         this.flushInterval = flushInterval;
@@ -118,6 +122,17 @@ public final class BatchQueue {
                 this.reportFailure(new DatabaseException("Failed to dispatch cache invalidation outbox", exception));
             }
         }
+    }
+
+    public synchronized void executeAtomically(final Consumer<DSLContext> operation) {
+        this.flush();
+        this.pendingWriteStore.executeExclusively(() -> {
+            if (!this.pendingWriteStore.isEmpty()) {
+                throw new DatabaseException("Cannot execute an atomic operation while writes are pending");
+            }
+
+            this.postgresDriver.getDslContext().transaction(configuration -> operation.accept(DSL.using(configuration)));
+        });
     }
 
     public void reportFailure(final DatabaseException exception) {

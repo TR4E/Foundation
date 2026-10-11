@@ -25,7 +25,10 @@ public final class HolderCache<E extends Entity> {
     }
 
     public void pin(final E entity) {
-        this.requireLocal("pin").pin(entity.getId(), entity);
+        final LocalStorage<UUID, E> localStorage = this.requireLocal("pin");
+
+        this.holderComponents.getLocalEntityIndex().index(entity);
+        localStorage.pin(entity.getId(), entity);
 
         this.track(entity);
     }
@@ -38,7 +41,7 @@ public final class HolderCache<E extends Entity> {
 
     public void cache(final E entity) {
         if (this.holderComponents.getLocalStorage() != null) {
-            this.holderComponents.getLocalStorage().put(entity.getId(), entity);
+            this.holderComponents.getLocalEntityIndex().put(entity, this.holderComponents.getLocalStorage());
         }
 
         this.track(entity);
@@ -48,7 +51,7 @@ public final class HolderCache<E extends Entity> {
         if (this.holderComponents.getLocalStorage() != null) {
             this.holderComponents.getHolderWriter().writeChanged(entity);
 
-            this.holderComponents.getLocalStorage().remove(entity.getId());
+            this.holderComponents.getLocalEntityIndex().remove(entity.getId(), this.holderComponents.getLocalStorage());
         }
 
         this.holderComponents.getChangeTracker().forget(entity.getId());
@@ -80,6 +83,7 @@ public final class HolderCache<E extends Entity> {
 
     private void writeAndForget(final E entity) {
         this.writeSafely(entity);
+        this.holderComponents.getLocalEntityIndex().remove(entity.getId(), this.holderComponents.getLocalStorage());
         this.holderComponents.getChangeTracker().forget(entity.getId());
     }
 

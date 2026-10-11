@@ -122,7 +122,7 @@ final class LookupTest {
 
     @Test
     void singletonCachesDatabaseHitsLocally() {
-        final Member member = this.repository.add("trae");
+        final Member member = this.repository.add("sample-value");
 
         final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 
@@ -133,7 +133,7 @@ final class LookupTest {
 
     @Test
     void multiInstanceCachesDatabaseHitsLocally() {
-        final Member member = this.repository.add("trae");
+        final Member member = this.repository.add("sample-value");
 
         final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 

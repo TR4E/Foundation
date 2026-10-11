@@ -4,6 +4,7 @@ import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.query.EntityPage;
 import me.trae.foundation.database.api.query.Query;
+import me.trae.foundation.database.api.repository.index.EntityIndex;
 import me.trae.foundation.database.api.repository.index.IndexType;
 import me.trae.foundation.database.api.tenant.TenantScope;
 
@@ -26,6 +27,10 @@ public interface EntityRepository<E extends Entity> {
 
     default Map<EntityProperty<? super E, ?>, IndexType> getIndexes() {
         return Collections.emptyMap();
+    }
+
+    default List<EntityIndex<E>> getCompositeIndexes() {
+        return Collections.emptyList();
     }
 
     Optional<E> findById(final UUID id);

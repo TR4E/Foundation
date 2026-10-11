@@ -46,9 +46,9 @@ final class DatabaseApiTest {
     void propertiesReadAndWriteThroughAccessors() {
         final Profile profile = new Profile(UUID.randomUUID());
 
-        NAME.setValue(profile, "Trae");
+        NAME.setValue(profile, "sample-value");
 
-        assertEquals("Trae", NAME.getValue(profile));
+        assertEquals("sample-value", NAME.getValue(profile));
         assertTrue(NAME.isPersistent());
         assertFalse(LEVEL.isPersistent());
     }
@@ -66,7 +66,7 @@ final class DatabaseApiTest {
 
     @Test
     void queryCollectsConditionsOrdersAndTenant() {
-        final Query<Profile> query = Query.where(NAME, Operator.EQUALS, "Trae").and(LEVEL, Operator.GREATER_THAN, 5).orderBy(LEVEL, Direction.DESCENDING).limit(10).offset(20);
+        final Query<Profile> query = Query.where(NAME, Operator.EQUALS, "sample-value").and(LEVEL, Operator.GREATER_THAN, 5).orderBy(LEVEL, Direction.DESCENDING).limit(10).offset(20);
 
         assertEquals(2, query.getConditionList().size());
         assertSame(LEVEL, query.getConditionList().get(1).getEntityProperty());

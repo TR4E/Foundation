@@ -26,6 +26,7 @@ import java.util.UUID;
 public final class HolderComponents<E extends Entity> {
 
     private final LocalStorage<UUID, E> localStorage;
+    private final LocalEntityIndex<E> localEntityIndex;
     private final ChangeTracker<E> changeTracker;
     private final HolderLookups<E> holderLookups;
     private final HolderWriter<E> holderWriter;
@@ -61,25 +62,27 @@ public final class HolderComponents<E extends Entity> {
 
         final LocalStorage<UUID, E> localStorage = new LocalStorage<>(localExpiry, instanceMode == InstanceMode.MULTI_INSTANCE, maximumAge);
 
+        final LocalEntityIndex<E> localEntityIndex = new LocalEntityIndex<>(repository.getEntityIndexes());
+
         final RedisStorage<E> redisStorage = redisDriver == null ? null : new RedisStorage<>(redisDriver, RedisNamespace.of(repository.getTable(), repository.getTenantId().orElse(null)), repository.getEntityType(), redisExpiry, repository.getTableSchema().isOptimisticLocking(), repository.getCoreDatabase().getEntityRevisionStore());
 
-        final HolderLookups<E> holderLookups = new HolderLookups<>(repository, localStorage, redisStorage, redisDriver);
+        final HolderLookups<E> holderLookups = new HolderLookups<>(repository, localStorage, localEntityIndex, redisStorage, redisDriver, redisExpiry);
 
-        final HolderWriter<E> holderWriter = new HolderWriter<>(repository, localStorage, redisStorage, changeTracker, new UniqueClaimer<>(repository, holderLookups, redisDriver), redisMode == RedisMode.ENABLED);
+        final HolderWriter<E> holderWriter = new HolderWriter<>(repository, localStorage, localEntityIndex, redisStorage, changeTracker, new UniqueClaimer<>(repository, holderLookups, redisDriver), redisMode == RedisMode.ENABLED);
 
         if (instanceMode == InstanceMode.MULTI_INSTANCE && redisStorage != null) {
             final String channel = redisStorage.getRedisNamespace().getInvalidationChannel();
             redisDriver.subscribe(channel, message -> invalidateLocal(localStorage, changeTracker, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
         }
 
-        return new HolderComponents<>(localStorage, changeTracker, holderLookups, holderWriter);
+        return new HolderComponents<>(localStorage, localEntityIndex, changeTracker, holderLookups, holderWriter);
     }
 
     private static <E extends Entity> void invalidateLocal(final LocalStorage<UUID, E> localStorage, final ChangeTracker<E> changeTracker, final HolderWriter<E> holderWriter, final BatchQueue batchQueue, final String message) {
         if (message.equals("*")) {
             for (final E entity : localStorage.getValues()) {
                 if (flushSafely(entity, changeTracker, holderWriter, batchQueue)) {
-                    localStorage.remove(entity.getId());
+                    holderWriter.evictLocal(entity.getId());
                 }
             }
 
@@ -100,7 +103,7 @@ public final class HolderComponents<E extends Entity> {
             final boolean flushed = entity.isEmpty() || flushSafely(entity.get(), changeTracker, holderWriter, batchQueue);
 
             if (flushed) {
-                localStorage.remove(id);
+                holderWriter.evictLocal(id);
                 changeTracker.forget(id);
             }
         } catch (final IllegalArgumentException ignored) {

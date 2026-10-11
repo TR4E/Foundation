@@ -5,6 +5,7 @@ import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.storage.codec.EntityCodec;
 import me.trae.foundation.database.storage.local.LocalStorage;
 
+import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -13,11 +14,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class ChangeTracker<E extends Entity> {
 
     private final EntityCodec<E> entityCodec;
     private final LocalStorage<UUID, Map<String, String>> snapshotStorage;
+    private final Map<UUID, WeakReference<E>> entityReferenceMap = new ConcurrentHashMap<>();
 
     public ChangeTracker(final Class<E> entityType, final Duration expiry) {
         this.entityCodec = new EntityCodec<>(entityType);
@@ -26,6 +29,12 @@ public final class ChangeTracker<E extends Entity> {
 
     public boolean isTracked(final UUID id) {
         return this.snapshotStorage.contains(id);
+    }
+
+    public boolean isTracked(final E entity) {
+        final WeakReference<E> entityReference = this.entityReferenceMap.get(entity.getId());
+
+        return this.snapshotStorage.contains(entity.getId()) && entityReference != null && entityReference.get() == entity;
     }
 
     public Map<String, String> encode(final E entity) {
@@ -37,11 +46,16 @@ public final class ChangeTracker<E extends Entity> {
     }
 
     public void snapshot(final E entity) {
-        this.snapshot(entity.getId(), this.encode(entity));
+        this.snapshot(entity, this.encode(entity));
+    }
+
+    public void snapshot(final E entity, final Map<String, String> encodedMap) {
+        this.snapshotStorage.put(entity.getId(), new HashMap<>(encodedMap));
+        this.entityReferenceMap.put(entity.getId(), new WeakReference<>(entity));
     }
 
     public void snapshotIfAbsent(final E entity) {
-        if (!this.isTracked(entity.getId())) {
+        if (!this.isTracked(entity)) {
             this.snapshot(entity);
         }
     }
@@ -70,10 +84,12 @@ public final class ChangeTracker<E extends Entity> {
 
     public void commit(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
         this.commit(entity.getId(), this.encode(entity), entityProperties);
+        this.entityReferenceMap.put(entity.getId(), new WeakReference<>(entity));
     }
 
     public void forget(final UUID id) {
         this.snapshotStorage.remove(id);
+        this.entityReferenceMap.remove(id);
     }
 
     public void evictExpired() {

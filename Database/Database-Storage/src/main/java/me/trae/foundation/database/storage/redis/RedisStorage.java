@@ -8,13 +8,13 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.storage.codec.EntityCodec;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.redis.script.RedisScript;
+import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -54,13 +54,18 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     private final EntityCodec<E> entityCodec;
     private final RedisHashWriter redisHashWriter;
     private final boolean revisioned;
+    private final EntityRevisionStore entityRevisionStore;
 
     public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry) {
         this(redisDriver, redisNamespace, entityType, expiry, false);
     }
 
     public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry, final boolean revisioned) {
-        this(redisDriver, redisNamespace, new EntityCodec<>(entityType), new RedisHashWriter(redisDriver, expiry), revisioned);
+        this(redisDriver, redisNamespace, entityType, expiry, revisioned, new EntityRevisionStore());
+    }
+
+    public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry, final boolean revisioned, final EntityRevisionStore entityRevisionStore) {
+        this(redisDriver, redisNamespace, new EntityCodec<>(entityType), new RedisHashWriter(redisDriver, expiry), revisioned, entityRevisionStore);
     }
 
     public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType) {
@@ -297,7 +302,7 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     }
 
     public RedisStorage<E> forTenant(final String tenantId) {
-        return new RedisStorage<>(this.redisDriver, this.redisNamespace.withTenant(tenantId), this.entityCodec, this.redisHashWriter, this.revisioned);
+        return new RedisStorage<>(this.redisDriver, this.redisNamespace.withTenant(tenantId), this.entityCodec, this.redisHashWriter, this.revisioned, this.entityRevisionStore);
     }
 
     private Optional<E> decode(final UUID id, final Map<String, String> fieldMap) {
@@ -308,8 +313,8 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         try {
             final E entity = this.entityCodec.decode(id, fieldMap);
 
-            if (this.revisioned && entity instanceof RevisionedEntity revisionedEntity && fieldMap.containsKey(REVISION_FIELD)) {
-                revisionedEntity.setRevision(Long.parseLong(fieldMap.get(REVISION_FIELD)));
+            if (this.revisioned && fieldMap.containsKey(REVISION_FIELD)) {
+                this.entityRevisionStore.setRevision(entity, Long.parseLong(fieldMap.get(REVISION_FIELD)));
             }
 
             return Optional.of(entity);
@@ -326,8 +331,8 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     private Map<String, String> encode(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
         final Map<String, String> fieldMap = this.entityCodec.encode(entity, entityProperties);
 
-        if (this.revisioned && entity instanceof RevisionedEntity revisionedEntity) {
-            fieldMap.put(REVISION_FIELD, Long.toString(revisionedEntity.getRevision()));
+        if (this.revisioned) {
+            fieldMap.put(REVISION_FIELD, Long.toString(this.entityRevisionStore.getState(entity).getRevision()));
         }
 
         return fieldMap;

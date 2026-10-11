@@ -50,12 +50,12 @@ final class DatabasePipelineBenchmarkTest {
         }
 
         try {
-            final MultiJvmDatabaseWorker.WorkerRepository repository = new MultiJvmDatabaseWorker.WorkerRepository(coreDatabase, table);
-            final MultiJvmDatabaseWorker.WorkerHolder holder = new MultiJvmDatabaseWorker.WorkerHolder(repository);
-            final RedisStorage<MultiJvmDatabaseWorker.WorkerEntity> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), MultiJvmDatabaseWorker.WorkerEntity.class, Duration.ofMinutes(5));
-            final MultiJvmDatabaseWorker.WorkerEntity entity = new MultiJvmDatabaseWorker.WorkerEntity(id);
-            final EntityCodec<MultiJvmDatabaseWorker.WorkerEntity> entityCodec = new EntityCodec<>(MultiJvmDatabaseWorker.WorkerEntity.class);
-            final ChangeTracker<MultiJvmDatabaseWorker.WorkerEntity> changeTracker = new ChangeTracker<>(MultiJvmDatabaseWorker.WorkerEntity.class, Duration.ofMinutes(5));
+            final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+            final WorkerHolder holder = new WorkerHolder(repository);
+            final RedisStorage<WorkerEntity> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), WorkerEntity.class, Duration.ofMinutes(5));
+            final WorkerEntity entity = new WorkerEntity(id);
+            final EntityCodec<WorkerEntity> entityCodec = new EntityCodec<>(WorkerEntity.class);
+            final ChangeTracker<WorkerEntity> changeTracker = new ChangeTracker<>(WorkerEntity.class, Duration.ofMinutes(5));
             entity.setValue("benchmark");
             coreDatabase.start();
             holder.save(entity);
@@ -75,7 +75,7 @@ final class DatabasePipelineBenchmarkTest {
 
             this.measure("repository write + outbox flush", 25, index -> {
                 entity.setValue("benchmark-%s".formatted(index));
-                holder.save(entity);
+                holder.update(entity);
                 coreDatabase.getBatchQueue().flush();
             });
 

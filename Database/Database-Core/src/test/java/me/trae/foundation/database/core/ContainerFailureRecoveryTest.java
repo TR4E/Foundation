@@ -48,17 +48,17 @@ final class ContainerFailureRecoveryTest {
         try {
             postgresDriver.connect();
             redisDriver.connect();
-            final MultiJvmDatabaseWorker.WorkerRepository repository = new MultiJvmDatabaseWorker.WorkerRepository(coreDatabase, table);
-            final MultiJvmDatabaseWorker.WorkerHolder holder = new MultiJvmDatabaseWorker.WorkerHolder(repository);
+            final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+            final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 
-            final MultiJvmDatabaseWorker.WorkerEntity entity = new MultiJvmDatabaseWorker.WorkerEntity(UUID.randomUUID());
+            final WorkerEntity entity = new WorkerEntity(UUID.randomUUID());
             entity.setValue("initial");
             holder.save(entity);
             coreDatabase.getBatchQueue().flush();
 
             entity.setValue("postgres-recovered");
-            holder.save(entity);
+            holder.update(entity);
             this.runDocker("stop", postgresContainer);
             postgresStopped = true;
             coreDatabase.getBatchQueue().flush();
@@ -75,7 +75,7 @@ final class ContainerFailureRecoveryTest {
             assertEquals(0, this.getOutboxCount(postgresDriver, entity.getId()));
 
             entity.setValue("redis-recovered");
-            holder.save(entity);
+            holder.update(entity);
             this.runDocker("stop", redisContainer);
             redisStopped = true;
             coreDatabase.getBatchQueue().flush();

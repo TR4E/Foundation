@@ -2,7 +2,6 @@ package me.trae.foundation.database.core.schema;
 
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.exception.QueryException;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
@@ -47,9 +46,6 @@ public final class TableSchema<E extends Entity> {
         this.tenantScope = tenantScope;
         this.optimisticLocking = optimisticLocking;
 
-        if (optimisticLocking && !RevisionedEntity.class.isAssignableFrom(entityType)) {
-            throw new SchemaException("Optimistic locking requires %s to implement RevisionedEntity".formatted(entityType.getName()));
-        }
         this.persistentProperties = entityProperties.stream().filter(EntityProperty::isPersistent).toList();
 
         for (final EntityProperty<?, ?> entityProperty : this.persistentProperties) {

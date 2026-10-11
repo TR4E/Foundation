@@ -31,6 +31,7 @@ public final class BatchExecutor {
     public List<PendingWrite> execute(final List<PendingWrite> writeList) {
         final List<PendingWrite> staleWriteList = new ArrayList<>();
         final List<PendingWrite> changedWriteList = new ArrayList<>();
+        final Map<PendingWrite, DatabaseException> failedWriteMap = new LinkedHashMap<>();
 
         try {
             this.postgresDriver.getDslContext().transaction(configuration -> {
@@ -46,8 +47,12 @@ public final class BatchExecutor {
                 for (int index = 0; index < writeList.size(); index++) {
                     final PendingWrite pendingWrite = writeList.get(index);
 
-                    if (resultList[index] == 0 && this.isStaleWrite(dslContext, pendingWrite)) {
+                    if (resultList[index] == 0 && pendingWrite.getWriteType() == WriteType.INSERT) {
+                        failedWriteMap.put(pendingWrite, new DatabaseException("Cannot create duplicate %s %s".formatted(pendingWrite.getTableSchema().getEntityType().getSimpleName(), pendingWrite.getId())));
+                    } else if (resultList[index] == 0 && this.isStaleWrite(dslContext, pendingWrite)) {
                         staleWriteList.add(pendingWrite);
+                    } else if (resultList[index] == 0 && pendingWrite.getWriteType() == WriteType.UPDATE && !this.exists(dslContext, pendingWrite)) {
+                        failedWriteMap.put(pendingWrite, new DatabaseException("Cannot update missing %s %s".formatted(pendingWrite.getTableSchema().getEntityType().getSimpleName(), pendingWrite.getId())));
                     } else if (resultList[index] != 0 || pendingWrite.getWriteType() == WriteType.DELETE) {
                         changedWriteList.add(pendingWrite);
                     }
@@ -61,8 +66,12 @@ public final class BatchExecutor {
             return this.isTransient(exception) ? writeList : this.executeIndividually(writeList);
         }
 
+        failedWriteMap.forEach(this::reportFailure);
+
         for (final PendingWrite pendingWrite : writeList) {
-            if (staleWriteList.contains(pendingWrite)) {
+            if (pendingWrite.getFailureException() != null) {
+                continue;
+            } else if (staleWriteList.contains(pendingWrite)) {
                 this.reportStaleWrite(pendingWrite);
             } else {
                 this.complete(pendingWrite, changedWriteList.contains(pendingWrite));
@@ -93,6 +102,10 @@ public final class BatchExecutor {
 
                 if (stale[0]) {
                     this.reportStaleWrite(pendingWrite);
+                } else if (result[0] == 0 && pendingWrite.getWriteType() == WriteType.INSERT) {
+                    this.reportFailure(pendingWrite, new DatabaseException("Cannot create duplicate %s %s".formatted(pendingWrite.getTableSchema().getEntityType().getSimpleName(), pendingWrite.getId())));
+                } else if (result[0] == 0 && pendingWrite.getWriteType() == WriteType.UPDATE && !this.exists(this.postgresDriver.getDslContext(), pendingWrite)) {
+                    this.reportFailure(pendingWrite, new DatabaseException("Cannot update missing %s %s".formatted(pendingWrite.getTableSchema().getEntityType().getSimpleName(), pendingWrite.getId())));
                 } else {
                     this.complete(pendingWrite, result[0] != 0);
                 }
@@ -104,7 +117,7 @@ public final class BatchExecutor {
                     continue;
                 }
 
-                this.failureHandler.accept(new DatabaseException("Dropped write to %s for %s".formatted(pendingWrite.getTableSchema().getTableName(), pendingWrite.getId()), exception));
+                this.reportFailure(pendingWrite, new DatabaseException("Dropped write to %s for %s".formatted(pendingWrite.getTableSchema().getTableName(), pendingWrite.getId()), exception));
             }
         }
 
@@ -132,7 +145,7 @@ public final class BatchExecutor {
             insertMap.put(TableSchema.TENANT_FIELD, pendingWrite.getTenantId());
         }
 
-        if (pendingWrite.getExpectedRevision() != null && pendingWrite.getExpectedRevision() > 0L) {
+        if (pendingWrite.getWriteType() == WriteType.UPDATE && pendingWrite.getExpectedRevision() != null) {
             Condition changedCondition = DSL.falseCondition();
 
             for (final Map.Entry<Field<?>, Object> entry : pendingWrite.getValueMap().entrySet()) {
@@ -156,30 +169,23 @@ public final class BatchExecutor {
             return dslContext.update(tableSchema.getTable()).set(updateMap).where(revisionCondition);
         }
 
-        if (pendingWrite.getValueMap().isEmpty()) {
-            return dslContext.insertInto(tableSchema.getTable()).set(insertMap).onConflict(tableSchema.getKeyFields()).doNothing();
-        }
+        if (pendingWrite.getWriteType() == WriteType.UPDATE) {
+            Condition changedCondition = DSL.falseCondition();
 
-        Condition changedCondition = DSL.falseCondition();
-        for (final Field<?> field : pendingWrite.getValueMap().keySet()) {
-            if (field.equals(TableSchema.REVISION_FIELD)) {
-                continue;
+            for (final Map.Entry<Field<?>, Object> entry : pendingWrite.getValueMap().entrySet()) {
+                if (entry.getKey().equals(TableSchema.REVISION_FIELD)) {
+                    continue;
+                }
+
+                final Field<?> storedField = DSL.field(DSL.name(tableSchema.getTableName(), entry.getKey().getName()), entry.getKey().getDataType());
+                changedCondition = changedCondition.or(DSL.condition("{0} is distinct from {1}", storedField, DSL.val(entry.getValue(), entry.getKey().getDataType())));
             }
 
-            final Field<?> storedField = DSL.field(DSL.name(tableSchema.getTableName(), field.getName()), field.getDataType());
-            changedCondition = changedCondition.or(DSL.condition("{0} is distinct from {1}", storedField, DSL.excluded(field)));
+            return dslContext.update(tableSchema.getTable()).set(pendingWrite.getValueMap())
+                    .where(tableSchema.getKeyCondition(pendingWrite.getTenantId(), pendingWrite.getId()).and(changedCondition));
         }
 
-        if (pendingWrite.getExpectedRevision() != null) {
-            final Field<Long> storedRevision = DSL.field(DSL.name(tableSchema.getTableName(), TableSchema.REVISION_FIELD.getName()), TableSchema.REVISION_FIELD.getDataType());
-            changedCondition = changedCondition.and(storedRevision.eq(pendingWrite.getExpectedRevision()));
-        }
-
-        return dslContext.insertInto(tableSchema.getTable()).set(insertMap)
-                .onConflict(tableSchema.getKeyFields())
-                .doUpdate()
-                .set(pendingWrite.getValueMap())
-                .where(changedCondition);
+        return dslContext.insertInto(tableSchema.getTable()).set(insertMap).onConflict(tableSchema.getKeyFields()).doNothing();
     }
 
     private boolean isStaleWrite(final DSLContext dslContext, final PendingWrite pendingWrite) {
@@ -195,8 +201,17 @@ public final class BatchExecutor {
         return storedRevision == null || !storedRevision.equals(pendingWrite.getExpectedRevision());
     }
 
+    private boolean exists(final DSLContext dslContext, final PendingWrite pendingWrite) {
+        return dslContext.fetchExists(pendingWrite.getTableSchema().getTable(), pendingWrite.getTableSchema().getKeyCondition(pendingWrite.getTenantId(), pendingWrite.getId()));
+    }
+
     private void reportStaleWrite(final PendingWrite pendingWrite) {
-        this.failureHandler.accept(new OptimisticLockException("Rejected stale write for %s at revision %s".formatted(pendingWrite.getId(), pendingWrite.getExpectedRevision())));
+        this.reportFailure(pendingWrite, new OptimisticLockException("Rejected stale write for %s at revision %s".formatted(pendingWrite.getId(), pendingWrite.getExpectedRevision())));
+    }
+
+    private void reportFailure(final PendingWrite pendingWrite, final DatabaseException exception) {
+        pendingWrite.setFailureException(exception);
+        this.failureHandler.accept(exception);
     }
 
     private void complete(final PendingWrite pendingWrite, final boolean changed) {

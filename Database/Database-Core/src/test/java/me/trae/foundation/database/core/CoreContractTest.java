@@ -90,12 +90,12 @@ final class CoreContractTest {
         final Field<?> nameField = schema.getField(NAME);
         final AtomicInteger callbacks = new AtomicInteger();
         final UUID id = UUID.randomUUID();
-        final PendingWrite first = new PendingWrite(schema, null, id, WriteType.UPSERT, Map.of(nameField, "old"), List.of(callbacks::incrementAndGet), 1);
-        final PendingWrite second = new PendingWrite(schema, null, id, WriteType.UPSERT, Map.of(nameField, "new"), List.of(callbacks::incrementAndGet), 2);
+        final PendingWrite first = new PendingWrite(schema, null, id, WriteType.UPDATE, Map.of(nameField, "old"), List.of(callbacks::incrementAndGet), 1);
+        final PendingWrite second = new PendingWrite(schema, null, id, WriteType.UPDATE, Map.of(nameField, "new"), List.of(callbacks::incrementAndGet), 2);
 
         final PendingWrite merged = first.merge(second);
 
-        assertEquals(WriteType.UPSERT, merged.getWriteType());
+        assertEquals(WriteType.UPDATE, merged.getWriteType());
         assertEquals("new", merged.getValueMap().get(nameField));
         assertEquals(2, merged.getCommitCallbackList().size());
         merged.getCommitCallbackList().forEach(Runnable::run);

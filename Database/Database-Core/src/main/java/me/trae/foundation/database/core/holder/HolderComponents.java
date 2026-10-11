@@ -6,6 +6,7 @@ import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.api.holder.InstanceMode;
+import me.trae.foundation.database.api.holder.RedisMode;
 import me.trae.foundation.database.core.batch.BatchQueue;
 import me.trae.foundation.database.core.holder.change.ChangeTracker;
 import me.trae.foundation.database.core.holder.claim.UniqueClaimer;
@@ -16,6 +17,7 @@ import me.trae.foundation.database.storage.redis.RedisNamespace;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,27 +31,41 @@ public final class HolderComponents<E extends Entity> {
     private final HolderWriter<E> holderWriter;
 
     public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry) {
-        return create(repository, instanceMode, localExpiry, redisExpiry, LocalStorage.DEFAULT_MAXIMUM_AGE);
+        return create(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry, LocalStorage.DEFAULT_MAXIMUM_AGE);
     }
 
     public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry, final Duration localMaximumAge) {
+        return create(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry, localMaximumAge);
+    }
+
+    public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final RedisMode redisMode, final Duration localExpiry, final Duration redisExpiry, final Duration localMaximumAge) {
+        Objects.requireNonNull(redisMode, "redisMode");
+
         if (instanceMode == InstanceMode.MULTI_INSTANCE && (localMaximumAge == null || localMaximumAge.isZero() || localMaximumAge.isNegative())) {
             throw new IllegalArgumentException("MULTI_INSTANCE localMaximumAge must be greater than zero");
         }
 
+        if (instanceMode == InstanceMode.MULTI_INSTANCE && redisMode != RedisMode.ENABLED) {
+            throw new IllegalArgumentException("MULTI_INSTANCE holders require RedisMode.ENABLED");
+        }
+
+        final RedisDriver redisDriver = redisMode == RedisMode.ENABLED ? repository.getCoreDatabase().getRedisDriver().orElse(null) : null;
+
+        if (instanceMode == InstanceMode.MULTI_INSTANCE && redisDriver == null) {
+            throw new IllegalArgumentException("MULTI_INSTANCE holders require a Redis driver on their CoreDatabase");
+        }
+
         final ChangeTracker<E> changeTracker = new ChangeTracker<>(repository.getEntityType(), localExpiry);
 
-        final RedisDriver redisDriver = repository.getCoreDatabase().getRedisDriver().orElse(null);
-        final boolean localEnabled = instanceMode == InstanceMode.SINGLETON || redisDriver != null;
         final Duration maximumAge = instanceMode == InstanceMode.MULTI_INSTANCE ? localMaximumAge : null;
-        final LocalStorage<UUID, E> localStorage = localEnabled ? new LocalStorage<>(localExpiry, instanceMode == InstanceMode.MULTI_INSTANCE, maximumAge) : null;
+        final LocalStorage<UUID, E> localStorage = new LocalStorage<>(localExpiry, instanceMode == InstanceMode.MULTI_INSTANCE, maximumAge);
 
-        final RedisStorage<E> redisStorage = redisDriver == null ? null : new RedisStorage<>(redisDriver, RedisNamespace.of(repository.getTable(), repository.getTenantId().orElse(null)), repository.getEntityType(), redisExpiry, repository.getTableSchema().isOptimisticLocking());
+        final RedisStorage<E> redisStorage = redisDriver == null ? null : new RedisStorage<>(redisDriver, RedisNamespace.of(repository.getTable(), repository.getTenantId().orElse(null)), repository.getEntityType(), redisExpiry, repository.getTableSchema().isOptimisticLocking(), repository.getCoreDatabase().getEntityRevisionStore());
 
         final HolderLookups<E> holderLookups = new HolderLookups<>(repository, localStorage, redisStorage, redisDriver);
-        final HolderWriter<E> holderWriter = new HolderWriter<>(repository, localStorage, redisStorage, changeTracker, new UniqueClaimer<>(repository, holderLookups, redisDriver));
+        final HolderWriter<E> holderWriter = new HolderWriter<>(repository, localStorage, redisStorage, changeTracker, new UniqueClaimer<>(repository, holderLookups, redisDriver), redisMode == RedisMode.ENABLED);
 
-        if (instanceMode == InstanceMode.MULTI_INSTANCE && localStorage != null) {
+        if (instanceMode == InstanceMode.MULTI_INSTANCE && redisStorage != null) {
             final String channel = redisStorage.getRedisNamespace().getInvalidationChannel();
             redisDriver.subscribe(channel, message -> invalidateLocal(localStorage, changeTracker, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
         }

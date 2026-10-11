@@ -14,13 +14,14 @@ import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.registry.RepositoryRegistry;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.storage.driver.RedisDriver;
+import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-public final class CoreDatabase implements Database {
+public sealed class CoreDatabase implements Database permits GlobalDatabase, LocalDatabase {
 
     @Getter
     private final PostgresDriver postgresDriver;
@@ -29,6 +30,7 @@ public final class CoreDatabase implements Database {
     private final BatchQueue batchQueue;
 
     private final RedisDriver redisDriver;
+    private final EntityRevisionStore entityRevisionStore;
     private final Tenant tenant;
     private final RepositoryRegistry repositoryRegistry;
 
@@ -41,6 +43,7 @@ public final class CoreDatabase implements Database {
     public CoreDatabase(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Tenant tenant, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
         this.postgresDriver = postgresDriver;
         this.redisDriver = redisDriver;
+        this.entityRevisionStore = new EntityRevisionStore();
         this.tenant = tenant;
         this.batchQueue = new BatchQueue(postgresDriver, redisDriver, flushInterval, chunkSize, maximumPendingWrites);
         this.repositoryRegistry = new RepositoryRegistry(postgresDriver);
@@ -94,6 +97,10 @@ public final class CoreDatabase implements Database {
 
     public Optional<RedisDriver> getRedisDriver() {
         return Optional.ofNullable(this.redisDriver);
+    }
+
+    public EntityRevisionStore getEntityRevisionStore() {
+        return this.entityRevisionStore;
     }
 
     public Optional<Tenant> getTenant() {

@@ -96,6 +96,14 @@ public final class BatchQueue {
             for (final PendingWrite pendingWrite : chunkList) {
                 if (retryList.contains(pendingWrite)) {
                     this.pendingWriteStore.requeue(pendingWrite);
+                } else if (pendingWrite.getFailureException() != null) {
+                    final List<PendingWrite> failedWriteList = this.pendingWriteStore.fail(pendingWrite, pendingWrite.getFailureException());
+
+                    for (final PendingWrite failedWrite : failedWriteList) {
+                        for (final Runnable callback : failedWrite.getFailureCallbackList()) {
+                            this.runSafely(callback);
+                        }
+                    }
                 } else {
                     this.pendingWriteStore.complete(pendingWrite);
                 }

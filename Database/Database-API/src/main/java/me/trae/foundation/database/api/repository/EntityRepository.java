@@ -44,5 +44,9 @@ public interface EntityRepository<E extends Entity> {
 
     void save(final E entity);
 
+    default void update(final E entity) {
+        throw new UnsupportedOperationException("This repository does not support entity updates");
+    }
+
     void delete(final E entity);
 }

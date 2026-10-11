@@ -1,24 +1,15 @@
 package me.trae.foundation.database.core;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.experimental.UtilityClass;
-import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.property.EntityProperty;
-import me.trae.foundation.database.api.tenant.TenantScope;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
-import me.trae.foundation.database.core.holder.AbstractEntityHolder;
-import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.driver.RedisSettings;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.Duration;
-import java.util.Optional;
 import java.util.UUID;
 
 @UtilityClass
@@ -74,7 +65,7 @@ public class MultiJvmDatabaseWorker {
                             }
 
                             entity.setValue(parts[1]);
-                            holder.save(entity);
+                            holder.update(entity);
                             coreDatabase.getBatchQueue().flush();
                             System.out.println("WRITE|%s".formatted(parts[1]));
                             System.out.flush();
@@ -85,6 +76,31 @@ public class MultiJvmDatabaseWorker {
                     });
                     System.out.println("PREPARED|%s".formatted(parts[1]));
                     System.out.flush();
+                    continue;
+                }
+
+                if (command.startsWith("CREATE|")) {
+                    final String[] parts = command.split("\\|", 3);
+                    final WorkerEntity createdEntity = new WorkerEntity(id);
+                    createdEntity.setValue(parts[1]);
+                    holder.save(createdEntity);
+                    System.out.println("PREPARED|%s".formatted(parts[1]));
+                    System.out.flush();
+
+                    Thread.ofVirtual().start(() -> {
+                        try {
+                            while (redisDriver.getCommands().get(parts[2]) == null) {
+                                Thread.sleep(1L);
+                            }
+
+                            coreDatabase.getBatchQueue().flush();
+                            System.out.println("CREATED|%s".formatted(repository.findById(id).map(WorkerEntity::getValue).orElse("missing")));
+                            System.out.flush();
+                        } catch (final InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(exception);
+                        }
+                    });
                     continue;
                 }
 
@@ -109,50 +125,4 @@ public class MultiJvmDatabaseWorker {
         }
     }
 
-    @RequiredArgsConstructor
-    @Getter
-    @Setter
-    public static final class WorkerEntity implements Entity {
-
-        private final UUID id;
-        private String value;
-    }
-
-    public static final class WorkerRepository extends AbstractEntityRepository<WorkerEntity> {
-
-        private final RedisDriver redisDriver;
-        private final String countKey;
-
-        public WorkerRepository(final CoreDatabase coreDatabase, final String table) {
-            this(coreDatabase, table, null, null);
-        }
-
-        public WorkerRepository(final CoreDatabase coreDatabase, final String table, final RedisDriver redisDriver, final String countKey) {
-            super(coreDatabase, WorkerEntity.class, table, TenantScope.NONE, MultiJvmDatabaseWorker.class);
-            this.redisDriver = redisDriver;
-            this.countKey = countKey;
-        }
-
-        @Override
-        public Optional<WorkerEntity> findById(final UUID id) {
-            if (this.countKey != null) {
-                this.redisDriver.getCommands().incr(this.countKey);
-                try {
-                    Thread.sleep(100L);
-                } catch (final InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(exception);
-                }
-            }
-
-            return super.findById(id);
-        }
-    }
-
-    public static final class WorkerHolder extends AbstractEntityHolder<WorkerEntity> {
-
-        public WorkerHolder(final WorkerRepository repository) {
-            super(repository, InstanceMode.MULTI_INSTANCE, Duration.ofMinutes(5), Duration.ofMinutes(5));
-        }
-    }
 }

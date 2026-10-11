@@ -5,8 +5,10 @@ import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.holder.EntityHolder;
 import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.holder.LookupTier;
+import me.trae.foundation.database.api.holder.RedisMode;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
+import me.trae.foundation.database.storage.local.LocalStorage;
 
 import java.time.Duration;
 import java.util.List;
@@ -26,9 +28,13 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
     private final HolderCache<E> holderCache;
 
     protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry) {
+        this(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry);
+    }
+
+    protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final RedisMode redisMode, final Duration localExpiry, final Duration redisExpiry) {
         this.repository = repository;
         this.instanceMode = instanceMode;
-        this.holderComponents = HolderComponents.create(repository, instanceMode, localExpiry, redisExpiry);
+        this.holderComponents = HolderComponents.create(repository, instanceMode, redisMode, localExpiry, redisExpiry, LocalStorage.DEFAULT_MAXIMUM_AGE);
         this.holderCache = new HolderCache<>(instanceMode, this.holderComponents, repository.getCoreDatabase().getBatchQueue());
 
         repository.getCoreDatabase().getBatchQueue().addPreFlushTask(this.holderCache::flushAndEvict);
@@ -36,6 +42,10 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
 
     protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode) {
         this(repository, instanceMode, Duration.ofMinutes(30), Duration.ofHours(1));
+    }
+
+    protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final RedisMode redisMode) {
+        this(repository, instanceMode, redisMode, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 
     @Override
@@ -74,6 +84,11 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
     @Override
     public void save(final E entity) {
         this.holderComponents.getHolderWriter().save(entity);
+    }
+
+    @Override
+    public void update(final E entity) {
+        this.holderComponents.getHolderWriter().update(entity);
     }
 
     @Override

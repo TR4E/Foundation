@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.api.exception.OptimisticLockException;
@@ -13,6 +12,7 @@ import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.exception.UniqueValueTakenException;
 import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.holder.LookupTier;
+import me.trae.foundation.database.api.holder.RedisMode;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.property.EntityPropertyRegistry;
 import me.trae.foundation.database.api.query.Direction;
@@ -77,6 +77,7 @@ final class DatabaseTest {
 
     private final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", "").substring(0, 12));
     private final List<CoreDatabase> databaseList = new ArrayList<>();
+    private final List<PostgresDriver> additionalPostgresDriverList = new ArrayList<>();
 
     private PostgresDriver postgresDriver;
     private RedisDriver redisDriver;
@@ -88,9 +89,9 @@ final class DatabaseTest {
         final UUID first = UUID.randomUUID();
         final UUID second = UUID.randomUUID();
 
-        pendingWriteStore.queueUpsert(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "old", tableSchema.getField(COINS), 1L), List.of());
-        pendingWriteStore.queueUpsert(tableSchema, null, second, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "other"), List.of());
-        pendingWriteStore.queueUpsert(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "new"), List.of());
+        pendingWriteStore.queueUpdate(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "old", tableSchema.getField(COINS), 1L), List.of());
+        pendingWriteStore.queueUpdate(tableSchema, null, second, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "other"), List.of());
+        pendingWriteStore.queueUpdate(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "new"), List.of());
         pendingWriteStore.queueDelete(tableSchema, null, second);
 
         final List<PendingWrite> writeList = pendingWriteStore.drain();
@@ -99,7 +100,7 @@ final class DatabaseTest {
         assertEquals(WriteType.DELETE, writeList.getLast().getWriteType());
         assertTrue(pendingWriteStore.isEmpty());
 
-        pendingWriteStore.queueUpsert(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "newest"), List.of());
+        pendingWriteStore.queueUpdate(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "newest"), List.of());
         pendingWriteStore.requeue(writeList.getFirst());
         assertEquals("newest", pendingWriteStore.drain().getFirst().getValueMap().get(tableSchema.getField(NAME)));
     }
@@ -110,14 +111,14 @@ final class DatabaseTest {
         final TableSchema<Account> tableSchema = new TableSchema<>(Account.class, "accounts", TenantScope.NONE, EntityPropertyRegistry.getProperties(Account.class));
         final UUID first = UUID.randomUUID();
 
-        pendingWriteStore.queueUpsert(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "first"), List.of());
-        pendingWriteStore.queueUpsert(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "updated"), List.of());
+        pendingWriteStore.queueUpdate(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "first"), List.of());
+        pendingWriteStore.queueUpdate(tableSchema, null, first, Map.<Field<?>, Object>of(tableSchema.getField(NAME), "updated"), List.of());
 
         final PendingWrite pendingWrite = pendingWriteStore.drain().getFirst();
-        assertThrows(DatabaseException.class, () -> pendingWriteStore.queueUpsert(tableSchema, null, UUID.randomUUID(), Map.<Field<?>, Object>of(tableSchema.getField(NAME), "overflow"), List.of()));
+        assertThrows(DatabaseException.class, () -> pendingWriteStore.queueUpdate(tableSchema, null, UUID.randomUUID(), Map.<Field<?>, Object>of(tableSchema.getField(NAME), "overflow"), List.of()));
 
         pendingWriteStore.complete(pendingWrite);
-        pendingWriteStore.queueUpsert(tableSchema, null, UUID.randomUUID(), Map.<Field<?>, Object>of(tableSchema.getField(NAME), "accepted"), List.of());
+        pendingWriteStore.queueUpdate(tableSchema, null, UUID.randomUUID(), Map.<Field<?>, Object>of(tableSchema.getField(NAME), "accepted"), List.of());
         assertEquals(1, pendingWriteStore.size());
     }
 
@@ -131,9 +132,9 @@ final class DatabaseTest {
         final Account account = this.createAccount("initial");
         repository.save(account, List.of(() -> callbackOrder.add(1)));
         account.setName("updated");
-        repository.save(account, List.of(() -> callbackOrder.add(2)));
+        repository.update(account, repository.getProperties(), List.of(() -> callbackOrder.add(2)));
         account.setName("latest");
-        repository.save(account, List.of(() -> callbackOrder.add(3)));
+        repository.update(account, repository.getProperties(), List.of(() -> callbackOrder.add(3)));
 
         database.getBatchQueue().flush();
 
@@ -179,29 +180,29 @@ final class DatabaseTest {
 
         final Account stale = repository.findById(initial.getId()).orElseThrow();
         final Account current = repository.findById(initial.getId()).orElseThrow();
-        assertEquals(1L, current.getRevision());
+        assertEquals(0L, database.getEntityRevisionStore().getState(current).getRevision());
 
         current.setName("current");
-        repository.save(current);
+        repository.update(current);
         database.getBatchQueue().flush();
-        assertEquals(2L, current.getRevision());
-        assertEquals(2L, repository.findById(initial.getId()).orElseThrow().getRevision());
-        assertEquals(1L, stale.getRevision());
+        assertEquals(1L, database.getEntityRevisionStore().getState(current).getRevision());
+        assertEquals(1L, database.getEntityRevisionStore().getState(repository.findById(initial.getId()).orElseThrow()).getRevision());
+        assertEquals(0L, database.getEntityRevisionStore().getState(stale).getRevision());
 
-        repository.save(current);
+        repository.update(current);
         database.getBatchQueue().flush();
 
-        assertEquals(2L, current.getRevision());
-        assertEquals(2L, repository.findById(initial.getId()).orElseThrow().getRevision());
+        assertEquals(1L, database.getEntityRevisionStore().getState(current).getRevision());
+        assertEquals(1L, database.getEntityRevisionStore().getState(repository.findById(initial.getId()).orElseThrow()).getRevision());
 
         stale.setName("stale");
-        repository.save(stale);
+        repository.update(stale);
         database.getBatchQueue().flush();
 
         final Account stored = repository.findById(initial.getId()).orElseThrow();
         assertEquals("current", stored.getName());
-        assertEquals(2L, stored.getRevision());
-        assertEquals(2L, current.getRevision());
+        assertEquals(1L, database.getEntityRevisionStore().getState(stored).getRevision());
+        assertEquals(1L, database.getEntityRevisionStore().getState(current).getRevision());
         assertTrue(failureList.stream().anyMatch(OptimisticLockException.class::isInstance));
     }
 
@@ -209,8 +210,6 @@ final class DatabaseTest {
     void optimisticLockingDoesNotRecreateAnEntityDeletedAfterItWasRead() {
         final CoreDatabase database = this.openDatabase(null);
         final AccountRepository repository = new AccountRepository(database, "deleted_revision_accounts_%s".formatted(UUID.randomUUID().toString().replace("-", "")), TenantScope.NONE, true);
-        final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
-        database.setFailureHandler(failureList::add);
         database.start();
 
         final Account initial = this.createAccount("initial");
@@ -222,11 +221,9 @@ final class DatabaseTest {
         database.getBatchQueue().flush();
 
         stale.setName("stale");
-        repository.save(stale);
-        database.getBatchQueue().flush();
+        assertThrows(OptimisticLockException.class, () -> repository.update(stale));
 
         assertTrue(repository.findById(initial.getId()).isEmpty());
-        assertTrue(failureList.stream().anyMatch(OptimisticLockException.class::isInstance));
     }
 
     @Test
@@ -301,6 +298,163 @@ final class DatabaseTest {
     }
 
     @Test
+    void saveCreatesAndNeverOverwritesAnExistingUuid() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
+        database.setFailureHandler(failureList::add);
+        database.start();
+
+        final Account original = this.createAccount("original");
+        repository.save(original);
+        database.getBatchQueue().flush();
+
+        final Account duplicate = this.createAccount("replacement");
+        final Account duplicateId = new Account(original.getId());
+        duplicateId.setName(duplicate.getName());
+        duplicateId.setCoins(duplicate.getCoins());
+        duplicateId.setRank(duplicate.getRank());
+        duplicateId.setTags(duplicate.getTags());
+        duplicateId.setCreatedAt(duplicate.getCreatedAt());
+        repository.save(duplicateId);
+        database.getBatchQueue().flush();
+
+        assertEquals("original", repository.findById(original.getId()).orElseThrow().getName());
+        assertTrue(failureList.stream().anyMatch(exception -> exception.getMessage().contains("Cannot create duplicate")));
+    }
+
+    @Test
+    void rejectedCreateIsRemovedFromTheLocalCache() {
+        final CoreDatabase firstDatabase = this.openDatabase(null);
+        final AccountRepository firstRepository = new AccountRepository(firstDatabase, this.table, TenantScope.NONE);
+        final AccountHolder firstHolder = new AccountHolder(firstRepository);
+        firstDatabase.start();
+
+        final Account original = this.createAccount("original");
+        firstHolder.save(original);
+        firstDatabase.getBatchQueue().flush();
+
+        final CoreDatabase secondDatabase = this.openDatabase(null);
+        final AccountRepository secondRepository = new AccountRepository(secondDatabase, this.table, TenantScope.NONE);
+        final AccountHolder secondHolder = new AccountHolder(secondRepository);
+        secondDatabase.start();
+
+        final Account duplicate = new Account(original.getId());
+        duplicate.setName("replacement");
+        duplicate.setCoins(200L);
+        duplicate.setRank(Rank.MEMBER);
+        duplicate.setTags(List.of());
+        duplicate.setCreatedAt(Instant.now().truncatedTo(ChronoUnit.MILLIS));
+        secondHolder.save(duplicate);
+        assertTrue(secondHolder.getById(duplicate.getId(), EnumSet.of(LookupTier.LOCAL)).isPresent());
+
+        secondDatabase.getBatchQueue().flush();
+
+        assertTrue(secondHolder.getById(duplicate.getId(), EnumSet.of(LookupTier.LOCAL)).isEmpty());
+        assertEquals("original", firstRepository.findById(original.getId()).orElseThrow().getName());
+    }
+
+    @Test
+    void holderCoalescesCreateAndUpdateBeforeTheInsertFlushes() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        database.start();
+
+        final Account account = this.createAccount("initial");
+        holder.save(account);
+        account.setName("updated");
+        account.setCoins(250L);
+        holder.update(account);
+
+        final PendingWrite pendingWrite = database.getBatchQueue().getPendingWriteStore().drain().getFirst();
+        assertEquals(WriteType.INSERT, pendingWrite.getWriteType());
+        database.getBatchQueue().getPendingWriteStore().requeue(pendingWrite);
+        database.getBatchQueue().flush();
+
+        final Account stored = repository.findById(account.getId()).orElseThrow();
+        assertEquals("updated", stored.getName());
+        assertEquals(250L, stored.getCoins());
+    }
+
+    @Test
+    void updateOnlyWritesChangedPersistentPropertiesAndRejectsMissingRows() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        database.start();
+
+        final Account account = this.createAccount("initial");
+        holder.save(account);
+        database.getBatchQueue().flush();
+
+        holder.update(account);
+        account.setSession("local-only");
+        holder.update(account);
+        assertEquals(0, database.getBatchQueue().getPendingWriteStore().size());
+
+        account.setRank(Rank.MEMBER);
+        holder.update(account);
+        final PendingWrite pendingWrite = database.getBatchQueue().getPendingWriteStore().drain().getFirst();
+        assertEquals(1, pendingWrite.getValueMap().size());
+        assertEquals("MEMBER", pendingWrite.getValueMap().get(repository.getTableSchema().getField(RANK)));
+        database.getBatchQueue().getPendingWriteStore().requeue(pendingWrite);
+        database.getBatchQueue().flush();
+
+        final Account detached = repository.findById(account.getId()).orElseThrow();
+        repository.update(detached);
+        assertEquals(0, database.getBatchQueue().getPendingWriteStore().size());
+
+        detached.setName("repository-update");
+        repository.update(detached);
+        assertEquals(1, database.getBatchQueue().getPendingWriteStore().size());
+        database.getBatchQueue().flush();
+        assertEquals("repository-update", repository.findById(account.getId()).orElseThrow().getName());
+
+        final Account missing = this.createAccount("missing");
+        assertThrows(DatabaseException.class, () -> repository.update(missing));
+    }
+
+    @Test
+    void holderCanUpdateAnEntityAfterItsTrackingSnapshotWasEvicted() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        database.start();
+
+        final Account account = this.createAccount("initial");
+        holder.save(account);
+        database.getBatchQueue().flush();
+        holder.evict(account);
+
+        account.setName("after-eviction");
+        holder.update(account);
+        database.getBatchQueue().flush();
+
+        assertEquals("after-eviction", repository.findById(account.getId()).orElseThrow().getName());
+    }
+
+    @Test
+    void multiInstanceHolderCanUpdateAnEntityLoadedFromRedis() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder writer = new AccountHolder(repository);
+        final AccountHolder reader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
+        database.start();
+
+        final Account account = this.createAccount("initial");
+        writer.save(account);
+        database.getBatchQueue().flush();
+
+        final Account cached = reader.getById(account.getId()).orElseThrow();
+        cached.setRank(Rank.MEMBER);
+        reader.update(cached);
+        database.getBatchQueue().flush();
+
+        assertEquals(Rank.MEMBER, repository.findById(account.getId()).orElseThrow().getRank());
+    }
+
+    @Test
     void unchangedEntityDoesNotInvalidateRedisCache() {
         final CoreDatabase database = this.openDatabase(null);
         final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
@@ -316,16 +470,146 @@ final class DatabaseTest {
         final String cacheKey = RedisNamespace.of(this.table).getKey(account.getId());
         assertTrue(this.redisDriver.getCommands().exists(cacheKey) > 0L);
 
-        holder.save(account);
+        account.setRank(Rank.MEMBER);
+        account.setRank(Rank.ADMIN);
+        holder.update(account);
         database.getBatchQueue().flush();
 
         assertTrue(this.redisDriver.getCommands().exists(cacheKey) > 0L);
+        assertEquals(0, database.getBatchQueue().getPendingWriteStore().size());
+        assertEquals(0, this.getOutboxCount(account.getId()));
 
         account.setSession("transient");
-        holder.save(account);
+        holder.update(account);
         database.getBatchQueue().flush();
 
         assertTrue(this.redisDriver.getCommands().exists(cacheKey) > 0L);
+    }
+
+    @Test
+    void singletonHolderUsesPostgresWithoutRedisDriver() {
+        final CoreDatabase database = this.openDatabaseWithoutRedis();
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository);
+        database.start();
+
+        final Account account = this.createAccount("postgres-only");
+        holder.save(account);
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findById(account.getId()).isPresent());
+
+        final Account loaded = holder.getById(account.getId()).orElseThrow();
+        loaded.setRank(Rank.MEMBER);
+        holder.update(loaded);
+        database.getBatchQueue().flush();
+
+        assertEquals(Rank.MEMBER, repository.findById(account.getId()).orElseThrow().getRank());
+    }
+
+    @Test
+    void singletonHolderCanDisableRedisOnASharedCoreDatabase() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder holder = new AccountHolder(repository, InstanceMode.SINGLE_INSTANCE, RedisMode.DISABLED);
+        database.start();
+
+        final Account account = this.createAccount("holder-redis-disabled");
+        holder.save(account);
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findById(account.getId()).isPresent());
+        assertTrue(this.redisDriver.getCommands().keys("%s*".formatted(this.table)).isEmpty());
+        assertEquals(0, this.getOutboxCount(account.getId()));
+
+        final Account loaded = holder.getById(account.getId()).orElseThrow();
+        loaded.setRank(Rank.MEMBER);
+        holder.update(loaded);
+        database.getBatchQueue().flush();
+
+        assertEquals(Rank.MEMBER, repository.findById(account.getId()).orElseThrow().getRank());
+        assertTrue(this.redisDriver.getCommands().keys("%s*".formatted(this.table)).isEmpty());
+        assertEquals(0, this.getOutboxCount(account.getId()));
+    }
+
+    @Test
+    void directRepositoryWritesDoNotAssumeHolderRedisPolicy() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        database.start();
+
+        final Account account = this.createAccount("repository-redis-neutral");
+        repository.save(account);
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findById(account.getId()).isPresent());
+        assertTrue(this.redisDriver.getCommands().keys("%s*".formatted(this.table)).isEmpty());
+        assertEquals(0, this.getOutboxCount(account.getId()));
+
+        final Account loaded = repository.findById(account.getId()).orElseThrow();
+        loaded.setRank(Rank.MEMBER);
+        repository.update(loaded);
+        database.getBatchQueue().flush();
+
+        assertEquals(Rank.MEMBER, repository.findById(account.getId()).orElseThrow().getRank());
+        assertEquals(0, this.getOutboxCount(account.getId()));
+
+        repository.delete(loaded);
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findById(account.getId()).isEmpty());
+        assertEquals(0, this.getOutboxCount(account.getId()));
+    }
+
+    @Test
+    void multiInstanceHolderRequiresRedisDriver() {
+        final CoreDatabase database = this.openDatabaseWithoutRedis();
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        assertThrows(IllegalArgumentException.class, () -> new AccountHolder(repository, InstanceMode.MULTI_INSTANCE));
+    }
+
+    @Test
+    void multiInstanceHolderCannotDisableRedis() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        assertThrows(IllegalArgumentException.class, () -> new AccountHolder(repository, InstanceMode.MULTI_INSTANCE, RedisMode.DISABLED));
+    }
+
+    @Test
+    void repositoriesStayBoundToTheirCoreDatabaseAndBatchQueue() {
+        this.connect();
+        final String globalTable = "%s_global".formatted(this.table);
+        final String localTable = "%s_local".formatted(this.table);
+        final PostgresDriver localPostgresDriver = new PostgresDriver(this.postgresDriver.getPostgresSettings());
+        localPostgresDriver.connect();
+        this.additionalPostgresDriverList.add(localPostgresDriver);
+
+        try {
+            final GlobalDatabase globalDatabase = new GlobalDatabase(this.postgresDriver, this.redisDriver, null);
+            final LocalDatabase localDatabase = new LocalDatabase(localPostgresDriver, new Tenant("LIFESTEAL", 1));
+            this.databaseList.add(localDatabase);
+
+            final AccountRepository globalRepository = new AccountRepository(globalDatabase, globalTable, TenantScope.NONE);
+            final AccountRepository localRepository = new AccountRepository(localDatabase, localTable, TenantScope.NONE);
+            globalDatabase.start();
+            localDatabase.start();
+
+            final Account globalAccount = this.createAccount("global");
+            final Account localAccount = this.createAccount("local");
+            globalRepository.save(globalAccount);
+            localRepository.save(localAccount);
+            globalDatabase.getBatchQueue().flush();
+            localDatabase.getBatchQueue().flush();
+
+            assertTrue(globalRepository.findById(globalAccount.getId()).isPresent());
+            assertTrue(localRepository.findById(localAccount.getId()).isPresent());
+            assertEquals(0, globalDatabase.getBatchQueue().getPendingWriteStore().size());
+            assertEquals(0, localDatabase.getBatchQueue().getPendingWriteStore().size());
+            assertFalse(globalDatabase.getBatchQueue() == localDatabase.getBatchQueue());
+        } finally {
+            this.postgresDriver.getDslContext().dropTableIfExists(DSL.name(globalTable)).cascade().execute();
+            this.postgresDriver.getDslContext().dropTableIfExists(DSL.name(localTable)).cascade().execute();
+        }
     }
 
     @Test
@@ -371,6 +655,24 @@ final class DatabaseTest {
         assertFalse(failureList.isEmpty());
 
         database.getBatchQueue().synchronizeOutbox();
+    }
+
+    @Test
+    void emptyOutboxPollDoesNotContactRedis() {
+        final CoreDatabase database = this.openDatabase(null);
+        final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
+        database.setFailureHandler(failureList::add);
+        database.start();
+
+        this.redisDriver.disconnect();
+
+        try {
+            database.getBatchQueue().flush();
+
+            assertTrue(failureList.isEmpty());
+        } finally {
+            this.redisDriver.connect();
+        }
     }
 
     @Test
@@ -640,7 +942,7 @@ final class DatabaseTest {
     void expiredCacheEntriesStillGetTheirChangesWritten() {
         final CoreDatabase database = this.openDatabase(null);
         final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
-        final AccountHolder holder = new AccountHolder(repository, InstanceMode.SINGLETON, Duration.ZERO);
+        final AccountHolder holder = new AccountHolder(repository, InstanceMode.SINGLE_INSTANCE, Duration.ZERO);
         database.start();
 
         final Account account = this.createAccount("trae");
@@ -672,6 +974,7 @@ final class DatabaseTest {
     @AfterEach
     void cleanUp() {
         this.databaseList.forEach(CoreDatabase::stop);
+        this.additionalPostgresDriverList.forEach(PostgresDriver::disconnect);
 
         if (this.postgresDriver != null && this.postgresDriver.isConnected()) {
             this.postgresDriver.getDslContext().dropTableIfExists(DSL.name(this.table)).cascade().execute();
@@ -710,6 +1013,14 @@ final class DatabaseTest {
         return coreDatabase;
     }
 
+    private CoreDatabase openDatabaseWithoutRedis() {
+        this.connect();
+
+        final CoreDatabase coreDatabase = new CoreDatabase(this.postgresDriver, null, null, Duration.ofHours(1), 500);
+        this.databaseList.add(coreDatabase);
+        return coreDatabase;
+    }
+
     private Account createAccount(final String name) {
         final Account account = new Account(UUID.randomUUID());
         account.setName(name);
@@ -735,7 +1046,7 @@ final class DatabaseTest {
     @RequiredArgsConstructor
     @Getter
     @Setter
-    private static final class Account implements RevisionedEntity {
+    private static final class Account implements Entity {
 
         private final UUID id;
         private String name;
@@ -744,7 +1055,6 @@ final class DatabaseTest {
         private List<String> tags;
         private Instant createdAt;
         private String session;
-        private long revision;
     }
 
     @RequiredArgsConstructor
@@ -778,12 +1088,16 @@ final class DatabaseTest {
             super(repository, instanceMode, localExpiry, Duration.ofHours(1));
         }
 
+        private AccountHolder(final AccountRepository repository, final InstanceMode instanceMode, final RedisMode redisMode) {
+            super(repository, instanceMode, redisMode);
+        }
+
         private AccountHolder(final AccountRepository repository, final InstanceMode instanceMode) {
             this(repository, instanceMode, Duration.ofMinutes(30));
         }
 
         private AccountHolder(final AccountRepository repository) {
-            this(repository, InstanceMode.SINGLETON);
+            this(repository, InstanceMode.SINGLE_INSTANCE);
         }
     }
 }

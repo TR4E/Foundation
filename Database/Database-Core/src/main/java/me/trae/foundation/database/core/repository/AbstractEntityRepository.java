@@ -3,6 +3,8 @@ package me.trae.foundation.database.core.repository;
 import lombok.AccessLevel;
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
+import me.trae.foundation.database.api.exception.DatabaseException;
+import me.trae.foundation.database.api.exception.OptimisticLockException;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.property.EntityPropertyRegistry;
@@ -13,6 +15,7 @@ import me.trae.foundation.database.api.repository.index.IndexType;
 import me.trae.foundation.database.api.tenant.TenantScope;
 import me.trae.foundation.database.core.CoreDatabase;
 import me.trae.foundation.database.core.schema.TableSchema;
+import me.trae.foundation.database.storage.codec.EntityCodec;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
 
@@ -20,6 +23,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,6 +41,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
 
     private final RepositoryReader<E> repositoryReader;
     private final RepositoryWriter<E> repositoryWriter;
+    private final EntityCodec<E> entityCodec;
 
     protected AbstractEntityRepository(final CoreDatabase coreDatabase, final Class<E> entityType, final String table, final TenantScope tenantScope, final Class<?>... propertyHolders) {
         this(coreDatabase, entityType, table, tenantScope, false, propertyHolders);
@@ -45,10 +50,11 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     protected AbstractEntityRepository(final CoreDatabase coreDatabase, final Class<E> entityType, final String table, final TenantScope tenantScope, final boolean optimisticLocking, final Class<?>... propertyHolders) {
         PropertyHolderLoader.load(propertyHolders);
 
-        this.coreDatabase = coreDatabase;
+        this.coreDatabase = Objects.requireNonNull(coreDatabase, "coreDatabase");
         this.entityType = entityType;
         this.tenantScope = tenantScope;
         this.properties = EntityPropertyRegistry.getProperties(entityType);
+        this.entityCodec = new EntityCodec<>(entityType);
 
         if (this.properties.isEmpty()) {
             throw new SchemaException("No properties registered for %s, pass its property holder to the repository".formatted(entityType.getName()));
@@ -56,12 +62,12 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
 
         this.tableSchema = new TableSchema<>(entityType, table, tenantScope, this.properties, optimisticLocking);
         this.tenantId = coreDatabase.resolveTenantId(tenantScope).orElse(null);
-        this.repositoryReader = new RepositoryReader<>(coreDatabase.getPostgresDriver(), this.tableSchema, this.tenantId);
+        this.repositoryReader = new RepositoryReader<>(coreDatabase.getPostgresDriver(), this.tableSchema, this.tenantId, coreDatabase.getEntityRevisionStore());
 
         final RedisDriver redisDriver = coreDatabase.getRedisDriver().orElse(null);
         final RedisNamespace redisNamespace = redisDriver == null ? null : RedisNamespace.of(table, this.tenantId);
 
-        this.repositoryWriter = new RepositoryWriter<>(coreDatabase.getBatchQueue().getPendingWriteStore(), this.tableSchema, this.tenantId, redisNamespace, redisDriver == null ? null : redisDriver.getInstanceId());
+        this.repositoryWriter = new RepositoryWriter<>(coreDatabase.getBatchQueue().getPendingWriteStore(), this.tableSchema, this.tenantId, redisNamespace, redisDriver == null ? null : redisDriver.getInstanceId(), coreDatabase.getEntityRevisionStore());
 
         coreDatabase.register(this);
     }
@@ -118,7 +124,15 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     }
 
     public void save(final E entity, final List<Runnable> commitCallbackList) {
-        this.repositoryWriter.update(entity, this.tableSchema.getPersistentProperties(), commitCallbackList);
+        this.repositoryWriter.insert(entity, commitCallbackList, List.of(), false);
+    }
+
+    public void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
+        this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, false);
+    }
+
+    public void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+        this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, redisEnabled);
     }
 
     @Override
@@ -127,15 +141,54 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     }
 
     public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList) {
-        this.repositoryWriter.update(entity, entityProperties, commitCallbackList);
+        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, List.of(), false);
+    }
+
+    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
+        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, false);
+    }
+
+    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, redisEnabled);
+    }
+
+    @Override
+    public void update(final E entity) {
+        final E baseline = this.repositoryReader.findById(entity.getId())
+                .orElseThrow(() -> this.tableSchema.isOptimisticLocking() && this.coreDatabase.getEntityRevisionStore().hasState(entity)
+                        ? new OptimisticLockException("Cannot update deleted %s %s".formatted(this.entityType.getSimpleName(), entity.getId()))
+                        : new DatabaseException("Cannot update missing %s %s".formatted(this.entityType.getSimpleName(), entity.getId())));
+        if (!this.coreDatabase.getEntityRevisionStore().hasState(entity)) {
+            this.inheritRevision(entity, baseline);
+        }
+        final Map<String, String> baselineMap = this.entityCodec.encode(baseline);
+        final Map<String, String> entityMap = this.entityCodec.encode(entity);
+        final List<EntityProperty<?, ?>> changedList = this.properties.stream()
+                .filter(EntityProperty::isPersistent)
+                .filter(property -> !Objects.equals(baselineMap.get(property.getName()), entityMap.get(property.getName())))
+                .toList();
+
+        if (!changedList.isEmpty()) {
+            this.repositoryWriter.update(entity, changedList, List.of(), List.of(), false);
+        }
     }
 
     @Override
     public void delete(final E entity) {
-        this.repositoryWriter.delete(entity);
+        this.repositoryWriter.delete(entity, false);
     }
 
     public void delete(final E entity, final List<Runnable> commitCallbackList) {
-        this.repositoryWriter.delete(entity, commitCallbackList);
+        this.repositoryWriter.delete(entity, commitCallbackList, false);
+    }
+
+    public void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
+        this.repositoryWriter.delete(entity, commitCallbackList, redisEnabled);
+    }
+
+    public void inheritRevision(final E entity, final E baseline) {
+        if (this.tableSchema.isOptimisticLocking()) {
+            this.coreDatabase.getEntityRevisionStore().setRevision(entity, this.coreDatabase.getEntityRevisionStore().getState(baseline).getRevision());
+        }
     }
 }

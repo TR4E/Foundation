@@ -21,7 +21,7 @@ public final class HolderCache<E extends Entity> {
     public List<E> getPinned() {
         final LocalStorage<UUID, E> localStorage = this.holderComponents.getLocalStorage();
 
-        return this.instanceMode == InstanceMode.SINGLETON && localStorage != null ? localStorage.getPinnedValues() : Collections.emptyList();
+        return this.instanceMode == InstanceMode.SINGLE_INSTANCE && localStorage != null ? localStorage.getPinnedValues() : Collections.emptyList();
     }
 
     public void pin(final E entity) {
@@ -86,7 +86,7 @@ public final class HolderCache<E extends Entity> {
     private LocalStorage<UUID, E> requireLocal(final String action) {
         final LocalStorage<UUID, E> localStorage = this.holderComponents.getLocalStorage();
 
-        if (this.instanceMode != InstanceMode.SINGLETON || localStorage == null) {
+        if (this.instanceMode != InstanceMode.SINGLE_INSTANCE || localStorage == null) {
             throw new UnsupportedOperationException("Cannot %s on a %s holder".formatted(action, this.instanceMode));
         }
 

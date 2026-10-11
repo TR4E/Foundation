@@ -86,6 +86,12 @@ public final class CacheInvalidationOutbox {
         }
 
         this.lastPollNanos = currentTime;
+        final DSLContext dslContext = this.postgresDriver.getDslContext();
+
+        if (!dslContext.fetchExists(TABLE)) {
+            return;
+        }
+
         final String owner = UUID.randomUUID().toString();
 
         if (!this.redisDriver.tryAcquireLock(DISPATCH_LOCK, owner, Duration.ofMinutes(2))) {
@@ -93,8 +99,6 @@ public final class CacheInvalidationOutbox {
         }
 
         try {
-            final DSLContext dslContext = this.postgresDriver.getDslContext();
-
             final org.jooq.Result<? extends Record> recordList = dslContext.select(ID, CACHE_KEY, MISSING_KEY, LOCK_KEY, CHANNEL, ENTITY_ID, INSTANCE_ID)
                     .from(TABLE)
                     .orderBy(CREATED_AT)

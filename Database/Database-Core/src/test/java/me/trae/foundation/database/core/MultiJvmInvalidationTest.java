@@ -60,11 +60,11 @@ final class MultiJvmInvalidationTest {
         }
 
         try {
-            final MultiJvmDatabaseWorker.WorkerRepository repository = new MultiJvmDatabaseWorker.WorkerRepository(coreDatabase, table);
-            final MultiJvmDatabaseWorker.WorkerHolder holder = new MultiJvmDatabaseWorker.WorkerHolder(repository);
+            final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+            final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 
-            final MultiJvmDatabaseWorker.WorkerEntity entity = new MultiJvmDatabaseWorker.WorkerEntity(id);
+            final WorkerEntity entity = new WorkerEntity(id);
             entity.setValue("before");
             holder.save(entity);
             coreDatabase.getBatchQueue().flush();
@@ -79,7 +79,7 @@ final class MultiJvmInvalidationTest {
             assertEquals("ACK|disconnected", this.readMessage(processList.getFirst(), "ACK|"));
 
             entity.setValue("after");
-            holder.save(entity);
+            holder.update(entity);
             coreDatabase.getBatchQueue().flush();
 
             this.send(processList.getFirst(), "RECONNECT");
@@ -92,6 +92,78 @@ final class MultiJvmInvalidationTest {
             for (final Process process : processList) {
                 assertEquals("VALUE|after", this.readMessage(process, "VALUE|"));
             }
+        } finally {
+            processList.forEach(this::stopWorker);
+            coreDatabase.stop();
+
+            if (postgresDriver.isConnected()) {
+                postgresDriver.getDslContext().dropTableIfExists(DSL.name(table)).cascade().execute();
+                postgresDriver.disconnect();
+            }
+
+            if (redisDriver.isConnected()) {
+                final String[] keyList = redisDriver.getCommands().keys("%s*".formatted(table)).toArray(String[]::new);
+                if (keyList.length > 0) {
+                    redisDriver.getCommands().del(keyList);
+                }
+                redisDriver.disconnect();
+            }
+        }
+    }
+
+    @Test
+    void concurrentCreatesForOneUuidFromSeparateJvmsPreserveOneInsertedValue() throws Exception {
+        final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(
+                System.getProperty("postgres.host", "localhost"),
+                Integer.getInteger("postgres.port", 5432),
+                System.getProperty("postgres.database", "foundation_test"),
+                System.getProperty("postgres.username", "postgres"),
+                System.getProperty("postgres.password", "postgres"),
+                8
+        ));
+        final RedisDriver redisDriver = new RedisDriver(new RedisSettings(
+                System.getProperty("redis.host", "localhost"),
+                Integer.getInteger("redis.port", 6379),
+                System.getProperty("redis.password"),
+                Integer.getInteger("redis.database", 0),
+                Duration.ofSeconds(2)
+        ));
+        final String table = "multi_jvm_create_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+        final String barrierKey = "%s:create-barrier".formatted(table);
+        final UUID id = UUID.randomUUID();
+        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+        final List<Process> processList = new ArrayList<>();
+
+        try {
+            postgresDriver.connect();
+            redisDriver.connect();
+        } catch (final RuntimeException exception) {
+            postgresDriver.disconnect();
+            redisDriver.disconnect();
+            Assumptions.abort("PostgreSQL or Redis is not reachable: %s".formatted(exception.getMessage()));
+        }
+
+        try {
+            final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+            coreDatabase.start();
+
+            for (int index = 0; index < 2; index++) {
+                final Process process = this.startWorker(table, id, true, null);
+                processList.add(process);
+                assertEquals("READY|deferred", this.readMessage(process, "READY|"));
+                this.send(process, "CREATE|writer-%s|%s".formatted(index, barrierKey));
+                assertEquals("PREPARED|writer-%s".formatted(index), this.readMessage(process, "PREPARED|"));
+            }
+
+            redisDriver.getCommands().set(barrierKey, "go");
+
+            final List<String> storedValueList = new ArrayList<>();
+            for (final Process process : processList) {
+                storedValueList.add(this.readMessage(process, "CREATED|").substring("CREATED|".length()));
+            }
+
+            assertTrue(List.of("writer-0", "writer-1").contains(repository.findById(id).orElseThrow().getValue()));
+            assertTrue(storedValueList.stream().allMatch(List.of("writer-0", "writer-1")::contains));
         } finally {
             processList.forEach(this::stopWorker);
             coreDatabase.stop();
@@ -147,11 +219,11 @@ final class MultiJvmInvalidationTest {
         }
 
         try {
-            final MultiJvmDatabaseWorker.WorkerRepository repository = new MultiJvmDatabaseWorker.WorkerRepository(coreDatabase, table);
-            final MultiJvmDatabaseWorker.WorkerHolder holder = new MultiJvmDatabaseWorker.WorkerHolder(repository);
+            final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+            final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 
-            final MultiJvmDatabaseWorker.WorkerEntity entity = new MultiJvmDatabaseWorker.WorkerEntity(id);
+            final WorkerEntity entity = new WorkerEntity(id);
             entity.setValue("cold");
             holder.save(entity);
             coreDatabase.getBatchQueue().flush();
@@ -223,11 +295,11 @@ final class MultiJvmInvalidationTest {
         }
 
         try {
-            final MultiJvmDatabaseWorker.WorkerRepository repository = new MultiJvmDatabaseWorker.WorkerRepository(coreDatabase, table);
-            final MultiJvmDatabaseWorker.WorkerHolder holder = new MultiJvmDatabaseWorker.WorkerHolder(repository);
+            final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+            final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 
-            final MultiJvmDatabaseWorker.WorkerEntity entity = new MultiJvmDatabaseWorker.WorkerEntity(id);
+            final WorkerEntity entity = new WorkerEntity(id);
             entity.setValue("initial");
             holder.save(entity);
             coreDatabase.getBatchQueue().flush();

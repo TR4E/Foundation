@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.entity.RevisionedEntity;
 import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
@@ -15,6 +14,7 @@ import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisInvalidation;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
 import me.trae.foundation.database.storage.redis.RedisStorage;
+import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -163,18 +163,32 @@ final class StorageTest {
     void redisPreservesRevisionForOptimisticallyLockedEntities() {
         final RedisDriver redisDriver = connect();
         final String table = "revision_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
-        final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1), true);
+        final EntityRevisionStore entityRevisionStore = new EntityRevisionStore();
+        final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1), true, entityRevisionStore);
         final Wallet wallet = this.createWallet("revisioned", 7L);
-        wallet.setRevision(42L);
+        entityRevisionStore.setRevision(wallet, 42L);
 
         try {
             redisStorage.put(wallet.getId(), wallet);
 
-            assertEquals(42L, redisStorage.get(wallet.getId()).orElseThrow().getRevision());
+            assertEquals(42L, entityRevisionStore.getState(redisStorage.get(wallet.getId()).orElseThrow()).getRevision());
         } finally {
             redisStorage.remove(wallet.getId());
             redisDriver.disconnect();
         }
+    }
+
+    @Test
+    void entityRevisionStoreKeepsRevisionsSeparateForEntityInstancesWithTheSameId() {
+        final EntityRevisionStore entityRevisionStore = new EntityRevisionStore();
+        final UUID id = UUID.randomUUID();
+        final EqualEntity first = new EqualEntity(id);
+        final EqualEntity second = new EqualEntity(id);
+
+        entityRevisionStore.setRevision(first, 4L);
+
+        assertEquals(4L, entityRevisionStore.getState(first).getRevision());
+        assertEquals(0L, entityRevisionStore.getState(second).getRevision());
     }
 
     @Test
@@ -375,7 +389,7 @@ final class StorageTest {
     @RequiredArgsConstructor
     @Getter
     @Setter
-    private static final class Wallet implements RevisionedEntity {
+    private static final class Wallet implements Entity {
 
         private final UUID id;
         private String owner;
@@ -383,7 +397,6 @@ final class StorageTest {
         private BigDecimal balance;
         private Instant createdAt;
         private Rank rank;
-        private long revision;
     }
 
     private static final class Orphan implements Entity {
@@ -391,6 +404,30 @@ final class StorageTest {
         @Override
         public UUID getId() {
             return null;
+        }
+    }
+
+    private static final class EqualEntity implements Entity {
+
+        private final UUID id;
+
+        private EqualEntity(final UUID id) {
+            this.id = id;
+        }
+
+        @Override
+        public UUID getId() {
+            return this.id;
+        }
+
+        @Override
+        public boolean equals(final Object object) {
+            return object instanceof EqualEntity;
+        }
+
+        @Override
+        public int hashCode() {
+            return 1;
         }
     }
 }

@@ -40,7 +40,9 @@ final class CoreContractTest {
     @Test
     void jsonConvertersRoundTripCollectionAndMapValues() {
         final JsonValueConverter<List<String>> listConverter = JsonValueConverter.ofList(String.class);
+
         final JsonValueConverter<Set<Integer>> setConverter = JsonValueConverter.ofSet(Integer.class);
+
         final JsonValueConverter<Map<String, Integer>> mapConverter = JsonValueConverter.ofMap(String.class, Integer.class);
 
         assertEquals(List.of("one", "two"), listConverter.deserialize(listConverter.serialize(List.of("one", "two"))));
@@ -87,10 +89,15 @@ final class CoreContractTest {
     @Test
     void pendingWriteMergeKeepsLatestValuesAndCarriesCallbacks() {
         final TableSchema<TestEntity> schema = new TableSchema<>(TestEntity.class, "core_contract", TenantScope.NONE, EntityPropertyRegistry.getProperties(TestEntity.class));
+
         final Field<?> nameField = schema.getField(NAME);
+
         final AtomicInteger callbacks = new AtomicInteger();
+
         final UUID id = UUID.randomUUID();
+
         final PendingWrite first = new PendingWrite(schema, null, id, WriteType.UPDATE, Map.of(nameField, "old"), List.of(callbacks::incrementAndGet), 1);
+
         final PendingWrite second = new PendingWrite(schema, null, id, WriteType.UPDATE, Map.of(nameField, "new"), List.of(callbacks::incrementAndGet), 2);
 
         final PendingWrite merged = first.merge(second);

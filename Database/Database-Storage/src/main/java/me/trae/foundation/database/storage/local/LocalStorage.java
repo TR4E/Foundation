@@ -109,17 +109,11 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     }
 
     public List<Value> getPinnedValues() {
-        return this.entryMap.values().stream()
-                .filter(CacheEntry::isPinned)
-                .map(CacheEntry::getValue)
-                .toList();
+        return this.entryMap.values().stream().filter(CacheEntry::isPinned).map(CacheEntry::getValue).toList();
     }
 
     public List<Value> getValues() {
-        return this.entryMap.values().stream()
-                .filter(cacheEntry -> !cacheEntry.isExpired())
-                .map(CacheEntry::getValue)
-                .toList();
+        return this.entryMap.values().stream().filter(cacheEntry -> !cacheEntry.isExpired()).map(CacheEntry::getValue).toList();
     }
 
     public List<Value> evictExpired() {

@@ -63,9 +63,7 @@ public final class ChangeTracker<E extends Entity> {
     public List<EntityProperty<?, ?>> diff(final UUID id, final Map<String, String> encodedMap) {
         final Map<String, String> snapshotMap = this.snapshotStorage.get(id).orElse(Collections.emptyMap());
 
-        return this.entityCodec.getProperties().stream()
-                .filter(entityProperty -> !snapshotMap.containsKey(entityProperty.getName()) || !Objects.equals(snapshotMap.get(entityProperty.getName()), encodedMap.get(entityProperty.getName())))
-                .toList();
+        return this.entityCodec.getProperties().stream().filter(entityProperty -> !snapshotMap.containsKey(entityProperty.getName()) || !Objects.equals(snapshotMap.get(entityProperty.getName()), encodedMap.get(entityProperty.getName()))).toList();
     }
 
     public List<EntityProperty<?, ?>> diff(final E entity) {

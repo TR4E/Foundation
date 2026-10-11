@@ -57,12 +57,19 @@ final class OutboxCrashRecoveryTest {
                 Duration.ofSeconds(2)
         ));
         final UUID eventId = UUID.randomUUID();
+
         final UUID entityId = UUID.randomUUID();
+
         final String tableName = "outbox_crash_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final RedisInvalidation invalidation = RedisNamespace.of(tableName).getInvalidation(entityId, "crash-test");
+
         final CountDownLatch notificationLatch = new CountDownLatch(1);
+
         final CountDownLatch rowLockAcquired = new CountDownLatch(1);
+
         final CountDownLatch releaseRowLock = new CountDownLatch(1);
+
         final AtomicReference<Throwable> transactionFailure = new AtomicReference<>();
         Process workerProcess = null;
         Thread transactionThread = null;
@@ -122,6 +129,7 @@ final class OutboxCrashRecoveryTest {
 
             assertTrue(rowLockAcquired.await(5, TimeUnit.SECONDS), "Could not lock the outbox row");
             final String javaExecutable = Path.of(System.getProperty("java.home"), "bin", System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java").toString();
+
             final String classPath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
             workerProcess = new ProcessBuilder(
                     javaExecutable,

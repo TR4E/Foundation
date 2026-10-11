@@ -46,8 +46,11 @@ final class MultiJvmInvalidationTest {
                 Duration.ofSeconds(2)
         ));
         final String table = "multi_jvm_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final UUID id = UUID.randomUUID();
+
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+
         final List<Process> processList = new ArrayList<>();
 
         try {
@@ -61,6 +64,7 @@ final class MultiJvmInvalidationTest {
 
         try {
             final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+
             final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 
@@ -129,9 +133,13 @@ final class MultiJvmInvalidationTest {
                 Duration.ofSeconds(2)
         ));
         final String table = "multi_jvm_create_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final String barrierKey = "%s:create-barrier".formatted(table);
+
         final UUID id = UUID.randomUUID();
+
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+
         final List<Process> processList = new ArrayList<>();
 
         try {
@@ -201,10 +209,15 @@ final class MultiJvmInvalidationTest {
                 Duration.ofSeconds(2)
         ));
         final String table = "multi_jvm_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final String countKey = "%s:loader-count".formatted(table);
+
         final UUID id = UUID.randomUUID();
+
         final int jvmCount = Integer.getInteger("multiJvm.count", 5);
+
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+
         final List<Process> processList = new ArrayList<>();
 
         assertTrue(jvmCount >= 2 && jvmCount <= 100, "multiJvm.count must be between 2 and 100");
@@ -220,6 +233,7 @@ final class MultiJvmInvalidationTest {
 
         try {
             final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+
             final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 
@@ -280,9 +294,13 @@ final class MultiJvmInvalidationTest {
                 Duration.ofSeconds(2)
         ));
         final String table = "multi_jvm_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final String barrierKey = "%s:write-barrier".formatted(table);
+
         final UUID id = UUID.randomUUID();
+
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+
         final List<Process> processList = new ArrayList<>();
 
         try {
@@ -296,6 +314,7 @@ final class MultiJvmInvalidationTest {
 
         try {
             final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+
             final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 
@@ -342,7 +361,9 @@ final class MultiJvmInvalidationTest {
 
     private Process startWorker(final String table, final UUID id, final boolean deferred, final String countKey) throws Exception {
         final String javaPath = "%s\\bin\\java.exe".formatted(System.getProperty("java.home"));
+
         final String classPath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+
         final Process process = new ProcessBuilder(
                 javaPath,
                 "-Xms32m",
@@ -371,6 +392,7 @@ final class MultiJvmInvalidationTest {
 
     private String readMessage(final Process process, final String prefix) throws Exception {
         final BufferedReader reader = this.getReader(process);
+
         final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
 
         while (System.nanoTime() < deadline) {

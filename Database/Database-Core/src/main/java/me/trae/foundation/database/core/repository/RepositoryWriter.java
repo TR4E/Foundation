@@ -58,6 +58,7 @@ public final class RepositoryWriter<E extends Entity> {
         }
 
         final RevisionState revisionState = this.tableSchema.isOptimisticLocking() ? this.entityRevisionStore.getState(entity) : null;
+
         final Long expectedRevision = revisionState == null ? null : revisionState.getRevision();
         Runnable revisionCallback = null;
 
@@ -79,6 +80,7 @@ public final class RepositoryWriter<E extends Entity> {
 
     public void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
         final RevisionState revisionState = this.tableSchema.isOptimisticLocking() ? this.entityRevisionStore.getState(entity) : null;
+
         final Long expectedRevision = revisionState == null ? null : revisionState.getRevision();
         this.pendingWriteStore.queueDelete(this.tableSchema, this.tenantId, entity.getId(), commitCallbackList, this.createInvalidation(entity.getId(), redisEnabled), expectedRevision, revisionState);
     }

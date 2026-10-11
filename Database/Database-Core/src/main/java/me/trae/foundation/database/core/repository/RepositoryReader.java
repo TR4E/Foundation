@@ -34,8 +34,7 @@ public final class RepositoryReader<E extends Entity> {
     public Optional<E> findById(final UUID id) {
         return this.getDslContext().selectFrom(this.tableSchema.getTable())
                 .where(this.tableSchema.getKeyCondition(this.tenantId, id))
-                .fetchOptional()
-                .map(this.entityRecordMapper::map);
+                .fetchOptional().map(this.entityRecordMapper::map);
     }
 
     public List<E> findManyById(final Collection<UUID> ids) {

@@ -43,10 +43,6 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     private final RepositoryWriter<E> repositoryWriter;
     private final EntityCodec<E> entityCodec;
 
-    protected AbstractEntityRepository(final CoreDatabase coreDatabase, final Class<E> entityType, final String table, final TenantScope tenantScope, final Class<?>... propertyHolders) {
-        this(coreDatabase, entityType, table, tenantScope, false, propertyHolders);
-    }
-
     protected AbstractEntityRepository(final CoreDatabase coreDatabase, final Class<E> entityType, final String table, final TenantScope tenantScope, final boolean optimisticLocking, final Class<?>... propertyHolders) {
         PropertyHolderLoader.load(propertyHolders);
 
@@ -65,6 +61,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         this.repositoryReader = new RepositoryReader<>(coreDatabase.getPostgresDriver(), this.tableSchema, this.tenantId, coreDatabase.getEntityRevisionStore());
 
         final RedisDriver redisDriver = coreDatabase.getRedisDriver().orElse(null);
+
         final RedisNamespace redisNamespace = redisDriver == null ? null : RedisNamespace.of(table, this.tenantId);
 
         this.repositoryWriter = new RepositoryWriter<>(coreDatabase.getBatchQueue().getPendingWriteStore(), this.tableSchema, this.tenantId, redisNamespace, redisDriver == null ? null : redisDriver.getInstanceId(), coreDatabase.getEntityRevisionStore());
@@ -73,19 +70,16 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     }
 
     @Override
-    public String getTable() {
+    public final String getTable() {
         return this.tableSchema.getTableName();
     }
 
-    public Optional<String> getTenantId() {
+    public final Optional<String> getTenantId() {
         return Optional.ofNullable(this.tenantId);
     }
 
-    public List<EntityProperty<? super E, ?>> getUniqueProperties() {
-        return this.getIndexes().entrySet().stream()
-                .filter(entry -> entry.getValue() == IndexType.UNIQUE)
-                .<EntityProperty<? super E, ?>>map(Map.Entry::getKey)
-                .toList();
+    public final List<EntityProperty<? super E, ?>> getUniqueProperties() {
+        return this.getIndexes().entrySet().stream().filter(entry -> entry.getValue() == IndexType.UNIQUE).<EntityProperty<? super E, ?>>map(Map.Entry::getKey).toList();
     }
 
     @Override
@@ -94,79 +88,83 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     }
 
     @Override
-    public List<E> findManyById(final Collection<UUID> ids) {
+    public final List<E> findManyById(final Collection<UUID> ids) {
         return this.repositoryReader.findManyById(ids);
     }
 
     @Override
-    public Optional<E> findOne(final Query<E> query) {
+    public final Optional<E> findOne(final Query<E> query) {
         return this.repositoryReader.findOne(query);
     }
 
     @Override
-    public List<E> findMany(final Query<E> query) {
+    public final List<E> findMany(final Query<E> query) {
         return this.repositoryReader.findMany(query);
     }
 
     @Override
-    public long count(final Query<E> query) {
+    public final long count(final Query<E> query) {
         return this.repositoryReader.count(query);
     }
 
     @Override
-    public boolean exists(final Query<E> query) {
+    public final boolean exists(final Query<E> query) {
         return this.repositoryReader.exists(query);
     }
 
     @Override
-    public EntityPage<E> findPage(final Query<E> query, final int page, final int size) {
+    public final EntityPage<E> findPage(final Query<E> query, final int page, final int size) {
         return this.repositoryReader.findPage(query, page, size);
     }
 
-    public void save(final E entity, final List<Runnable> commitCallbackList) {
+    public final void save(final E entity, final List<Runnable> commitCallbackList) {
         this.repositoryWriter.insert(entity, commitCallbackList, List.of(), false);
     }
 
-    public void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
+    public final void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
         this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, false);
     }
 
-    public void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+    public final void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
         this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, redisEnabled);
     }
 
     @Override
-    public void save(final E entity) {
+    public final void save(final E entity) {
         this.save(entity, Collections.emptyList());
     }
 
-    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList) {
+    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList) {
         this.repositoryWriter.update(entity, entityProperties, commitCallbackList, List.of(), false);
     }
 
-    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
+    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
         this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, false);
     }
 
-    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
         this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, redisEnabled);
     }
 
     @Override
-    public void update(final E entity) {
-        final E baseline = this.repositoryReader.findById(entity.getId())
-                .orElseThrow(() -> this.tableSchema.isOptimisticLocking() && this.coreDatabase.getEntityRevisionStore().hasState(entity)
-                        ? new OptimisticLockException("Cannot update deleted %s %s".formatted(this.entityType.getSimpleName(), entity.getId()))
-                        : new DatabaseException("Cannot update missing %s %s".formatted(this.entityType.getSimpleName(), entity.getId())));
+    public final void update(final E entity) {
+        final E baseline = this.repositoryReader.findById(entity.getId()).orElseThrow(() -> {
+            if (this.tableSchema.isOptimisticLocking() && this.coreDatabase.getEntityRevisionStore().hasState(entity)) {
+                return new OptimisticLockException("Cannot update deleted %s %s".formatted(this.entityType.getSimpleName(), entity.getId()));
+            }
+
+            return new DatabaseException("Cannot update missing %s %s".formatted(this.entityType.getSimpleName(), entity.getId()));
+        });
+
         if (!this.coreDatabase.getEntityRevisionStore().hasState(entity)) {
             this.inheritRevision(entity, baseline);
         }
+
         final Map<String, String> baselineMap = this.entityCodec.encode(baseline);
+
         final Map<String, String> entityMap = this.entityCodec.encode(entity);
-        final List<EntityProperty<?, ?>> changedList = this.properties.stream()
-                .filter(EntityProperty::isPersistent)
-                .filter(property -> !Objects.equals(baselineMap.get(property.getName()), entityMap.get(property.getName())))
-                .toList();
+
+        final List<EntityProperty<?, ?>> changedList = this.properties.stream().filter(EntityProperty::isPersistent).filter(property -> !Objects.equals(baselineMap.get(property.getName()), entityMap.get(property.getName()))).toList();
 
         if (!changedList.isEmpty()) {
             this.repositoryWriter.update(entity, changedList, List.of(), List.of(), false);
@@ -174,19 +172,19 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     }
 
     @Override
-    public void delete(final E entity) {
+    public final void delete(final E entity) {
         this.repositoryWriter.delete(entity, false);
     }
 
-    public void delete(final E entity, final List<Runnable> commitCallbackList) {
+    public final void delete(final E entity, final List<Runnable> commitCallbackList) {
         this.repositoryWriter.delete(entity, commitCallbackList, false);
     }
 
-    public void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
+    public final void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
         this.repositoryWriter.delete(entity, commitCallbackList, redisEnabled);
     }
 
-    public void inheritRevision(final E entity, final E baseline) {
+    public final void inheritRevision(final E entity, final E baseline) {
         if (this.tableSchema.isOptimisticLocking()) {
             this.coreDatabase.getEntityRevisionStore().setRevision(entity, this.coreDatabase.getEntityRevisionStore().getState(baseline).getRevision());
         }

@@ -16,10 +16,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-public abstract class AbstractEntityHolder<E extends Entity> implements EntityHolder<E> {
+public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractEntityRepository<E>> implements EntityHolder<E, R> {
 
     @Getter
-    private final AbstractEntityRepository<E> repository;
+    private final R repository;
 
     @Getter
     private final InstanceMode instanceMode;
@@ -27,11 +27,7 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
     private final HolderComponents<E> holderComponents;
     private final HolderCache<E> holderCache;
 
-    protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry) {
-        this(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry);
-    }
-
-    protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final RedisMode redisMode, final Duration localExpiry, final Duration redisExpiry) {
+    protected AbstractEntityHolder(final R repository, final InstanceMode instanceMode, final RedisMode redisMode, final Duration localExpiry, final Duration redisExpiry) {
         this.repository = repository;
         this.instanceMode = instanceMode;
         this.holderComponents = HolderComponents.create(repository, instanceMode, redisMode, localExpiry, redisExpiry, LocalStorage.DEFAULT_MAXIMUM_AGE);
@@ -40,16 +36,8 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
         repository.getCoreDatabase().getBatchQueue().addPreFlushTask(this.holderCache::flushAndEvict);
     }
 
-    protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode) {
-        this(repository, instanceMode, Duration.ofMinutes(30), Duration.ofHours(1));
-    }
-
-    protected AbstractEntityHolder(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final RedisMode redisMode) {
-        this(repository, instanceMode, redisMode, Duration.ofMinutes(30), Duration.ofHours(1));
-    }
-
     @Override
-    public Optional<E> getById(final UUID id, final Set<LookupTier> lookupTiers) {
+    public final Optional<E> getById(final UUID id, final Set<LookupTier> lookupTiers) {
         final Optional<E> result = this.holderComponents.getHolderLookups().getIdLookup().lookup(id, lookupTiers);
 
         result.ifPresent(this.holderCache::track);
@@ -58,7 +46,7 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
     }
 
     @Override
-    public <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value) {
+    public final <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value) {
         final Optional<E> result = this.holderComponents.getHolderLookups().lookup(entityProperty, value);
 
         result.ifPresent(this.holderCache::track);
@@ -67,47 +55,47 @@ public abstract class AbstractEntityHolder<E extends Entity> implements EntityHo
     }
 
     @Override
-    public List<E> getPinned() {
+    public final List<E> getPinned() {
         return this.holderCache.getPinned();
     }
 
     @Override
-    public void pin(final E entity) {
+    public final void pin(final E entity) {
         this.holderCache.pin(entity);
     }
 
     @Override
-    public void unpin(final E entity) {
+    public final void unpin(final E entity) {
         this.holderCache.unpin(entity);
     }
 
     @Override
-    public void save(final E entity) {
+    public final void save(final E entity) {
         this.holderComponents.getHolderWriter().save(entity);
     }
 
     @Override
-    public void update(final E entity) {
+    public final void update(final E entity) {
         this.holderComponents.getHolderWriter().update(entity);
     }
 
     @Override
-    public void delete(final E entity) {
+    public final void delete(final E entity) {
         this.holderComponents.getHolderWriter().delete(entity);
     }
 
     @Override
-    public void cache(final E entity) {
+    public final void cache(final E entity) {
         this.holderCache.cache(entity);
     }
 
     @Override
-    public void evict(final E entity) {
+    public final void evict(final E entity) {
         this.holderCache.evict(entity);
     }
 
     @Override
-    public long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta) {
+    public final long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta) {
         return this.holderComponents.getHolderWriter().increment(entity, entityProperty, delta);
     }
 }

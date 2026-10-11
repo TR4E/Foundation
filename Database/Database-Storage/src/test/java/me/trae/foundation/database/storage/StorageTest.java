@@ -95,12 +95,14 @@ final class StorageTest {
     @Test
     void codecRoundTripsEveryValueType() {
         final EntityCodec<Wallet> entityCodec = new EntityCodec<>(Wallet.class);
+
         final Wallet wallet = this.createWallet("trae", 1_000_000_000_000L);
         wallet.setBalance(new BigDecimal("12.50"));
         wallet.setCreatedAt(Instant.parse("2026-10-06T10:15:30.123456789Z"));
         wallet.setRank(Rank.ADMIN);
 
         final Map<String, String> fieldMap = entityCodec.encode(wallet);
+
         final Wallet decoded = entityCodec.decode(wallet.getId(), fieldMap);
 
         assertEquals("ADMIN", fieldMap.get(RANK.getName()));
@@ -127,7 +129,9 @@ final class StorageTest {
     @Test
     void redisStoresUpdatesAndIncrements() {
         final RedisDriver redisDriver = connect();
+
         final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
 
         try {
@@ -162,9 +166,13 @@ final class StorageTest {
     @Test
     void redisPreservesRevisionForOptimisticallyLockedEntities() {
         final RedisDriver redisDriver = connect();
+
         final String table = "revision_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final EntityRevisionStore entityRevisionStore = new EntityRevisionStore();
+
         final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1), true, entityRevisionStore);
+
         final Wallet wallet = this.createWallet("revisioned", 7L);
         entityRevisionStore.setRevision(wallet, 42L);
 
@@ -181,8 +189,11 @@ final class StorageTest {
     @Test
     void entityRevisionStoreKeepsRevisionsSeparateForEntityInstancesWithTheSameId() {
         final EntityRevisionStore entityRevisionStore = new EntityRevisionStore();
+
         final UUID id = UUID.randomUUID();
+
         final EqualEntity first = new EqualEntity(id);
+
         final EqualEntity second = new EqualEntity(id);
 
         entityRevisionStore.setRevision(first, 4L);
@@ -194,16 +205,24 @@ final class StorageTest {
     @Test
     void redisCoalescesConcurrentColdLoadsAcrossStorageInstances() throws Exception {
         final RedisDriver redisDriver = connect();
+
         final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final RedisStorage<Wallet> firstStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
+
         final RedisStorage<Wallet> secondStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
+
         final UUID id = UUID.randomUUID();
+
         final Wallet wallet = new Wallet(id);
         wallet.setOwner("trae");
         wallet.setCoins(100L);
         final AtomicInteger loadCount = new AtomicInteger();
+
         final int requestCount = 64;
+
         final CountDownLatch ready = new CountDownLatch(requestCount);
+
         final CountDownLatch start = new CountDownLatch(1);
 
         try (ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
@@ -245,11 +264,17 @@ final class StorageTest {
     @Test
     void expiredFillLockCannotLetFormerOwnerOverwriteNewerCache() throws Exception {
         final RedisDriver redisDriver = connect();
+
         final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final RedisNamespace redisNamespace = RedisNamespace.of(table);
+
         final RedisStorage<Wallet> firstStorage = new RedisStorage<>(redisDriver, redisNamespace, Wallet.class, Duration.ofMinutes(1));
+
         final RedisStorage<Wallet> secondStorage = new RedisStorage<>(redisDriver, redisNamespace, Wallet.class, Duration.ofMinutes(1));
+
         final UUID id = UUID.randomUUID();
+
         final Wallet staleWallet = new Wallet(id);
         staleWallet.setOwner("stale");
         staleWallet.setCoins(1L);
@@ -257,6 +282,7 @@ final class StorageTest {
         freshWallet.setOwner("fresh");
         freshWallet.setCoins(2L);
         final AtomicInteger loadCount = new AtomicInteger();
+
         final CountDownLatch staleLoadStarted = new CountDownLatch(1);
 
         try (final ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
@@ -294,6 +320,7 @@ final class StorageTest {
     @Test
     void formerLockOwnerCannotReleaseCurrentOwnersLock() {
         final RedisDriver redisDriver = connect();
+
         final String lockKey = "test-lock:%s".formatted(UUID.randomUUID());
 
         try {
@@ -312,7 +339,9 @@ final class StorageTest {
     @Test
     void redisDeliversPublishedMessages() throws Exception {
         final RedisDriver redisDriver = connect();
+
         final CountDownLatch receivedLatch = new CountDownLatch(1);
+
         final AtomicReference<String> received = new AtomicReference<>();
 
         try {
@@ -332,11 +361,17 @@ final class StorageTest {
     @Test
     void redisInvalidationRemovesCachedAndNegativeValues() throws Exception {
         final RedisDriver redisDriver = connect();
+
         final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
+
         final Wallet wallet = this.createWallet("trae", 10L);
+
         final String missingKey = redisStorage.getRedisNamespace().getKey("cache:missing:%s".formatted(wallet.getId()));
+
         final CountDownLatch receivedLatch = new CountDownLatch(1);
+
         final AtomicReference<String> received = new AtomicReference<>();
 
         try {

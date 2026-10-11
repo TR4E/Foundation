@@ -58,11 +58,13 @@ public final class HolderComponents<E extends Entity> {
         final ChangeTracker<E> changeTracker = new ChangeTracker<>(repository.getEntityType(), localExpiry);
 
         final Duration maximumAge = instanceMode == InstanceMode.MULTI_INSTANCE ? localMaximumAge : null;
+
         final LocalStorage<UUID, E> localStorage = new LocalStorage<>(localExpiry, instanceMode == InstanceMode.MULTI_INSTANCE, maximumAge);
 
         final RedisStorage<E> redisStorage = redisDriver == null ? null : new RedisStorage<>(redisDriver, RedisNamespace.of(repository.getTable(), repository.getTenantId().orElse(null)), repository.getEntityType(), redisExpiry, repository.getTableSchema().isOptimisticLocking(), repository.getCoreDatabase().getEntityRevisionStore());
 
         final HolderLookups<E> holderLookups = new HolderLookups<>(repository, localStorage, redisStorage, redisDriver);
+
         final HolderWriter<E> holderWriter = new HolderWriter<>(repository, localStorage, redisStorage, changeTracker, new UniqueClaimer<>(repository, holderLookups, redisDriver), redisMode == RedisMode.ENABLED);
 
         if (instanceMode == InstanceMode.MULTI_INSTANCE && redisStorage != null) {
@@ -92,7 +94,9 @@ public final class HolderComponents<E extends Entity> {
 
         try {
             final UUID id = UUID.fromString(parts[1]);
+
             final Optional<E> entity = localStorage.get(id);
+
             final boolean flushed = entity.isEmpty() || flushSafely(entity.get(), changeTracker, holderWriter, batchQueue);
 
             if (flushed) {

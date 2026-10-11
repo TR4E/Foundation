@@ -11,9 +11,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-public interface EntityHolder<E extends Entity> {
+public interface EntityHolder<E extends Entity, R extends EntityRepository<E>> {
 
-    EntityRepository<E> getRepository();
+    R getRepository();
 
     InstanceMode getInstanceMode();
 

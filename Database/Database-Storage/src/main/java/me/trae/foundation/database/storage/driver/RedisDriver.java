@@ -22,6 +22,7 @@ public final class RedisDriver {
 
     private final RedisSubscriptionDispatcher subscriptionDispatcher = new RedisSubscriptionDispatcher();
 
+    @Getter
     private final String instanceId = UUID.randomUUID().toString();
 
     @Getter
@@ -93,10 +94,6 @@ public final class RedisDriver {
 
     public void unsubscribe(final String channel) {
         this.subscriptionDispatcher.unsubscribe(channel);
-    }
-
-    public String getInstanceId() {
-        return this.instanceId;
     }
 
     public boolean tryAcquireLock(final String key, final String owner, final Duration lease) {

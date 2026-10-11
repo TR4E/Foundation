@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 @UtilityClass
-public class EntityLookups {
+public final class EntityLookups {
 
     public static <E extends Entity> TieredLookup<UUID, E> byId(final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository) {
         final List<LookupStep<UUID, E>> stepList = new ArrayList<>();
@@ -64,15 +64,11 @@ public class EntityLookups {
     }
 
     private static <E extends Entity, Value> Optional<E> findLocal(final LocalStorage<UUID, E> localStorage, final EntityProperty<? super E, Value> entityProperty, final Value value) {
-        return localStorage.getValues().stream()
-                .filter(entity -> Objects.equals(entityProperty.getValue(entity), value))
-                .findFirst();
+        return localStorage.getValues().stream().filter(entity -> Objects.equals(entityProperty.getValue(entity), value)).findFirst();
     }
 
     private static <E extends Entity, Value> Optional<E> findRedis(final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityProperty<? super E, Value> entityProperty, final Value value) {
-        final Optional<E> result = propertyIndex.find(value)
-                .flatMap(redisStorage::get)
-                .filter(entity -> Objects.equals(entityProperty.getValue(entity), value));
+        final Optional<E> result = propertyIndex.find(value).flatMap(redisStorage::get).filter(entity -> Objects.equals(entityProperty.getValue(entity), value));
 
         if (result.isEmpty()) {
             propertyIndex.remove(value);
@@ -95,6 +91,7 @@ public class EntityLookups {
         }
 
         final AtomicBoolean loaderStarted = new AtomicBoolean();
+
         final AtomicReference<Optional<E>> loadedReference = new AtomicReference<>();
 
         try {
@@ -124,6 +121,7 @@ public class EntityLookups {
         }
 
         final AtomicBoolean loaderStarted = new AtomicBoolean();
+
         final AtomicReference<Map<UUID, E>> loadedReference = new AtomicReference<>();
 
         try {

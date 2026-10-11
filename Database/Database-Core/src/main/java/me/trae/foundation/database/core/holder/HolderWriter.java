@@ -35,6 +35,7 @@ public final class HolderWriter<E extends Entity> {
             }
 
             final Map<String, String> encodedMap = this.changeTracker.encode(entity);
+
             final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, this.repository.getProperties());
 
             try {
@@ -55,8 +56,7 @@ public final class HolderWriter<E extends Entity> {
     public void update(final E entity) {
         synchronized (this.getLock(entity.getId())) {
             if (!this.changeTracker.isTracked(entity)) {
-                final E baseline = this.repository.findById(entity.getId())
-                        .orElseThrow(() -> new DatabaseException("Cannot update missing %s %s".formatted(entity.getClass().getSimpleName(), entity.getId())));
+                final E baseline = this.repository.findById(entity.getId()).orElseThrow(() -> new DatabaseException("Cannot update missing %s %s".formatted(entity.getClass().getSimpleName(), entity.getId())));
 
                 if (!this.repository.getCoreDatabase().getEntityRevisionStore().hasState(entity)) {
                     this.repository.inheritRevision(entity, baseline);

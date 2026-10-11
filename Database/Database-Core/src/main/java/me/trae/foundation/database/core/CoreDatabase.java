@@ -30,6 +30,8 @@ public sealed class CoreDatabase implements Database permits GlobalDatabase, Loc
     private final BatchQueue batchQueue;
 
     private final RedisDriver redisDriver;
+
+    @Getter
     private final EntityRevisionStore entityRevisionStore;
     private final Tenant tenant;
     private final RepositoryRegistry repositoryRegistry;
@@ -57,7 +59,7 @@ public sealed class CoreDatabase implements Database permits GlobalDatabase, Loc
         this(postgresDriver, null, null);
     }
 
-    public synchronized void start() {
+    public final synchronized void start() {
         if (this.started) {
             return;
         }
@@ -70,7 +72,7 @@ public sealed class CoreDatabase implements Database permits GlobalDatabase, Loc
         this.started = true;
     }
 
-    public synchronized void stop() {
+    public final synchronized void stop() {
         if (!this.started) {
             return;
         }
@@ -79,11 +81,11 @@ public sealed class CoreDatabase implements Database permits GlobalDatabase, Loc
         this.batchQueue.stop();
     }
 
-    public synchronized void register(final AbstractEntityRepository<?> repository) {
+    public final synchronized void register(final AbstractEntityRepository<?> repository) {
         this.repositoryRegistry.register(repository, this.started);
     }
 
-    public Optional<String> resolveTenantId(final TenantScope tenantScope) {
+    public final Optional<String> resolveTenantId(final TenantScope tenantScope) {
         if (tenantScope == TenantScope.NONE) {
             return Optional.empty();
         }
@@ -95,34 +97,30 @@ public sealed class CoreDatabase implements Database permits GlobalDatabase, Loc
         return this.tenant.resolve(tenantScope);
     }
 
-    public Optional<RedisDriver> getRedisDriver() {
+    public final Optional<RedisDriver> getRedisDriver() {
         return Optional.ofNullable(this.redisDriver);
     }
 
-    public EntityRevisionStore getEntityRevisionStore() {
-        return this.entityRevisionStore;
-    }
-
-    public Optional<Tenant> getTenant() {
+    public final Optional<Tenant> getTenant() {
         return Optional.ofNullable(this.tenant);
     }
 
-    public void setFailureHandler(final Consumer<DatabaseException> failureHandler) {
+    public final void setFailureHandler(final Consumer<DatabaseException> failureHandler) {
         this.batchQueue.setFailureHandler(failureHandler);
     }
 
     @Override
-    public boolean isReady() {
+    public final boolean isReady() {
         return this.started && this.postgresDriver.isConnected();
     }
 
     @Override
-    public List<EntityRepository<?>> getRepositories() {
+    public final List<EntityRepository<?>> getRepositories() {
         return this.repositoryRegistry.getRepositories();
     }
 
     @Override
-    public <E extends Entity> Optional<EntityRepository<E>> getRepository(final Class<E> entityType) {
+    public final <E extends Entity> Optional<EntityRepository<E>> getRepository(final Class<E> entityType) {
         return this.repositoryRegistry.getRepository(entityType);
     }
 }

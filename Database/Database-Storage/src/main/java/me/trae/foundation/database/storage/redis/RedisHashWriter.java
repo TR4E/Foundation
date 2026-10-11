@@ -85,6 +85,7 @@ public final class RedisHashWriter {
 
     private List<String> createArguments(final Map<String, String> fieldMap) {
         final List<String> setList = new ArrayList<>();
+
         final List<String> deleteList = new ArrayList<>();
 
         fieldMap.forEach((field, value) -> {

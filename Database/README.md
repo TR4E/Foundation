@@ -142,7 +142,7 @@ public final class AccountProperties {
 public final class AccountRepository extends AbstractEntityRepository<Account> {
 
     public AccountRepository(final CoreDatabase coreDatabase) {
-        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, AccountProperties.class);
+        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
     }
 
     @Override
@@ -161,7 +161,7 @@ public final class AccountRepository extends AbstractEntityRepository<Account> {
 public final class AccountHolder extends AbstractEntityHolder<Account> {
 
     public AccountHolder(final AccountRepository accountRepository) {
-        super(accountRepository, InstanceMode.SINGLE_INSTANCE);
+        super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 ```
@@ -287,14 +287,14 @@ Redis use is a holder setting, not a repository setting. `RedisMode.DISABLED` ke
 public final class GroupRepository extends AbstractEntityRepository<Group> {
 
     public GroupRepository(final LocalDatabase localDatabase) {
-        super(localDatabase, Group.class, "groups", TenantScope.INSTANCE, GroupProperties.class);
+        super(localDatabase, Group.class, "groups", TenantScope.INSTANCE, false, GroupProperties.class);
     }
 }
 
 public final class AccountRepository extends AbstractEntityRepository<Account> {
 
     public AccountRepository(final GlobalDatabase globalDatabase) {
-        super(globalDatabase, Account.class, "accounts", TenantScope.NONE, AccountProperties.class);
+        super(globalDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
     }
 }
 ```
@@ -344,14 +344,14 @@ The managers use the same lifecycle methods; the holder selects local or multi-i
 public final class AccountManager extends AbstractEntityHolder<Account> {
 
     public AccountManager(final AccountRepository repository) {
-        super(repository, InstanceMode.MULTI_INSTANCE, RedisMode.ENABLED);
+        super(repository, InstanceMode.MULTI_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 
 public final class GroupManager extends AbstractEntityHolder<Group> {
 
     public GroupManager(final GroupRepository repository) {
-        super(repository, InstanceMode.SINGLE_INSTANCE, RedisMode.DISABLED);
+        super(repository, InstanceMode.SINGLE_INSTANCE, RedisMode.DISABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 ```
@@ -487,10 +487,10 @@ Reads go straight to PostgreSQL, so a value saved through the repository is visi
 
 ### Holders
 
-`AbstractEntityHolder` keeps entities in the local cache for 30 minutes and in Redis for an hour by default. In MULTI_INSTANCE, the 30-minute local expiry is an idle timeout refreshed on reads. Both can be changed through its other constructor:
+`AbstractEntityHolder` receives the local-cache expiry and Redis expiry in its constructor. In MULTI_INSTANCE, the local expiry is an idle timeout refreshed on reads.
 
 ```java
-super(accountRepository, InstanceMode.SINGLE_INSTANCE, Duration.ofMinutes(10), Duration.ofHours(6));
+super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(10), Duration.ofHours(6));
 ```
 
 - **Change tracking:** the holder remembers each entity's values when it is loaded or saved. `update` writes only changed persistent properties; nonpersistent properties remain local/Redis-only. Existing automatic flush behavior also persists dirty tracked entities, including entities whose local cache entry expires.
@@ -542,7 +542,7 @@ public final class DatabaseConnector implements Lifecycle {
 public final class AccountRepository extends AbstractEntityRepository<Account> {
 
     public AccountRepository(final CoreDatabase coreDatabase) {
-        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, AccountProperties.class);
+        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
     }
 }
 
@@ -550,7 +550,7 @@ public final class AccountRepository extends AbstractEntityRepository<Account> {
 public final class AccountHolder extends AbstractEntityHolder<Account> {
 
     public AccountHolder(final AccountRepository accountRepository) {
-        super(accountRepository, InstanceMode.SINGLE_INSTANCE);
+        super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 ```
@@ -594,18 +594,18 @@ public class DatabaseConfiguration {
 }
 
 @Component
-public class AccountRepository extends AbstractEntityRepository<Account> {
+public final class AccountRepository extends AbstractEntityRepository<Account> {
 
     public AccountRepository(final CoreDatabase coreDatabase) {
-        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, AccountProperties.class);
+        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
     }
 }
 
 @Service
-public class AccountHolder extends AbstractEntityHolder<Account> {
+public final class AccountHolder extends AbstractEntityHolder<Account> {
 
     public AccountHolder(final AccountRepository accountRepository) {
-        super(accountRepository, InstanceMode.SINGLE_INSTANCE);
+        super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 ```

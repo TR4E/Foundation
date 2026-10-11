@@ -91,6 +91,7 @@ public final class BatchQueue {
 
         for (int index = 0; index < writeList.size(); index += this.chunkSize) {
             final List<PendingWrite> chunkList = writeList.subList(index, Math.min(index + this.chunkSize, writeList.size()));
+
             final List<PendingWrite> retryList = this.batchExecutor.execute(chunkList);
 
             for (final PendingWrite pendingWrite : chunkList) {

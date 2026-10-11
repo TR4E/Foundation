@@ -22,6 +22,7 @@ final class ContainerFailureRecoveryTest {
         Assumptions.assumeTrue(Boolean.getBoolean("containerRecoveryTests"), "Set -DcontainerRecoveryTests=true to stop and restart the explicitly named audit containers");
 
         final String postgresContainer = System.getProperty("audit.postgres.container");
+
         final String redisContainer = System.getProperty("audit.redis.container");
         Assumptions.assumeTrue(postgresContainer != null && redisContainer != null, "Set the exact audit PostgreSQL and Redis container names");
 
@@ -41,6 +42,7 @@ final class ContainerFailureRecoveryTest {
                 Duration.ofSeconds(2)
         ));
         final String table = "container_recovery_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
         boolean postgresStopped = false;
         boolean redisStopped = false;
@@ -49,6 +51,7 @@ final class ContainerFailureRecoveryTest {
             postgresDriver.connect();
             redisDriver.connect();
             final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+
             final WorkerHolder holder = new WorkerHolder(repository);
             coreDatabase.start();
 

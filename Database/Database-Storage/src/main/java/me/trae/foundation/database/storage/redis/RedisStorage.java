@@ -98,6 +98,7 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         }
 
         final String lockKey = this.getLockKey(id);
+
         final String owner = UUID.randomUUID().toString();
 
         final long deadline = System.nanoTime() + Duration.ofMillis(FILL_WAIT_MILLIS).toNanos();
@@ -147,7 +148,9 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
 
     public Map<UUID, E> getOrLoadAll(final Collection<UUID> ids, final Function<Collection<UUID>, ? extends Collection<E>> loader) {
         final List<UUID> idList = ids.stream().distinct().sorted(Comparator.naturalOrder()).toList();
+
         final Map<UUID, E> entityMap = new LinkedHashMap<>();
+
         final Map<UUID, String> lockOwnerMap = new LinkedHashMap<>();
 
         final long deadline = System.nanoTime() + Duration.ofMillis(FILL_WAIT_MILLIS).toNanos();
@@ -166,6 +169,7 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                 }
 
                 final String owner = UUID.randomUUID().toString();
+
                 final String lockKey = this.getLockKey(id);
 
                 boolean acquired = false;

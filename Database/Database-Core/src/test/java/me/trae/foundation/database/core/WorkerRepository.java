@@ -17,7 +17,7 @@ public final class WorkerRepository extends AbstractEntityRepository<WorkerEntit
     }
 
     public WorkerRepository(final CoreDatabase coreDatabase, final String table, final RedisDriver redisDriver, final String countKey) {
-        super(coreDatabase, WorkerEntity.class, table, TenantScope.NONE, MultiJvmDatabaseWorker.class);
+        super(coreDatabase, WorkerEntity.class, table, TenantScope.NONE, false, MultiJvmDatabaseWorker.class);
         this.redisDriver = redisDriver;
         this.countKey = countKey;
     }

@@ -37,7 +37,9 @@ final class DatabasePipelineBenchmarkTest {
                 Duration.ofSeconds(2)
         ));
         final String table = "database_benchmark_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
         final UUID id = UUID.randomUUID();
+
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
 
         try {
@@ -51,10 +53,15 @@ final class DatabasePipelineBenchmarkTest {
 
         try {
             final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
+
             final WorkerHolder holder = new WorkerHolder(repository);
+
             final RedisStorage<WorkerEntity> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), WorkerEntity.class, Duration.ofMinutes(5));
+
             final WorkerEntity entity = new WorkerEntity(id);
+
             final EntityCodec<WorkerEntity> entityCodec = new EntityCodec<>(WorkerEntity.class);
+
             final ChangeTracker<WorkerEntity> changeTracker = new ChangeTracker<>(WorkerEntity.class, Duration.ofMinutes(5));
             entity.setValue("benchmark");
             coreDatabase.start();
@@ -105,6 +112,7 @@ final class DatabasePipelineBenchmarkTest {
 
     private void measure(final String name, final int iterationCount, final LongConsumer operation) {
         final long[] latencyArray = new long[iterationCount];
+
         final long totalStartNanos = System.nanoTime();
 
         for (int index = 0; index < iterationCount; index++) {

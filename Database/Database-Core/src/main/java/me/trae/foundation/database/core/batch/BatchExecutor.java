@@ -30,7 +30,9 @@ public final class BatchExecutor {
 
     public List<PendingWrite> execute(final List<PendingWrite> writeList) {
         final List<PendingWrite> staleWriteList = new ArrayList<>();
+
         final List<PendingWrite> changedWriteList = new ArrayList<>();
+
         final Map<PendingWrite, DatabaseException> failedWriteMap = new LinkedHashMap<>();
 
         try {
@@ -87,6 +89,7 @@ public final class BatchExecutor {
         for (final PendingWrite pendingWrite : writeList) {
             try {
                 final int[] result = new int[1];
+
                 final boolean[] stale = new boolean[1];
 
                 this.postgresDriver.getDslContext().transaction(configuration -> {

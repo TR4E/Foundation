@@ -69,10 +69,6 @@ public final class PendingWrite {
         return "%s|%s|%s".formatted(this.tableSchema.getTableName(), this.tenantId, this.id);
     }
 
-    public Long getExpectedRevision() {
-        return this.expectedRevision;
-    }
-
     public PendingWrite merge(final PendingWrite newer) {
         if (this.writeType == WriteType.DELETE || newer.getWriteType() == WriteType.INSERT || newer.getWriteType() == WriteType.DELETE && this.writeType == WriteType.INSERT) {
             if (this.writeType == WriteType.DELETE && newer.getWriteType() == WriteType.DELETE) {
@@ -113,6 +109,7 @@ public final class PendingWrite {
 
     public PendingWrite withExpectedRevision(final long expectedRevision) {
         final Map<Field<?>, Object> revisedValueMap = new LinkedHashMap<>(this.valueMap);
+
         final long nextRevision = expectedRevision + 1L;
         Runnable revisedCallback = null;
 

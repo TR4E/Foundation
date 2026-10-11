@@ -30,10 +30,15 @@ final class PendingWriteStoreTest {
     @Test
     void callbacksRemainBoundedAcrossCoalescingAndRetries() {
         final PendingWriteStore pendingWriteStore = new PendingWriteStore(1, 3);
+
         final UUID id = UUID.randomUUID();
+
         final List<Integer> callbackOrder = new ArrayList<>();
+
         final Runnable firstCallback = () -> callbackOrder.add(1);
+
         final Runnable secondCallback = () -> callbackOrder.add(2);
+
         final Runnable thirdCallback = () -> callbackOrder.add(3);
 
         pendingWriteStore.queueUpdate(TABLE_SCHEMA, null, id, this.value("first"), List.of(firstCallback, secondCallback));
@@ -60,11 +65,17 @@ final class PendingWriteStoreTest {
     @Test
     void simultaneousCallbackRegistrationsCannotExceedCapacity() throws Exception {
         final int callbackCapacity = 200;
+
         final int registrationCount = 500;
+
         final PendingWriteStore pendingWriteStore = new PendingWriteStore(1, callbackCapacity);
+
         final UUID id = UUID.randomUUID();
+
         final CountDownLatch readyLatch = new CountDownLatch(registrationCount);
+
         final CountDownLatch startLatch = new CountDownLatch(1);
+
         final AtomicInteger acceptedCount = new AtomicInteger();
 
         try (final var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -97,9 +108,13 @@ final class PendingWriteStoreTest {
     @Test
     void completedWriteRebasesOnlyQueuedWritesFromTheSameEntity() {
         final TableSchema<RevisionTestEntity> revisionSchema = new TableSchema<>(RevisionTestEntity.class, "pending_write_revision_test", TenantScope.NONE, List.of(), true);
+
         final PendingWriteStore pendingWriteStore = new PendingWriteStore(2, 4);
+
         final RevisionTestEntity entity = new RevisionTestEntity(UUID.randomUUID());
+
         final EntityRevisionStore revisionStore = new EntityRevisionStore();
+
         final RevisionState revisionState = revisionStore.getState(entity);
 
         pendingWriteStore.queueUpdate(revisionSchema, null, entity.getId(), this.value("first"), List.of(), null, 0L, () -> revisionState.setRevision(1L), revisionState);
@@ -117,8 +132,11 @@ final class PendingWriteStoreTest {
         assertEquals(2L, revisionState.getRevision());
 
         final RevisionTestEntity currentEntity = new RevisionTestEntity(UUID.randomUUID());
+
         final RevisionTestEntity secondStaleCopy = new RevisionTestEntity(currentEntity.getId());
+
         final RevisionState currentRevisionState = revisionStore.getState(currentEntity);
+
         final RevisionState staleRevisionState = revisionStore.getState(secondStaleCopy);
         pendingWriteStore.queueUpdate(revisionSchema, null, currentEntity.getId(), this.value("current"), List.of(), null, 0L, () -> currentRevisionState.setRevision(1L), currentRevisionState);
         final PendingWrite secondInFlight = pendingWriteStore.drain().getFirst();
@@ -134,8 +152,11 @@ final class PendingWriteStoreTest {
     @Test
     void coalescedDeleteDoesNotAdvanceRevisionOfDeletedEntity() {
         final TableSchema<RevisionTestEntity> revisionSchema = new TableSchema<>(RevisionTestEntity.class, "pending_write_revision_delete_test", TenantScope.NONE, List.of(), true);
+
         final RevisionTestEntity entity = new RevisionTestEntity(UUID.randomUUID());
+
         final PendingWriteStore pendingWriteStore = new PendingWriteStore(1, 1);
+
         final RevisionState revisionState = new EntityRevisionStore().getState(entity);
 
         pendingWriteStore.queueUpdate(revisionSchema, null, entity.getId(), this.value("value"), List.of(), null, 0L, () -> revisionState.setRevision(1L), revisionState);
@@ -147,6 +168,7 @@ final class PendingWriteStoreTest {
     @Test
     void createAndUpdateCoalesceIntoOneInsert() {
         final PendingWriteStore pendingWriteStore = new PendingWriteStore();
+
         final UUID id = UUID.randomUUID();
 
         pendingWriteStore.queueInsert(TABLE_SCHEMA, null, id, this.value("created"), List.of(), null);
@@ -160,7 +182,9 @@ final class PendingWriteStoreTest {
     @Test
     void failedInFlightCreateCancelsDependentUpdateAndRestoresCallbackCapacity() {
         final PendingWriteStore pendingWriteStore = new PendingWriteStore(1, 2);
+
         final UUID id = UUID.randomUUID();
+
         final AtomicInteger failureCount = new AtomicInteger();
 
         pendingWriteStore.queueInsert(TABLE_SCHEMA, null, id, this.value("created"), List.of(), List.of(failureCount::incrementAndGet), null);
@@ -179,6 +203,7 @@ final class PendingWriteStoreTest {
     @Test
     void rejectsUnsafeWriteOrderingWithoutChangingQueuedWrite() {
         final PendingWriteStore pendingWriteStore = new PendingWriteStore();
+
         final UUID id = UUID.randomUUID();
 
         pendingWriteStore.queueInsert(TABLE_SCHEMA, null, id, this.value("created"), List.of(), null);

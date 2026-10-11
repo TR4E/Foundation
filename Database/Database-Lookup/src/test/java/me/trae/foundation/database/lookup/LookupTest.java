@@ -83,8 +83,11 @@ final class LookupTest {
     @Test
     void inFlightLookupCoalescesConcurrentCallers() throws Exception {
         final InFlightLookup<String> inFlightLookup = new InFlightLookup<>();
+
         final AtomicInteger calls = new AtomicInteger();
+
         final CountDownLatch started = new CountDownLatch(1);
+
         final CountDownLatch release = new CountDownLatch(1);
 
         try (final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -120,6 +123,7 @@ final class LookupTest {
     @Test
     void singletonCachesDatabaseHitsLocally() {
         final Member member = this.repository.add("trae");
+
         final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 
         assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
@@ -130,6 +134,7 @@ final class LookupTest {
     @Test
     void multiInstanceCachesDatabaseHitsLocally() {
         final Member member = this.repository.add("trae");
+
         final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 
         assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
@@ -252,7 +257,9 @@ final class LookupTest {
             final List<Member> entityList = this.findMany(query);
 
             final long totalCount = entityList.size();
+
             final int totalPages = Math.max(1, (int) Math.ceil((double) totalCount / (double) size));
+
             final int current = Math.clamp(page, 1, totalPages);
 
             return new EntityPage<>(entityList.stream().skip((long) (current - 1) * size).limit(size).toList(), totalCount, current, size);

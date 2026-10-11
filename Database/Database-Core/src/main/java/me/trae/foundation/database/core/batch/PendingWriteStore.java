@@ -115,6 +115,7 @@ public final class PendingWriteStore {
 
     public synchronized List<PendingWrite> fail(final PendingWrite failed, final DatabaseException exception) {
         final List<PendingWrite> failedWriteList = new ArrayList<>();
+
         final PendingWrite inFlight = this.inFlightMap.get(failed.getKey());
 
         if (inFlight != null && inFlight.getSequence() == failed.getSequence()) {
@@ -169,6 +170,7 @@ public final class PendingWriteStore {
 
     private synchronized void queue(final PendingWrite pendingWrite) {
         final String key = pendingWrite.getKey();
+
         final int callbackCount = this.callbackCount(pendingWrite);
 
         if (!this.pendingMap.containsKey(key) && !this.inFlightMap.containsKey(key) && this.getOutstandingSize() >= this.maximumPendingWrites) {
@@ -180,6 +182,7 @@ public final class PendingWriteStore {
         }
 
         final PendingWrite inFlight = this.inFlightMap.get(key);
+
         final PendingWrite current = this.pendingMap.get(key);
 
         if (inFlight != null) {
@@ -216,6 +219,7 @@ public final class PendingWriteStore {
 
     private PendingWrite rebaseRevision(final PendingWrite pendingWrite) {
         final Long expectedRevision = pendingWrite.getExpectedRevision();
+
         final RevisionState revisionState = pendingWrite.getRevisionState();
 
         if (expectedRevision == null || revisionState == null || expectedRevision == Long.MAX_VALUE - 1L) {

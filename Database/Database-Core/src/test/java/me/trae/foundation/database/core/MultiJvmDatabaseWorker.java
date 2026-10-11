@@ -13,21 +13,26 @@ import java.time.Duration;
 import java.util.UUID;
 
 @UtilityClass
-public class MultiJvmDatabaseWorker {
+public final class MultiJvmDatabaseWorker {
 
     public static final EntityProperty<WorkerEntity, String> VALUE = EntityProperty.register(WorkerEntity.class, "value", WorkerEntity::getValue, WorkerEntity::setValue, String.class, true);
 
     public static void main(final String[] argumentList) throws Exception {
         final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(argumentList[0], Integer.parseInt(argumentList[1]), argumentList[2], argumentList[3], argumentList[4], Integer.parseInt(argumentList[13])));
+
         final RedisDriver redisDriver = new RedisDriver(new RedisSettings(argumentList[5], Integer.parseInt(argumentList[6]), argumentList[7].isEmpty() ? null : argumentList[7], Integer.parseInt(argumentList[8]), Duration.ofSeconds(2)));
 
         postgresDriver.connect();
         redisDriver.connect();
 
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+
         final boolean deferred = Boolean.parseBoolean(argumentList[11]);
+
         final WorkerRepository repository = new WorkerRepository(coreDatabase, argumentList[9], redisDriver, argumentList[12].isEmpty() ? null : argumentList[12]);
+
         final WorkerHolder holder = new WorkerHolder(repository);
+
         final UUID id = UUID.fromString(argumentList[10]);
         coreDatabase.start();
 
@@ -81,6 +86,7 @@ public class MultiJvmDatabaseWorker {
 
                 if (command.startsWith("CREATE|")) {
                     final String[] parts = command.split("\\|", 3);
+
                     final WorkerEntity createdEntity = new WorkerEntity(id);
                     createdEntity.setValue(parts[1]);
                     holder.save(createdEntity);
@@ -106,6 +112,7 @@ public class MultiJvmDatabaseWorker {
 
                 if (command.startsWith("READ|")) {
                     final String expectedValue = command.substring("READ|".length());
+
                     final long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
                     WorkerEntity current = holder.getById(id).orElse(null);
 

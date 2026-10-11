@@ -30,12 +30,28 @@ public interface EntityHolder<E extends Entity, R extends EntityRepository<E>> {
 
     <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value);
 
+    default <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value, final Set<LookupTier> lookupTiers) {
+        if (!lookupTiers.equals(EnumSet.allOf(LookupTier.class))) {
+            throw new UnsupportedOperationException("This holder does not support lookup tier selection for properties");
+        }
+
+        return this.getByProperty(entityProperty, value);
+    }
+
     default <Value> void transferUniqueProperty(final UUID claimantId, final UUID currentOwnerId, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue) {
         throw new UnsupportedOperationException("This holder does not support unique property transfers");
     }
 
     default Optional<E> getByIndex(final EntityIndex<? super E> entityIndex, final Object... values) {
         throw new UnsupportedOperationException("This holder does not support indexed lookups");
+    }
+
+    default Optional<E> getByIndex(final EntityIndex<? super E> entityIndex, final Set<LookupTier> lookupTiers, final Object... values) {
+        if (!lookupTiers.equals(EnumSet.allOf(LookupTier.class))) {
+            throw new UnsupportedOperationException("This holder does not support lookup tier selection for indexes");
+        }
+
+        return this.getByIndex(entityIndex, values);
     }
 
     List<E> getPinned();

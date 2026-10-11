@@ -861,16 +861,23 @@ final class DatabaseTest {
         final AccountHolder writer = new AccountHolder(repository);
         database.start();
 
-        final Account account = this.createAccount("sample-value");
+        final Account account = this.createAccount("MiXeD-Value");
         writer.save(account);
         database.getBatchQueue().flush();
+
+        assertEquals("MiXeD-Value", repository.findById(account.getId()).orElseThrow().getName());
 
         final EntityIndex<Account> nameIndex = EntityIndex.of(NAME.getName(), NAME);
         final RedisEntityIndex<Account> redisEntityIndex = new RedisEntityIndex<>(this.redisDriver, RedisNamespace.of(this.table), nameIndex, Duration.ofHours(1));
         redisEntityIndex.remove(nameIndex.getValues(account), account.getId());
 
         final AccountHolder reader = new AccountHolder(repository);
-        assertEquals(account.getId(), reader.getById(account.getId()).orElseThrow().getId());
+        assertTrue(reader.getByProperty(NAME, "mixed-value", EnumSet.of(LookupTier.LOCAL)).isEmpty());
+
+        final Account indexedAccount = reader.getByProperty(NAME, "mixed-value").orElseThrow();
+        assertEquals(account.getId(), indexedAccount.getId());
+        assertSame(indexedAccount, reader.getByProperty(NAME, "mixed-value", EnumSet.of(LookupTier.LOCAL)).orElseThrow());
+        assertEquals("MiXeD-Value", reader.getById(account.getId()).orElseThrow().getName());
         assertEquals(account.getId(), redisEntityIndex.find(nameIndex.getValues(account)).orElseThrow());
     }
 
@@ -940,8 +947,12 @@ final class DatabaseTest {
         final CoreDatabase secondDatabase = this.openDatabase(null);
         final VehicleHolder secondHolder = new VehicleHolder(new VehicleRepository(secondDatabase, this.table), RedisMode.ENABLED);
         secondDatabase.start();
+        assertTrue(secondHolder.getByIndex(VIN_AND_STATE, EnumSet.of(LookupTier.LOCAL), "1AbC234", VehicleState.NSW).isEmpty());
+
         final Vehicle cachedVehicle = secondHolder.getByIndex(VIN_AND_STATE, "1AbC234", VehicleState.NSW).orElseThrow();
         assertEquals(vehicle.getId(), cachedVehicle.getId());
+        assertSame(cachedVehicle, secondHolder.getByIndex(VIN_AND_STATE, EnumSet.of(LookupTier.LOCAL), "1AbC234", VehicleState.NSW).orElseThrow());
+
         secondHolder.evict(cachedVehicle);
         assertEquals(vehicle.getId(), secondHolder.getByIndex(VIN_AND_STATE, "1AbC234", VehicleState.NSW).orElseThrow().getId());
 

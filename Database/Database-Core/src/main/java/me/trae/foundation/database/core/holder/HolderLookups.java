@@ -4,6 +4,7 @@ import io.lettuce.core.RedisException;
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.ConnectionException;
+import me.trae.foundation.database.api.holder.LookupTier;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.repository.index.EntityIndex;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
@@ -16,9 +17,11 @@ import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -48,17 +51,25 @@ public final class HolderLookups<E extends Entity> {
     }
 
     public <Value> Optional<E> lookup(final EntityProperty<? super E, Value> entityProperty, final Value value) {
+        return this.lookup(entityProperty, value, EnumSet.allOf(LookupTier.class));
+    }
+
+    public <Value> Optional<E> lookup(final EntityProperty<? super E, Value> entityProperty, final Value value, final Set<LookupTier> lookupTiers) {
         final EntityIndex<E> entityIndex = this.repository.getEntityIndexes().stream().filter(index -> index.getProperties().size() == 1 && index.getProperties().getFirst().getName().equals(entityProperty.getName())).findFirst().orElse(null);
 
         if (entityIndex != null) {
-            return this.lookup(entityIndex, value);
+            return this.lookup(entityIndex, lookupTiers, value);
         }
 
-        return this.getPropertyLookup(entityProperty).lookup(value);
+        return this.getPropertyLookup(entityProperty).lookup(value, lookupTiers);
     }
 
     public Optional<E> lookup(final EntityIndex<? super E> entityIndex, final Object... values) {
-        return this.getEntityIndexLookup(entityIndex).lookup(entityIndex.getValues(values));
+        return this.lookup(entityIndex, EnumSet.allOf(LookupTier.class), values);
+    }
+
+    public Optional<E> lookup(final EntityIndex<? super E> entityIndex, final Set<LookupTier> lookupTiers, final Object... values) {
+        return this.getEntityIndexLookup(entityIndex).lookup(entityIndex.getValues(values), lookupTiers);
     }
 
     public void cache(final E entity) {

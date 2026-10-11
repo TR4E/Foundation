@@ -432,7 +432,16 @@ Lookups by property work the same way. Properties with a `UNIQUE` index also kee
 
 `getByProperty(property, value)` uses an O(1) local value-to-id map and, when Redis is enabled, a Redis value-to-id index only when that property is declared `UNIQUE` by the repository. It then loads the entity through the normal ID lookup. If the property is not indexed, the local fallback scans cached entities and PostgreSQL performs a property query; use a declared index when indexed lookup performance is required.
 
-For a case-insensitive property, register it with `EntityProperty.registerCaseInsensitive`. Foundation normalizes the value for local and Redis index keys, and PostgreSQL creates a unique index over the lowercased column. Changing only the letter casing does not change the normalized index key.
+Each lookup also accepts a `Set<LookupTier>` to limit which tiers it reads. The overload without a tier set searches all available tiers. A local-only lookup returns empty on a local miss and does not fall through to Redis or PostgreSQL. For a registered index, the local lookup uses its value-to-id map; unindexed property lookups use the existing local scan.
+
+```java
+final Set<LookupTier> localOnly = EnumSet.of(LookupTier.LOCAL);
+holder.getById(entityId, localOnly);
+holder.getByProperty(property, value, localOnly);
+holder.getByIndex(entityIndex, localOnly, firstValue, secondValue);
+```
+
+For a case-insensitive property, register it with `EntityProperty.registerCaseInsensitive`. Foundation lowercases values only for local and Redis index keys and uses `lower(column)` for PostgreSQL comparisons and functional indexes. It does not lowercase or rewrite the stored property value: a mixed-case display value remains exactly as saved in PostgreSQL and on the loaded entity. Changing only the input casing does not change the normalized index key.
 
 ```java
 @Override

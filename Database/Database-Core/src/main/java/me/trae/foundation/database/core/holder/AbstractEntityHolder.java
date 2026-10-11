@@ -13,6 +13,7 @@ import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.storage.local.LocalStorage;
 
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -48,12 +49,31 @@ public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractE
     }
 
     @Override
-    public final <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value) {
-        final Optional<E> result = this.holderComponents.getHolderLookups().lookup(entityProperty, value);
+    public final <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value, final Set<LookupTier> lookupTiers) {
+        final Optional<E> result = this.holderComponents.getHolderLookups().lookup(entityProperty, value, lookupTiers);
 
         result.ifPresent(this.holderCache::track);
 
         return result;
+    }
+
+    @Override
+    public final <Value> Optional<E> getByProperty(final EntityProperty<? super E, Value> entityProperty, final Value value) {
+        return this.getByProperty(entityProperty, value, EnumSet.allOf(LookupTier.class));
+    }
+
+    @Override
+    public final Optional<E> getByIndex(final EntityIndex<? super E> entityIndex, final Set<LookupTier> lookupTiers, final Object... values) {
+        final Optional<E> result = this.holderComponents.getHolderLookups().lookup(entityIndex, lookupTiers, values);
+
+        result.ifPresent(this.holderCache::track);
+
+        return result;
+    }
+
+    @Override
+    public final Optional<E> getByIndex(final EntityIndex<? super E> entityIndex, final Object... values) {
+        return this.getByIndex(entityIndex, EnumSet.allOf(LookupTier.class), values);
     }
 
     @Override
@@ -64,15 +84,6 @@ public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractE
         this.holderComponents.getHolderWriter().transferUniqueProperty(claimant, currentOwner, entityProperty, claimedValue, replacementValue);
         this.holderComponents.getHolderLookups().cache(currentOwner);
         this.holderComponents.getHolderLookups().cache(claimant);
-    }
-
-    @Override
-    public final Optional<E> getByIndex(final EntityIndex<? super E> entityIndex, final Object... values) {
-        final Optional<E> result = this.holderComponents.getHolderLookups().lookup(entityIndex, values);
-
-        result.ifPresent(this.holderCache::track);
-
-        return result;
     }
 
     @Override

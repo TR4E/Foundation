@@ -27,7 +27,7 @@ public class MultiJvmDatabaseWorker {
     public static final EntityProperty<WorkerEntity, String> VALUE = EntityProperty.register(WorkerEntity.class, "value", WorkerEntity::getValue, WorkerEntity::setValue, String.class, true);
 
     public static void main(final String[] argumentList) throws Exception {
-        final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(argumentList[0], Integer.parseInt(argumentList[1]), argumentList[2], argumentList[3], argumentList[4], 4));
+        final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(argumentList[0], Integer.parseInt(argumentList[1]), argumentList[2], argumentList[3], argumentList[4], Integer.parseInt(argumentList[13])));
         final RedisDriver redisDriver = new RedisDriver(new RedisSettings(argumentList[5], Integer.parseInt(argumentList[6]), argumentList[7].isEmpty() ? null : argumentList[7], Integer.parseInt(argumentList[8]), Duration.ofSeconds(2)));
 
         postgresDriver.connect();

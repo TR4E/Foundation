@@ -112,7 +112,7 @@ final class MultiJvmInvalidationTest {
     }
 
     @Test
-    void fiveJvmColdMissesShareOnePostgresLoad() throws Exception {
+    void multipleJvmColdMissesShareOnePostgresLoad() throws Exception {
         final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(
                 System.getProperty("postgres.host", "localhost"),
                 Integer.getInteger("postgres.port", 5432),
@@ -131,8 +131,11 @@ final class MultiJvmInvalidationTest {
         final String table = "multi_jvm_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
         final String countKey = "%s:loader-count".formatted(table);
         final UUID id = UUID.randomUUID();
+        final int jvmCount = Integer.getInteger("multiJvm.count", 5);
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
         final List<Process> processList = new ArrayList<>();
+
+        assertTrue(jvmCount >= 2 && jvmCount <= 100, "multiJvm.count must be between 2 and 100");
 
         try {
             postgresDriver.connect();
@@ -153,7 +156,7 @@ final class MultiJvmInvalidationTest {
             holder.save(entity);
             coreDatabase.getBatchQueue().flush();
 
-            for (int index = 0; index < 5; index++) {
+            for (int index = 0; index < jvmCount; index++) {
                 final Process process = this.startWorker(table, id, true, countKey);
                 processList.add(process);
                 assertEquals("READY|deferred", this.readMessage(process, "READY|"));
@@ -287,7 +290,8 @@ final class MultiJvmInvalidationTest {
                 table,
                 id.toString(),
                 String.valueOf(deferred),
-                countKey == null ? "" : countKey
+                countKey == null ? "" : countKey,
+                String.valueOf(Integer.getInteger("multiJvm.postgresPoolSize", 4))
         ).redirectErrorStream(true).start();
 
         return process;

@@ -52,7 +52,7 @@ public final class RepositoryWriter<E extends Entity> {
             revisionCallback = () -> ((RevisionedEntity) entity).setRevision(expectedRevision + 1L);
         }
 
-        this.pendingWriteStore.queueUpsert(this.tableSchema, this.tenantId, entity.getId(), valueMap, new ArrayList<>(commitCallbackList), this.createInvalidation(entity.getId()), expectedRevision, revisionCallback);
+        this.pendingWriteStore.queueUpsert(this.tableSchema, this.tenantId, entity.getId(), valueMap, new ArrayList<>(commitCallbackList), this.createInvalidation(entity.getId()), expectedRevision, revisionCallback, expectedRevision == null ? null : (RevisionedEntity) entity);
     }
 
     public void delete(final E entity) {
@@ -61,7 +61,7 @@ public final class RepositoryWriter<E extends Entity> {
 
     public void delete(final E entity, final List<Runnable> commitCallbackList) {
         final Long expectedRevision = this.tableSchema.isOptimisticLocking() ? ((RevisionedEntity) entity).getRevision() : null;
-        this.pendingWriteStore.queueDelete(this.tableSchema, this.tenantId, entity.getId(), commitCallbackList, this.createInvalidation(entity.getId()), expectedRevision);
+        this.pendingWriteStore.queueDelete(this.tableSchema, this.tenantId, entity.getId(), commitCallbackList, this.createInvalidation(entity.getId()), expectedRevision, expectedRevision == null ? null : (RevisionedEntity) entity);
     }
 
     private RedisInvalidation createInvalidation(final java.util.UUID id) {

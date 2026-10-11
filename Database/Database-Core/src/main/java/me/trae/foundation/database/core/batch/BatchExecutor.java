@@ -132,6 +132,30 @@ public final class BatchExecutor {
             insertMap.put(TableSchema.TENANT_FIELD, pendingWrite.getTenantId());
         }
 
+        if (pendingWrite.getExpectedRevision() != null && pendingWrite.getExpectedRevision() > 0L) {
+            Condition changedCondition = DSL.falseCondition();
+
+            for (final Map.Entry<Field<?>, Object> entry : pendingWrite.getValueMap().entrySet()) {
+                if (entry.getKey().equals(TableSchema.REVISION_FIELD)) {
+                    continue;
+                }
+
+                final Field<?> storedField = DSL.field(DSL.name(tableSchema.getTableName(), entry.getKey().getName()), entry.getKey().getDataType());
+                changedCondition = changedCondition.or(DSL.condition("{0} is distinct from {1}", storedField, DSL.val(entry.getValue(), entry.getKey().getDataType())));
+            }
+
+            final Condition revisionCondition = tableSchema.getKeyCondition(pendingWrite.getTenantId(), pendingWrite.getId())
+                    .and(TableSchema.REVISION_FIELD.eq(pendingWrite.getExpectedRevision()))
+                    .and(changedCondition);
+            final Map<Field<?>, Object> updateMap = new LinkedHashMap<>(pendingWrite.getValueMap());
+
+            if (updateMap.isEmpty()) {
+                updateMap.put(TableSchema.ID_FIELD, pendingWrite.getId());
+            }
+
+            return dslContext.update(tableSchema.getTable()).set(updateMap).where(revisionCondition);
+        }
+
         if (pendingWrite.getValueMap().isEmpty()) {
             return dslContext.insertInto(tableSchema.getTable()).set(insertMap).onConflict(tableSchema.getKeyFields()).doNothing();
         }
@@ -168,7 +192,7 @@ public final class BatchExecutor {
                 .where(pendingWrite.getTableSchema().getKeyCondition(pendingWrite.getTenantId(), pendingWrite.getId()))
                 .fetchOne(TableSchema.REVISION_FIELD);
 
-        return storedRevision != null && !storedRevision.equals(pendingWrite.getExpectedRevision());
+        return storedRevision == null || !storedRevision.equals(pendingWrite.getExpectedRevision());
     }
 
     private void reportStaleWrite(final PendingWrite pendingWrite) {

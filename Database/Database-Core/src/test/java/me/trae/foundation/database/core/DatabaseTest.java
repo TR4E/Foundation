@@ -56,6 +56,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -121,6 +122,49 @@ final class DatabaseTest {
     }
 
     @Test
+    void coalescedCommitCallbacksRunOnceInRegistrationOrder() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final List<Integer> callbackOrder = new ArrayList<>();
+        database.start();
+
+        final Account account = this.createAccount("initial");
+        repository.save(account, List.of(() -> callbackOrder.add(1)));
+        account.setName("updated");
+        repository.save(account, List.of(() -> callbackOrder.add(2)));
+        account.setName("latest");
+        repository.save(account, List.of(() -> callbackOrder.add(3)));
+
+        database.getBatchQueue().flush();
+
+        assertEquals(List.of(1, 2, 3), callbackOrder);
+        assertEquals("latest", repository.findById(account.getId()).orElseThrow().getName());
+    }
+
+    @Test
+    void commitCallbacksRemainPendingAcrossPostgresReconnect() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AtomicInteger callbackCount = new AtomicInteger();
+        database.start();
+
+        final Account account = this.createAccount("reconnect");
+        repository.save(account, List.of(callbackCount::incrementAndGet));
+        this.postgresDriver.disconnect();
+
+        database.getBatchQueue().flush();
+
+        assertEquals(0, callbackCount.get());
+        assertEquals(1, database.getBatchQueue().getPendingWriteStore().size());
+
+        this.postgresDriver.connect();
+        database.getBatchQueue().flush();
+
+        assertEquals(1, callbackCount.get());
+        assertEquals("reconnect", repository.findById(account.getId()).orElseThrow().getName());
+    }
+
+    @Test
     void optimisticLockingRejectsStaleEntityWrites() {
         final CoreDatabase database = this.openDatabase(null);
         final AccountRepository repository = new AccountRepository(database, "revision_accounts_%s".formatted(UUID.randomUUID().toString().replace("-", "")), TenantScope.NONE, true);
@@ -158,6 +202,30 @@ final class DatabaseTest {
         assertEquals("current", stored.getName());
         assertEquals(2L, stored.getRevision());
         assertEquals(2L, current.getRevision());
+        assertTrue(failureList.stream().anyMatch(OptimisticLockException.class::isInstance));
+    }
+
+    @Test
+    void optimisticLockingDoesNotRecreateAnEntityDeletedAfterItWasRead() {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, "deleted_revision_accounts_%s".formatted(UUID.randomUUID().toString().replace("-", "")), TenantScope.NONE, true);
+        final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
+        database.setFailureHandler(failureList::add);
+        database.start();
+
+        final Account initial = this.createAccount("initial");
+        repository.save(initial);
+        database.getBatchQueue().flush();
+
+        final Account stale = repository.findById(initial.getId()).orElseThrow();
+        repository.delete(initial);
+        database.getBatchQueue().flush();
+
+        stale.setName("stale");
+        repository.save(stale);
+        database.getBatchQueue().flush();
+
+        assertTrue(repository.findById(initial.getId()).isEmpty());
         assertTrue(failureList.stream().anyMatch(OptimisticLockException.class::isInstance));
     }
 

@@ -1169,7 +1169,7 @@ final class DatabaseTest {
         }
     }
 
-    private static final class AccountHolder extends AbstractEntityHolder<Account> {
+    private static final class AccountHolder extends AbstractEntityHolder<Account, AccountRepository> {
 
         private AccountHolder(final AccountRepository repository, final InstanceMode instanceMode, final Duration localExpiry) {
             super(repository, instanceMode, RedisMode.ENABLED, localExpiry, Duration.ofHours(1));

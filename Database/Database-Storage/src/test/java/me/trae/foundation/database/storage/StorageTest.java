@@ -63,31 +63,31 @@ final class StorageTest {
 
     @Test
     void localStorageCanRefreshItsIdleExpiryOnRead() throws InterruptedException {
-        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(150), true);
+        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(1_500), true);
         localStorage.put("active", "value");
 
-        Thread.sleep(100);
+        Thread.sleep(1_000L);
         assertEquals(Optional.of("value"), localStorage.get("active"));
 
-        Thread.sleep(100);
+        Thread.sleep(1_000L);
         assertEquals(Optional.of("value"), localStorage.get("active"));
 
-        Thread.sleep(200);
+        Thread.sleep(1_600L);
         assertTrue(localStorage.get("active").isEmpty());
     }
 
     @Test
     void localStorageReadRefreshCannotExtendAbsoluteMaximumAge() throws InterruptedException {
-        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(90), true, Duration.ofMillis(300));
+        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(1_500), true, Duration.ofMillis(5_000));
         localStorage.put("active", "value");
 
-        Thread.sleep(70);
+        Thread.sleep(1_000L);
         assertEquals(Optional.of("value"), localStorage.get("active"));
-        Thread.sleep(70);
+        Thread.sleep(1_000L);
         assertEquals(Optional.of("value"), localStorage.get("active"));
-        Thread.sleep(70);
+        Thread.sleep(1_000L);
         assertEquals(Optional.of("value"), localStorage.get("active"));
-        Thread.sleep(110);
+        Thread.sleep(2_200L);
 
         assertTrue(localStorage.get("active").isEmpty());
     }

@@ -10,7 +10,7 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandSource;
 import lombok.Getter;
-import me.trae.foundation.minecraft.velocity.plugin.framework.command.BaseCommand;
+import me.trae.foundation.minecraft.velocity.plugin.framework.command.AbstractCommand;
 import me.trae.foundation.minecraft.velocity.plugin.framework.command.events.CommandExecuteEvent;
 import me.trae.foundation.minecraft.velocity.plugin.framework.command.events.CommandTabCompleteEvent;
 import me.trae.foundation.minecraft.velocity.plugin.framework.utility.UtilEvent;
@@ -23,15 +23,15 @@ import java.util.concurrent.CompletableFuture;
 
 public final class BrigadierCommandWrapper {
 
-    private final BaseCommand<?, ?> baseCommand;
+    private final AbstractCommand<?, ?> abstractCommand;
 
     @Getter
     private final BrigadierCommand brigadierCommand;
 
-    public BrigadierCommandWrapper(final BaseCommand<?, ?> baseCommand) {
-        this.baseCommand = baseCommand;
+    public BrigadierCommandWrapper(final AbstractCommand<?, ?> abstractCommand) {
+        this.abstractCommand = abstractCommand;
 
-        this.brigadierCommand = new BrigadierCommand(BrigadierCommand.literalArgumentBuilder(baseCommand.getLabel())
+        this.brigadierCommand = new BrigadierCommand(BrigadierCommand.literalArgumentBuilder(abstractCommand.getLabel())
                 .executes(context -> this.execute(context.getSource(), ""))
                 .then(BrigadierCommand.requiredArgumentBuilder("args", StringArgumentType.greedyString())
                         .suggests(this::suggest)
@@ -42,11 +42,11 @@ public final class BrigadierCommandWrapper {
     private int execute(final CommandSource commandSource, final String input) {
         final String[] args = input.isEmpty() ? new String[0] : input.split(" ");
 
-        final BaseCommand<?, ?> baseCommand = this.getCommand(this.baseCommand, args, 0);
+        final AbstractCommand<?, ?> abstractCommand = this.getCommand(this.abstractCommand, args, 0);
 
-        final String[] arguments = this.getArgs(baseCommand, args);
+        final String[] arguments = this.getArgs(abstractCommand, args);
 
-        return this.executeBaseCommand(baseCommand, commandSource, arguments) ? Command.SINGLE_SUCCESS : 0;
+        return this.executeBaseCommand(abstractCommand, commandSource, arguments) ? Command.SINGLE_SUCCESS : 0;
     }
 
     private CompletableFuture<Suggestions> suggest(final CommandContext<CommandSource> context, final SuggestionsBuilder suggestionsBuilder) {
@@ -54,68 +54,68 @@ public final class BrigadierCommandWrapper {
 
         final String[] args = remaining.split(" ", -1);
 
-        final BaseCommand<?, ?> baseCommand = this.getCommand(this.baseCommand, args, 1);
+        final AbstractCommand<?, ?> abstractCommand = this.getCommand(this.abstractCommand, args, 1);
 
-        final String[] arguments = this.getArgs(baseCommand, args);
+        final String[] arguments = this.getArgs(abstractCommand, args);
 
         final StringRange stringRange = StringRange.between(suggestionsBuilder.getStart() + remaining.lastIndexOf(' ') + 1, suggestionsBuilder.getInput().length());
 
-        final List<Suggestion> suggestions = this.getBaseCommandTabComplete(baseCommand, context.getSource(), arguments).stream()
+        final List<Suggestion> suggestions = this.getBaseCommandTabComplete(abstractCommand, context.getSource(), arguments).stream()
                 .map(value -> new Suggestion(stringRange, value))
                 .toList();
 
         return CompletableFuture.completedFuture(new Suggestions(stringRange, suggestions));
     }
 
-    private BaseCommand<?, ?> getCommand(final BaseCommand<?, ?> baseCommand, final String[] args, final int offset) {
-        final int argStart = baseCommand.getArgStart();
+    private AbstractCommand<?, ?> getCommand(final AbstractCommand<?, ?> abstractCommand, final String[] args, final int offset) {
+        final int argStart = abstractCommand.getArgStart();
         if (args.length <= argStart + offset) {
-            return baseCommand;
+            return abstractCommand;
         }
 
-        final BaseCommand<?, ?> childCommand = baseCommand.getChildCommandMap().get(args[argStart].toLowerCase(Locale.ROOT));
+        final AbstractCommand<?, ?> childCommand = abstractCommand.getChildCommandMap().get(args[argStart].toLowerCase(Locale.ROOT));
         if (childCommand == null) {
-            return baseCommand;
+            return abstractCommand;
         }
 
         return this.getCommand(childCommand, args, offset);
     }
 
-    private String[] getArgs(final BaseCommand<?, ?> baseCommand, final String[] args) {
-        return Arrays.copyOfRange(args, baseCommand.getArgStart(), args.length);
+    private String[] getArgs(final AbstractCommand<?, ?> abstractCommand, final String[] args) {
+        return Arrays.copyOfRange(args, abstractCommand.getArgStart(), args.length);
     }
 
-    private <Sender extends CommandSource> boolean executeBaseCommand(final BaseCommand<?, Sender> baseCommand, final CommandSource commandSource, final String[] args) {
-        if (!baseCommand.isValidSender(commandSource, true)) {
+    private <Sender extends CommandSource> boolean executeBaseCommand(final AbstractCommand<?, Sender> abstractCommand, final CommandSource commandSource, final String[] args) {
+        if (!abstractCommand.isValidSender(commandSource, true)) {
             return false;
         }
 
-        if (!baseCommand.hasPermission(commandSource, true)) {
+        if (!abstractCommand.hasPermission(commandSource, true)) {
             return false;
         }
 
-        if (UtilEvent.supply(new CommandExecuteEvent(baseCommand, commandSource)).isCancelled()) {
+        if (UtilEvent.supply(new CommandExecuteEvent(abstractCommand, commandSource)).isCancelled()) {
             return false;
         }
 
-        baseCommand.execute(baseCommand.getSenderType().cast(commandSource), args);
+        abstractCommand.execute(abstractCommand.getSenderType().cast(commandSource), args);
 
         return true;
     }
 
-    private <Sender extends CommandSource> List<String> getBaseCommandTabComplete(final BaseCommand<?, Sender> baseCommand, final CommandSource commandSource, final String[] args) {
-        if (!baseCommand.isValidSender(commandSource, false)) {
+    private <Sender extends CommandSource> List<String> getBaseCommandTabComplete(final AbstractCommand<?, Sender> abstractCommand, final CommandSource commandSource, final String[] args) {
+        if (!abstractCommand.isValidSender(commandSource, false)) {
             return Collections.emptyList();
         }
 
-        if (!baseCommand.hasPermission(commandSource, false)) {
+        if (!abstractCommand.hasPermission(commandSource, false)) {
             return Collections.emptyList();
         }
 
-        if (UtilEvent.supply(new CommandTabCompleteEvent(baseCommand, commandSource)).isCancelled()) {
+        if (UtilEvent.supply(new CommandTabCompleteEvent(abstractCommand, commandSource)).isCancelled()) {
             return Collections.emptyList();
         }
 
-        return baseCommand.getTabComplete(baseCommand.getSenderType().cast(commandSource), args);
+        return abstractCommand.getTabComplete(abstractCommand.getSenderType().cast(commandSource), args);
     }
 }

@@ -6,7 +6,7 @@ import me.trae.foundation.injector.api.callback.ApplicationCallback;
 import me.trae.foundation.injector.extensions.configuration.callback.ConfigurationCallback;
 import me.trae.foundation.injector.extensions.scheduler.callback.SchedulerCallback;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.AddonRegistry;
-import me.trae.foundation.minecraft.paper.plugin.framework.command.BaseCommand;
+import me.trae.foundation.minecraft.paper.plugin.framework.command.AbstractCommand;
 import me.trae.foundation.minecraft.paper.plugin.framework.config.events.ConfigReloadEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.config.events.ConfigSaveEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.plugin.events.PluginInitializeEvent;
@@ -57,8 +57,8 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
         final Comparator<Class<?>> componentSorter = ApplicationCallback.super.getComponentSorter();
 
         return (first, second) -> {
-            if (BaseCommand.class.isAssignableFrom(first) && BaseCommand.class.isAssignableFrom(second)) {
-                return BaseCommand.COMPARATOR_ORDER.compare(first, second);
+            if (AbstractCommand.class.isAssignableFrom(first) && AbstractCommand.class.isAssignableFrom(second)) {
+                return AbstractCommand.COMPARATOR_ORDER.compare(first, second);
             }
 
             return componentSorter.compare(first, second);
@@ -71,8 +71,8 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
             this.getServer().getPluginManager().registerEvents(listener, this);
         }
 
-        if (component instanceof final BaseCommand<?, ?> baseCommand) {
-            CommandRegistry.registerCommand(this, baseCommand);
+        if (component instanceof final AbstractCommand<?, ?> abstractCommand) {
+            CommandRegistry.registerCommand(this, abstractCommand);
         }
     }
 
@@ -82,8 +82,8 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
             HandlerList.unregisterAll(listener);
         }
 
-        if (component instanceof final BaseCommand<?, ?> baseCommand) {
-            CommandRegistry.unregisterCommand(baseCommand);
+        if (component instanceof final AbstractCommand<?, ?> abstractCommand) {
+            CommandRegistry.unregisterCommand(abstractCommand);
         }
     }
 

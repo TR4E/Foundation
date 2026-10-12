@@ -34,11 +34,11 @@ public class Suggestions {
         return filter(collection, Function.identity(), arg);
     }
 
-    public static List<String> childCommands(final BaseCommand<?, ?> baseCommand, final CommandSource commandSource, final String arg) {
+    public static List<String> childCommands(final AbstractCommand<?, ?> abstractCommand, final CommandSource commandSource, final String arg) {
         return filter(
-                baseCommand.getChildCommandMap().values(),
+                abstractCommand.getChildCommandMap().values(),
                 childCommand -> childCommand.isValidSender(commandSource, false) && childCommand.hasPermission(commandSource, false),
-                BaseCommand::getLabel,
+                AbstractCommand::getLabel,
                 arg
         );
     }

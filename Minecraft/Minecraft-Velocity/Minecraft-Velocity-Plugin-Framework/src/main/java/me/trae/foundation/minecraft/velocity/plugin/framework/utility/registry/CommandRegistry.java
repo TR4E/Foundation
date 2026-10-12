@@ -4,7 +4,7 @@ import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.velocity.plugin.framework.VelocityPlugin;
-import me.trae.foundation.minecraft.velocity.plugin.framework.command.BaseCommand;
+import me.trae.foundation.minecraft.velocity.plugin.framework.command.AbstractCommand;
 import me.trae.foundation.minecraft.velocity.plugin.framework.command.wrapper.BrigadierCommandWrapper;
 
 import java.util.LinkedHashMap;
@@ -12,41 +12,41 @@ import java.util.LinkedHashMap;
 @UtilityClass
 public class CommandRegistry {
 
-    public static void registerCommand(final VelocityPlugin velocityPlugin, final BaseCommand<?, ?> baseCommand) {
-        if (!baseCommand.isRoot()) {
-            final LinkedHashMap<String, BaseCommand<?, ?>> childCommandMap = baseCommand.getParentCommand().getChildCommandMap();
+    public static void registerCommand(final VelocityPlugin velocityPlugin, final AbstractCommand<?, ?> abstractCommand) {
+        if (!abstractCommand.isRoot()) {
+            final LinkedHashMap<String, AbstractCommand<?, ?>> childCommandMap = abstractCommand.getParentCommand().getChildCommandMap();
 
-            childCommandMap.put(baseCommand.getLabel(), baseCommand);
+            childCommandMap.put(abstractCommand.getLabel(), abstractCommand);
 
-            baseCommand.getAliases().forEach(alias -> childCommandMap.put(alias, baseCommand));
+            abstractCommand.getAliases().forEach(alias -> childCommandMap.put(alias, abstractCommand));
             return;
         }
 
         final CommandManager commandManager = velocityPlugin.getProxyServer().getCommandManager();
 
-        removeCommand(commandManager, baseCommand.getLabel());
+        removeCommand(commandManager, abstractCommand.getLabel());
 
-        baseCommand.getAliases().forEach(alias -> removeCommand(commandManager, alias));
+        abstractCommand.getAliases().forEach(alias -> removeCommand(commandManager, alias));
 
-        final CommandMeta commandMeta = commandManager.metaBuilder(baseCommand.getLabel())
-                .aliases(baseCommand.getAliases().toArray(String[]::new))
+        final CommandMeta commandMeta = commandManager.metaBuilder(abstractCommand.getLabel())
+                .aliases(abstractCommand.getAliases().toArray(String[]::new))
                 .plugin(velocityPlugin)
                 .build();
 
-        commandManager.register(commandMeta, new BrigadierCommandWrapper(baseCommand).getBrigadierCommand());
+        commandManager.register(commandMeta, new BrigadierCommandWrapper(abstractCommand).getBrigadierCommand());
     }
 
-    public static void unregisterCommand(final VelocityPlugin velocityPlugin, final BaseCommand<?, ?> baseCommand) {
-        if (!baseCommand.isRoot()) {
-            final LinkedHashMap<String, BaseCommand<?, ?>> childCommandMap = baseCommand.getParentCommand().getChildCommandMap();
+    public static void unregisterCommand(final VelocityPlugin velocityPlugin, final AbstractCommand<?, ?> abstractCommand) {
+        if (!abstractCommand.isRoot()) {
+            final LinkedHashMap<String, AbstractCommand<?, ?>> childCommandMap = abstractCommand.getParentCommand().getChildCommandMap();
 
-            childCommandMap.remove(baseCommand.getLabel(), baseCommand);
+            childCommandMap.remove(abstractCommand.getLabel(), abstractCommand);
 
-            baseCommand.getAliases().forEach(alias -> childCommandMap.remove(alias, baseCommand));
+            abstractCommand.getAliases().forEach(alias -> childCommandMap.remove(alias, abstractCommand));
             return;
         }
 
-        removeCommand(velocityPlugin.getProxyServer().getCommandManager(), baseCommand.getLabel());
+        removeCommand(velocityPlugin.getProxyServer().getCommandManager(), abstractCommand.getLabel());
     }
 
     private static void removeCommand(final CommandManager commandManager, final String alias) {

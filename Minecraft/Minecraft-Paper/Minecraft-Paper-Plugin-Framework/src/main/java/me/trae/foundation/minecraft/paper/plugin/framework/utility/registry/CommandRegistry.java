@@ -1,7 +1,7 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.utility.registry;
 
 import lombok.experimental.UtilityClass;
-import me.trae.foundation.minecraft.paper.plugin.framework.command.BaseCommand;
+import me.trae.foundation.minecraft.paper.plugin.framework.command.AbstractCommand;
 import me.trae.foundation.minecraft.paper.plugin.framework.command.wrapper.BukkitCommandWrapper;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
@@ -13,36 +13,36 @@ import java.util.LinkedHashMap;
 @UtilityClass
 public class CommandRegistry {
 
-    public static void registerCommand(final Plugin plugin, final BaseCommand<?, ?> baseCommand) {
-        if (!baseCommand.isRoot()) {
-            final LinkedHashMap<String, BaseCommand<?, ?>> childCommandMap = baseCommand.getParentCommand().getChildCommandMap();
+    public static void registerCommand(final Plugin plugin, final AbstractCommand<?, ?> abstractCommand) {
+        if (!abstractCommand.isRoot()) {
+            final LinkedHashMap<String, AbstractCommand<?, ?>> childCommandMap = abstractCommand.getParentCommand().getChildCommandMap();
 
-            childCommandMap.put(baseCommand.getLabel(), baseCommand);
+            childCommandMap.put(abstractCommand.getLabel(), abstractCommand);
 
-            baseCommand.getAliases().forEach(alias -> childCommandMap.put(alias, baseCommand));
+            abstractCommand.getAliases().forEach(alias -> childCommandMap.put(alias, abstractCommand));
             return;
         }
 
         final CommandMap commandMap = Bukkit.getServer().getCommandMap();
 
-        removeCommand(commandMap, baseCommand.getLabel());
+        removeCommand(commandMap, abstractCommand.getLabel());
 
-        baseCommand.getAliases().forEach(alias -> removeCommand(commandMap, alias));
+        abstractCommand.getAliases().forEach(alias -> removeCommand(commandMap, alias));
 
-        commandMap.register(baseCommand.getLabel(), plugin.getName(), new BukkitCommandWrapper(baseCommand));
+        commandMap.register(abstractCommand.getLabel(), plugin.getName(), new BukkitCommandWrapper(abstractCommand));
     }
 
-    public static void unregisterCommand(final BaseCommand<?, ?> baseCommand) {
-        if (!baseCommand.isRoot()) {
-            final LinkedHashMap<String, BaseCommand<?, ?>> childCommandMap = baseCommand.getParentCommand().getChildCommandMap();
+    public static void unregisterCommand(final AbstractCommand<?, ?> abstractCommand) {
+        if (!abstractCommand.isRoot()) {
+            final LinkedHashMap<String, AbstractCommand<?, ?>> childCommandMap = abstractCommand.getParentCommand().getChildCommandMap();
 
-            childCommandMap.remove(baseCommand.getLabel(), baseCommand);
+            childCommandMap.remove(abstractCommand.getLabel(), abstractCommand);
 
-            baseCommand.getAliases().forEach(alias -> childCommandMap.remove(alias, baseCommand));
+            abstractCommand.getAliases().forEach(alias -> childCommandMap.remove(alias, abstractCommand));
             return;
         }
 
-        removeCommand(Bukkit.getServer().getCommandMap(), baseCommand.getLabel());
+        removeCommand(Bukkit.getServer().getCommandMap(), abstractCommand.getLabel());
     }
 
     private static void removeCommand(final CommandMap commandMap, final String label) {

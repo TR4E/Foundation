@@ -1,6 +1,6 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.command.wrapper;
 
-import me.trae.foundation.minecraft.paper.plugin.framework.command.BaseCommand;
+import me.trae.foundation.minecraft.paper.plugin.framework.command.AbstractCommand;
 import me.trae.foundation.minecraft.paper.plugin.framework.command.events.CommandExecuteEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.command.events.CommandTabCompleteEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
@@ -15,81 +15,81 @@ import java.util.Locale;
 
 public final class BukkitCommandWrapper extends BukkitCommand {
 
-    private final BaseCommand<?, ?> baseCommand;
+    private final AbstractCommand<?, ?> abstractCommand;
 
-    public BukkitCommandWrapper(final BaseCommand<?, ?> baseCommand) {
-        super(baseCommand.getLabel(), baseCommand.getDescription(), baseCommand.getUsage(), baseCommand.getAliases());
+    public BukkitCommandWrapper(final AbstractCommand<?, ?> abstractCommand) {
+        super(abstractCommand.getLabel(), abstractCommand.getDescription(), abstractCommand.getUsage(), abstractCommand.getAliases());
 
-        this.baseCommand = baseCommand;
+        this.abstractCommand = abstractCommand;
     }
 
     @Override
     public boolean execute(@NotNull final CommandSender commandSender, @NotNull final String label, @NotNull final String @NotNull [] args) {
-        final BaseCommand<?, ?> baseCommand = this.getCommand(this.baseCommand, args, 0);
+        final AbstractCommand<?, ?> abstractCommand = this.getCommand(this.abstractCommand, args, 0);
 
-        final String[] arguments = this.getArgs(baseCommand, args);
+        final String[] arguments = this.getArgs(abstractCommand, args);
 
-        return this.executeBaseCommand(baseCommand, commandSender, arguments);
+        return this.executeBaseCommand(abstractCommand, commandSender, arguments);
     }
 
     @Override
     public @NotNull List<String> tabComplete(@NotNull final CommandSender commandSender, @NotNull final String alias, @NotNull final String @NotNull [] args) throws IllegalArgumentException {
-        final BaseCommand<?, ?> baseCommand = this.getCommand(this.baseCommand, args, 1);
+        final AbstractCommand<?, ?> abstractCommand = this.getCommand(this.abstractCommand, args, 1);
 
-        final String[] arguments = this.getArgs(baseCommand, args);
+        final String[] arguments = this.getArgs(abstractCommand, args);
 
-        return this.getBaseCommandTabComplete(baseCommand, commandSender, arguments);
+        return this.getBaseCommandTabComplete(abstractCommand, commandSender, arguments);
     }
 
-    private BaseCommand<?, ?> getCommand(final BaseCommand<?, ?> baseCommand, final String[] args, final int offset) {
-        final int argStart = baseCommand.getArgStart();
+    private AbstractCommand<?, ?> getCommand(final AbstractCommand<?, ?> abstractCommand, final String[] args, final int offset) {
+        final int argStart = abstractCommand.getArgStart();
         if (args.length <= argStart + offset) {
-            return baseCommand;
+            return abstractCommand;
         }
 
-        final BaseCommand<?, ?> childCommand = baseCommand.getChildCommandMap().get(args[argStart].toLowerCase(Locale.ROOT));
+        final AbstractCommand<?, ?> childCommand = abstractCommand.getChildCommandMap().get(args[argStart].toLowerCase(Locale.ROOT));
         if (childCommand == null) {
-            return baseCommand;
+            return abstractCommand;
         }
 
         return this.getCommand(childCommand, args, offset);
     }
 
-    private String[] getArgs(final BaseCommand<?, ?> baseCommand, final String[] args) {
-        return Arrays.copyOfRange(args, baseCommand.getArgStart(), args.length);
+    private String[] getArgs(final AbstractCommand<?, ?> abstractCommand, final String[] args) {
+        return Arrays.copyOfRange(args, abstractCommand.getArgStart(), args.length);
     }
 
-    private <Sender extends CommandSender> boolean executeBaseCommand(final BaseCommand<?, Sender> baseCommand, final CommandSender commandSender, final String[] args) {
-        if (!baseCommand.isValidSender(commandSender, true)) {
+    private <Sender extends CommandSender> boolean executeBaseCommand(final AbstractCommand<?, Sender> abstractCommand, final CommandSender commandSender, final String[] args) {
+        if (!abstractCommand.isValidSender(commandSender, true)) {
             return false;
         }
 
-        if (!baseCommand.hasPermission(commandSender, true)) {
+        if (!abstractCommand.hasPermission(commandSender, true)) {
             return false;
         }
 
-        if (UtilEvent.supply(new CommandExecuteEvent(baseCommand, commandSender)).isCancelled()) {
+        if (UtilEvent.supply(new CommandExecuteEvent(abstractCommand, commandSender)).isCancelled()) {
             return false;
         }
 
-        baseCommand.execute(baseCommand.getSenderType().cast(commandSender), args);
+        abstractCommand.execute(abstractCommand.getSenderType().cast(commandSender), args);
 
         return true;
     }
 
-    private <Sender extends CommandSender> List<String> getBaseCommandTabComplete(final BaseCommand<?, Sender> baseCommand, final CommandSender commandSender, final String[] args) {
-        if (!baseCommand.isValidSender(commandSender, false)) {
+    private <Sender extends CommandSender> List<String> getBaseCommandTabComplete(final AbstractCommand<?, Sender> abstractCommand, final CommandSender commandSender, final String[] args) {
+        if (!abstractCommand.isValidSender(commandSender, false)) {
             return Collections.emptyList();
         }
 
-        if (!baseCommand.hasPermission(commandSender, false)) {
+        if (!abstractCommand.hasPermission(commandSender, false)) {
             return Collections.emptyList();
         }
 
-        if (UtilEvent.supply(new CommandTabCompleteEvent(baseCommand, commandSender)).isCancelled()) {
+        if (UtilEvent.supply(new CommandTabCompleteEvent(abstractCommand, commandSender)).isCancelled()) {
             return Collections.emptyList();
         }
 
-        return baseCommand.getTabComplete(baseCommand.getSenderType().cast(commandSender), args);
+        return abstractCommand.getTabComplete(abstractCommand.getSenderType().cast(commandSender), args);
     }
 }

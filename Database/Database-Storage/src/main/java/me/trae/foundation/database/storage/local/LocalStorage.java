@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
@@ -16,6 +17,7 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     public static final Duration DEFAULT_MAXIMUM_AGE = Duration.ofMinutes(5);
 
     private final Map<Key, CacheEntry<Value>> entryMap = new ConcurrentHashMap<>();
+    private final Set<Key> pinnedKeySet = ConcurrentHashMap.newKeySet();
 
     private final Duration expiry;
     private final boolean refreshOnRead;
@@ -40,7 +42,11 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     }
 
     public void put(final Key key, final Value value, final Duration expiry) {
-        this.entryMap.compute(key, (_, existing) -> new CacheEntry<>(value, expiry, existing != null && existing.isPinned(), this.maximumAge));
+        this.entryMap.compute(key, (_, existing) -> {
+            final boolean pinned = this.pinnedKeySet.contains(key) || existing != null && existing.isPinned();
+
+            return new CacheEntry<>(value, pinned ? null : expiry, pinned, pinned ? null : this.maximumAge);
+        });
     }
 
     @Override
@@ -50,11 +56,17 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
 
     @Override
     public void remove(final Key key) {
+        this.pinnedKeySet.remove(key);
+        this.entryMap.remove(key);
+    }
+
+    public void evict(final Key key) {
         this.entryMap.remove(key);
     }
 
     public void clear() {
         this.entryMap.clear();
+        this.pinnedKeySet.clear();
     }
 
     @Override
@@ -95,21 +107,21 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     }
 
     public void pin(final Key key, final Value value) {
+        this.pinnedKeySet.add(key);
         this.entryMap.put(key, new CacheEntry<>(value, null, true, null));
     }
 
     public void unpin(final Key key) {
-        this.entryMap.computeIfPresent(key, (_, existing) -> new CacheEntry<>(existing.getValue(), this.expiry, false, this.maximumAge));
+        this.pinnedKeySet.remove(key);
+        this.entryMap.computeIfPresent(key, (_, existing) -> existing.isExpired() ? null : new CacheEntry<>(existing.getValue(), this.expiry, false, this.maximumAge));
     }
 
     public boolean isPinned(final Key key) {
-        final CacheEntry<Value> cacheEntry = this.entryMap.get(key);
-
-        return cacheEntry != null && cacheEntry.isPinned();
+        return this.pinnedKeySet.contains(key);
     }
 
     public List<Value> getPinnedValues() {
-        return this.entryMap.values().stream().filter(CacheEntry::isPinned).map(CacheEntry::getValue).toList();
+        return this.entryMap.values().stream().filter(CacheEntry::isPinned).filter(cacheEntry -> !cacheEntry.isExpired()).map(CacheEntry::getValue).toList();
     }
 
     public List<Value> getValues() {

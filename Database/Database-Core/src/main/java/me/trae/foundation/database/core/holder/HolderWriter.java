@@ -144,7 +144,11 @@ public final class HolderWriter<E extends Entity> {
                 final E localEntity = this.localStorage.get(entity.getId()).orElse(null);
 
                 if (localEntity == null || localEntity == entity) {
-                    this.localEntityIndex.remove(entity.getId(), this.localStorage);
+                    if (releaseUniqueClaims) {
+                        this.localEntityIndex.remove(entity.getId(), this.localStorage);
+                    } else {
+                        this.localEntityIndex.evict(entity.getId(), this.localStorage);
+                    }
                 }
             }
 
@@ -170,7 +174,7 @@ public final class HolderWriter<E extends Entity> {
 
     public void evictLocal(final UUID id) {
         if (this.localStorage != null) {
-            this.localEntityIndex.remove(id, this.localStorage);
+            this.localEntityIndex.evict(id, this.localStorage);
         }
     }
 

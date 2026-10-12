@@ -21,22 +21,26 @@ public final class HolderCache<E extends Entity> {
     public List<E> getPinned() {
         final LocalStorage<UUID, E> localStorage = this.holderComponents.getLocalStorage();
 
-        return this.instanceMode == InstanceMode.SINGLE_INSTANCE && localStorage != null ? localStorage.getPinnedValues() : Collections.emptyList();
+        return localStorage == null ? Collections.emptyList() : localStorage.getPinnedValues();
     }
 
     public void pin(final E entity) {
         final LocalStorage<UUID, E> localStorage = this.requireLocal("pin");
 
-        this.holderComponents.getLocalEntityIndex().index(entity);
-        localStorage.pin(entity.getId(), entity);
+        this.holderComponents.getLocalEntityIndex().pin(entity, localStorage);
 
         this.track(entity);
     }
 
     public void unpin(final E entity) {
-        this.holderComponents.getHolderWriter().writeChanged(entity);
+        final LocalStorage<UUID, E> localStorage = this.requireLocal("unpin");
+        final E cachedEntity = localStorage.get(entity.getId()).orElse(null);
 
-        this.requireLocal("unpin").unpin(entity.getId());
+        if (cachedEntity == entity) {
+            this.holderComponents.getHolderWriter().writeChanged(entity);
+        }
+
+        localStorage.unpin(entity.getId());
     }
 
     public void cache(final E entity) {
@@ -83,14 +87,14 @@ public final class HolderCache<E extends Entity> {
 
     private void writeAndForget(final E entity) {
         this.writeSafely(entity);
-        this.holderComponents.getLocalEntityIndex().remove(entity.getId(), this.holderComponents.getLocalStorage());
+        this.holderComponents.getLocalEntityIndex().evict(entity.getId(), this.holderComponents.getLocalStorage());
         this.holderComponents.getChangeTracker().forget(entity.getId());
     }
 
     private LocalStorage<UUID, E> requireLocal(final String action) {
         final LocalStorage<UUID, E> localStorage = this.holderComponents.getLocalStorage();
 
-        if (this.instanceMode != InstanceMode.SINGLE_INSTANCE || localStorage == null) {
+        if (localStorage == null) {
             throw new UnsupportedOperationException("Cannot %s on a %s holder".formatted(action, this.instanceMode));
         }
 

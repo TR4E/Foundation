@@ -39,13 +39,9 @@ public final class CacheEntry<Value> {
     }
 
     public boolean isExpired() {
-        if (this.pinned) {
-            return false;
-        }
-
         final long now = System.nanoTime();
 
-        return this.expiresAt != NEVER_EXPIRES && now - this.expiresAt >= 0 || this.absoluteExpiresAt != NEVER_EXPIRES && now - this.absoluteExpiresAt >= 0;
+        return (!this.pinned && this.expiresAt != NEVER_EXPIRES && now - this.expiresAt >= 0) || (this.absoluteExpiresAt != NEVER_EXPIRES && now - this.absoluteExpiresAt >= 0);
     }
 
     private long clampExpiry(final long expiryAt) {

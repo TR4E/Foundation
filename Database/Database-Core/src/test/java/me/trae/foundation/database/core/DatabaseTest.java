@@ -1076,7 +1076,7 @@ final class DatabaseTest {
     }
 
     @Test
-    void multiInstanceHolderCachesCopiesLocallyAndCannotPinThem() {
+    void multiInstanceHolderCanPinItsLocalCopyAndUnpinWritesChanges() {
         final CoreDatabase database = this.openDatabase(null);
 
         final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
@@ -1092,8 +1092,58 @@ final class DatabaseTest {
 
         final Account first = reader.getById(account.getId()).orElseThrow();
         assertSame(first, reader.getById(account.getId()).orElseThrow());
+        reader.pin(first);
+
+        assertEquals(List.of(first), reader.getPinned());
+        assertSame(first, reader.getById(account.getId()).orElseThrow());
+
+        first.setCoins(999L);
+        reader.unpin(first);
+        database.getBatchQueue().flush();
+
         assertTrue(reader.getPinned().isEmpty());
-        assertThrows(UnsupportedOperationException.class, () -> reader.pin(first));
+        assertEquals(999L, repository.findById(account.getId()).orElseThrow().getCoins());
+    }
+
+    @Test
+    void multiInstanceInvalidationEvictsPinnedLocalCopies() throws InterruptedException {
+        final CoreDatabase database = this.openDatabase(null);
+
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+
+        final AccountHolder writer = new AccountHolder(repository);
+        final AccountHolder reader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
+        database.start();
+
+        final Account account = this.createAccount("sample-value");
+        writer.save(account);
+        database.getBatchQueue().flush();
+
+        final Account localAccount = reader.getById(account.getId()).orElseThrow();
+        reader.pin(localAccount);
+
+        account.setName("updated-value");
+        writer.update(account);
+        database.getBatchQueue().flush();
+
+        final long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+
+        while (!reader.getPinned().isEmpty() && System.nanoTime() < deadline) {
+            database.getBatchQueue().flush();
+            Thread.sleep(10L);
+        }
+
+        assertTrue(reader.getPinned().isEmpty());
+        final Account refreshedAccount = reader.getById(account.getId()).orElseThrow();
+
+        assertEquals("updated-value", refreshedAccount.getName());
+        assertEquals(List.of(refreshedAccount), reader.getPinned());
+
+        localAccount.setCoins(999L);
+        reader.unpin(localAccount);
+        database.getBatchQueue().flush();
+
+        assertEquals(100L, repository.findById(account.getId()).orElseThrow().getCoins());
     }
 
     @Test

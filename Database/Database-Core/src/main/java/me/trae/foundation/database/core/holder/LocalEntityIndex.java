@@ -27,6 +27,11 @@ public final class LocalEntityIndex<E extends Entity> {
         localStorage.put(entity.getId(), entity);
     }
 
+    public synchronized void pin(final E entity, final LocalStorage<UUID, E> localStorage) {
+        this.index(entity);
+        localStorage.pin(entity.getId(), entity);
+    }
+
     public synchronized void index(final E entity) {
         this.remove(entity.getId());
 
@@ -48,6 +53,11 @@ public final class LocalEntityIndex<E extends Entity> {
     public synchronized void remove(final UUID id, final LocalStorage<UUID, E> localStorage) {
         this.remove(id);
         localStorage.remove(id);
+    }
+
+    public synchronized void evict(final UUID id, final LocalStorage<UUID, E> localStorage) {
+        this.remove(id);
+        localStorage.evict(id);
     }
 
     public synchronized Optional<E> get(final EntityIndex<? super E> entityIndex, final Object[] values, final LocalStorage<UUID, E> localStorage) {

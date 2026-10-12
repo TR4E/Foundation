@@ -62,6 +62,44 @@ final class StorageTest {
     }
 
     @Test
+    void localStoragePinKeepsEntryUntilUnpinned() throws InterruptedException {
+        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(100), true, Duration.ofMillis(250));
+        localStorage.put("active", "value");
+        localStorage.pin("active", "value");
+
+        Thread.sleep(350L);
+
+        assertEquals(Optional.of("value"), localStorage.get("active"));
+        assertEquals(List.of("value"), localStorage.getPinnedValues());
+
+        localStorage.unpin("active");
+        Thread.sleep(350L);
+
+        assertTrue(localStorage.get("active").isEmpty());
+    }
+
+    @Test
+    void localStorageRePinsAnEntityAfterCacheRefill() {
+        final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMinutes(1), true, Duration.ofMinutes(5));
+        localStorage.pin("active", "first");
+        localStorage.evict("active");
+
+        assertTrue(localStorage.isPinned("active"));
+        assertTrue(localStorage.getPinnedValues().isEmpty());
+
+        localStorage.put("active", "refreshed");
+
+        assertEquals(Optional.of("refreshed"), localStorage.get("active"));
+        assertEquals(List.of("refreshed"), localStorage.getPinnedValues());
+
+        localStorage.unpin("active");
+
+        assertFalse(localStorage.isPinned("active"));
+        assertTrue(localStorage.getPinnedValues().isEmpty());
+        assertEquals(Optional.of("refreshed"), localStorage.get("active"));
+    }
+
+    @Test
     void localStorageCanRefreshItsIdleExpiryOnRead() throws InterruptedException {
         final LocalStorage<String, String> localStorage = new LocalStorage<>(Duration.ofMillis(1_500), true);
         localStorage.put("active", "value");

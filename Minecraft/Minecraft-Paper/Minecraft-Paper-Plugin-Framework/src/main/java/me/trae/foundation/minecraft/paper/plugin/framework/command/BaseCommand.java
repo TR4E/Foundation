@@ -12,7 +12,6 @@ import java.util.function.Function;
 @Getter
 public abstract class BaseCommand<Parent, Sender extends CommandSender> extends AbstractCommand<Parent, Sender> {
 
-    @Getter
     @Setter
     private static Function<BaseCommand<?, ?>, String> noPermissionMessage = _ -> "You do not have permission to use this command!";
 

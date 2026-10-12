@@ -4,6 +4,7 @@ import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.query.EntityPage;
 import me.trae.foundation.database.api.query.Query;
+import me.trae.foundation.database.api.repository.index.EntityIndex;
 import me.trae.foundation.database.api.repository.index.IndexType;
 import me.trae.foundation.database.api.tenant.TenantScope;
 
@@ -28,6 +29,10 @@ public interface EntityRepository<E extends Entity> {
         return Collections.emptyMap();
     }
 
+    default List<EntityIndex<E>> getCompositeIndexes() {
+        return Collections.emptyList();
+    }
+
     Optional<E> findById(final UUID id);
 
     List<E> findManyById(final Collection<UUID> ids);
@@ -43,6 +48,10 @@ public interface EntityRepository<E extends Entity> {
     EntityPage<E> findPage(final Query<E> query, final int page, final int size);
 
     void save(final E entity);
+
+    default void update(final E entity) {
+        throw new UnsupportedOperationException("This repository does not support entity updates");
+    }
 
     void delete(final E entity);
 }

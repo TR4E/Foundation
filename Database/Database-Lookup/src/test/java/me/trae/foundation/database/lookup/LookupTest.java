@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.holder.LookupTier;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.query.EntityPage;
@@ -84,8 +83,11 @@ final class LookupTest {
     @Test
     void inFlightLookupCoalescesConcurrentCallers() throws Exception {
         final InFlightLookup<String> inFlightLookup = new InFlightLookup<>();
+
         final AtomicInteger calls = new AtomicInteger();
+
         final CountDownLatch started = new CountDownLatch(1);
+
         final CountDownLatch release = new CountDownLatch(1);
 
         try (final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -120,8 +122,9 @@ final class LookupTest {
 
     @Test
     void singletonCachesDatabaseHitsLocally() {
-        final Member member = this.repository.add("trae");
-        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(InstanceMode.SINGLETON, this.localStorage, null, this.repository);
+        final Member member = this.repository.add("sample-value");
+
+        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 
         assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
         assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
@@ -129,15 +132,16 @@ final class LookupTest {
     }
 
     @Test
-    void multiInstanceAlwaysReadsTheDatabase() {
-        final Member member = this.repository.add("trae");
-        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(InstanceMode.MULTI_INSTANCE, this.localStorage, null, this.repository);
+    void multiInstanceCachesDatabaseHitsLocally() {
+        final Member member = this.repository.add("sample-value");
 
-        idLookup.lookup(member.getId());
-        idLookup.lookup(member.getId());
+        final TieredLookup<UUID, Member> idLookup = EntityLookups.byId(this.localStorage, null, this.repository);
 
-        assertEquals(2, this.repository.readCount.get());
-        assertTrue(this.localStorage.get(member.getId()).isEmpty());
+        assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
+        assertSame(member, idLookup.lookup(member.getId()).orElseThrow());
+
+        assertEquals(1, this.repository.readCount.get());
+        assertTrue(this.localStorage.get(member.getId()).isPresent());
     }
 
     @Test
@@ -147,7 +151,7 @@ final class LookupTest {
         this.localStorage.put(cached.getId(), cached);
         final Member stored = this.repository.add("stored");
 
-        final TieredLookup<String, Member> nameLookup = EntityLookups.byProperty(InstanceMode.SINGLETON, NAME, this.localStorage, null, null, this.repository);
+        final TieredLookup<String, Member> nameLookup = EntityLookups.byProperty(NAME, this.localStorage, null, null, this.repository);
 
         assertSame(cached, nameLookup.lookup("cached").orElseThrow());
         assertEquals(0, this.repository.readCount.get());
@@ -253,7 +257,9 @@ final class LookupTest {
             final List<Member> entityList = this.findMany(query);
 
             final long totalCount = entityList.size();
+
             final int totalPages = Math.max(1, (int) Math.ceil((double) totalCount / (double) size));
+
             final int current = Math.clamp(page, 1, totalPages);
 
             return new EntityPage<>(entityList.stream().skip((long) (current - 1) * size).limit(size).toList(), totalCount, current, size);

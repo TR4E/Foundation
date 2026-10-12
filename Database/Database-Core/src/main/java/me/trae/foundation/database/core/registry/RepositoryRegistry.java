@@ -57,6 +57,6 @@ public final class RepositoryRegistry {
 
         SchemaSynchronizer.synchronize(dslContext, repository.getTableSchema());
 
-        IndexSynchronizer.synchronize(dslContext, repository.getTableSchema(), repository.getIndexes());
+        IndexSynchronizer.synchronize(dslContext, repository.getTableSchema(), repository.getIndexes(), repository.getCompositeIndexes());
     }
 }

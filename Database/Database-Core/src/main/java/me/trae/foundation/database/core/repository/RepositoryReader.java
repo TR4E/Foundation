@@ -6,6 +6,7 @@ import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.query.TenantSelection;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.schema.TableSchema;
+import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.SelectQuery;
@@ -23,18 +24,17 @@ public final class RepositoryReader<E extends Entity> {
     private final String tenantId;
     private final EntityRecordMapper<E> entityRecordMapper;
 
-    public RepositoryReader(final PostgresDriver postgresDriver, final TableSchema<E> tableSchema, final String tenantId) {
+    public RepositoryReader(final PostgresDriver postgresDriver, final TableSchema<E> tableSchema, final String tenantId, final EntityRevisionStore entityRevisionStore) {
         this.postgresDriver = postgresDriver;
         this.tableSchema = tableSchema;
         this.tenantId = tenantId;
-        this.entityRecordMapper = new EntityRecordMapper<>(tableSchema);
+        this.entityRecordMapper = new EntityRecordMapper<>(tableSchema, entityRevisionStore);
     }
 
     public Optional<E> findById(final UUID id) {
         return this.getDslContext().selectFrom(this.tableSchema.getTable())
                 .where(this.tableSchema.getKeyCondition(this.tenantId, id))
-                .fetchOptional()
-                .map(this.entityRecordMapper::map);
+                .fetchOptional().map(this.entityRecordMapper::map);
     }
 
     public List<E> findManyById(final Collection<UUID> ids) {

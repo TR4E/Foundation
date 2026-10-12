@@ -2,7 +2,6 @@ package me.trae.foundation.database.lookup.index;
 
 import lombok.AllArgsConstructor;
 import me.trae.foundation.database.api.property.EntityProperty;
-import me.trae.foundation.database.storage.codec.ValueCodec;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
 
@@ -32,6 +31,10 @@ public final class RedisPropertyIndex<Value> implements PropertyIndex<Value> {
     }
 
     public String getKey(final Value value) {
-        return this.redisNamespace.getKey("index:%s:%s".formatted(this.entityProperty.getName(), ValueCodec.encode(this.entityProperty, value)));
+        return this.redisNamespace.getKey("index:%s:%s".formatted(this.entityProperty.getName(), EntityIndexKey.encodeValue(this.entityProperty, value)));
+    }
+
+    public String getClaimKey(final Value value) {
+        return this.redisNamespace.getKey("claim:%s:%s".formatted(this.entityProperty.getName(), EntityIndexKey.encodeValue(this.entityProperty, value)));
     }
 }

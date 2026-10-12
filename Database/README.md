@@ -142,7 +142,7 @@ public final class AccountProperties {
 public final class AccountRepository extends AbstractEntityRepository<Account> {
 
     public AccountRepository(final CoreDatabase coreDatabase) {
-        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, AccountProperties.class);
+        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
     }
 
     @Override
@@ -161,7 +161,7 @@ public final class AccountRepository extends AbstractEntityRepository<Account> {
 public final class AccountHolder extends AbstractEntityHolder<Account> {
 
     public AccountHolder(final AccountRepository accountRepository) {
-        super(accountRepository, InstanceMode.SINGLETON);
+        super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 ```
@@ -182,18 +182,22 @@ final AccountHolder accountHolder = new AccountHolder(accountRepository);
 coreDatabase.start();
 
 final Account account = new Account(UUID.randomUUID());
-account.setName("trae");
+account.setName("example-user");
 account.setCoins(100L);
 accountHolder.save(account);
 
-accountHolder.getByProperty(AccountProperties.NAME, "trae").ifPresent(found -> found.setCoins(250L));
+final Account existing = accountHolder.getById(account.getId()).orElseThrow();
+existing.setCoins(250L);
+accountHolder.update(existing);
+
+accountHolder.delete(existing);
 
 coreDatabase.stop();
 redisDriver.disconnect();
 postgresDriver.disconnect();
 ```
 
-The `accounts` table is created on `start()`. The save is written on the next flush, and the coin change is picked up automatically on a later flush with no second `save` call.
+The `accounts` table is created on `start()`. `save` queues a new row for the next flush. `update` queues only changed persistent properties, and `delete` queues removal. Writes are asynchronous with respect to PostgreSQL durability: they become durable on a successful flush. MULTI_INSTANCE peers observe committed changes after invalidation delivery, so this is not an immediate cross-JVM read-after-write guarantee.
 
 ## Database-API
 
@@ -263,8 +267,12 @@ Queries only see the repository's own tenant by default. `tenant("api-2")` targe
 | `findById(id)`, `findManyById(ids)` | Load by id |
 | `findOne(query)`, `findMany(query)` | Load by query |
 | `count(query)`, `exists(query)` | Count or check without loading |
-| `save(entity)`, `delete(entity)` | Queue a write, see [the batch queue](#the-batch-queue) |
+| `save(entity)` | Queue an insert; an existing UUID is rejected and never overwritten |
+| `update(entity)` | Load the current PostgreSQL row as a baseline for an untracked entity, then queue only changed persistent properties; throws if the row is missing |
+| `delete(entity)` | Queue deletion of the row |
 | `getIndexes()` | The indexes to keep on the table |
+
+Direct repository writes are low-level PostgreSQL operations and do not dispatch holder Redis invalidations. If an entity may already be cached by a holder, perform application mutations through the holder or manager's `save`, `update` or `delete` methods so its change tracking and configured invalidation/outbox behavior run. A direct repository mutation can leave existing holder caches stale until their entries expire or are evicted.
 
 | Index type | Creates |
 |---|---|
@@ -272,6 +280,24 @@ Queries only see the repository's own tenant by default. `tenant("api-2")` targe
 | `BTREE` | A regular index |
 | `GIN_TRGM` | A trigram index for fast `LIKE` searches, enabling `pg_trgm` when needed |
 | `BRIN` | A block range index, for large tables ordered by time |
+
+Redis use is a holder setting, not a repository setting. `RedisMode.DISABLED` keeps that holder's cache, unique-claim and write-invalidation paths off Redis, even if another plugin uses Redis through the same server configuration. `MULTI_INSTANCE` must use `RedisMode.ENABLED` and a CoreDatabase with a Redis driver. A Redis outage after startup is handled through the existing fallback and recovery paths, but a missing Redis driver is rejected when constructing a MULTI_INSTANCE holder.
+
+```java
+public final class GroupRepository extends AbstractEntityRepository<Group> {
+
+    public GroupRepository(final LocalDatabase localDatabase) {
+        super(localDatabase, Group.class, "groups", TenantScope.INSTANCE, false, GroupProperties.class);
+    }
+}
+
+public final class AccountRepository extends AbstractEntityRepository<Account> {
+
+    public AccountRepository(final GlobalDatabase globalDatabase) {
+        super(globalDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
+    }
+}
+```
 
 ### Holders
 
@@ -281,14 +307,58 @@ Queries only see the repository's own tenant by default. `tenant("api-2")` targe
 |---|---|
 | `getById(id)`, `getById(id, lookupTiers)` | Load through the cache tiers, optionally only some of them |
 | `getByProperty(property, value)` | Load by any property |
-| `save(entity)`, `delete(entity)` | Write through every tier |
+| `save(entity)` | Create a new entity and track/cache it locally |
+| `update(entity)` | Detect changed properties and queue changes for an existing entity |
+| `delete(entity)` | Remove the entity and queue deletion |
 | `cache(entity)`, `evict(entity)` | Add to or remove from the local cache, with `evict` writing any changes first |
 | `pin(entity)`, `unpin(entity)`, `getPinned()` | Keep an entity cached until unpinned, for example while a user is logged in |
 | `increment(entity, property, delta)` | Atomically add to a `Long` or `Integer` property |
 
-`InstanceMode.SINGLETON` keeps a local copy of each entity and tracks changes to it. `InstanceMode.MULTI_INSTANCE` skips the local cache, so every lookup returns a fresh copy from Redis or PostgreSQL. Use it when the same entity is edited on several servers at once. Pinning is not available in that mode.
+`InstanceMode.SINGLE_INSTANCE` keeps a local copy of each entity and tracks changes to it. Its existing pinning behavior is unchanged. It can use a CoreDatabase with or without Redis. `InstanceMode.MULTI_INSTANCE` requires a Redis-configured CoreDatabase and uses a short-lived local cache; reads refresh that entry's idle expiry, but cannot extend its absolute age. The default maximum age is five minutes and can be changed through the `HolderComponents.create` overload. Redis Pub/Sub invalidation evicts changed entries on other instances; the absolute age bounds stale data if a notification is missed. Pinning is not available in that mode. If Redis becomes unavailable after startup, Foundation uses its existing PostgreSQL fallback and recovery behavior; cache coordination and invalidation resume when Redis recovers.
+
+`RedisMode.ENABLED` uses the Redis driver on the repository's database context. `RedisMode.DISABLED` is available to SINGLE_INSTANCE holders that share a server-wide database context but should not use Redis for that entity type. MULTI_INSTANCE holders require Redis enabled and configured.
 
 `LookupTier` is `LOCAL`, `REDIS` or `DATABASE`.
+
+### GLOBAL and LOCAL database drivers
+
+GLOBAL and LOCAL are separate configured database contexts. Each context owns its PostgreSQL driver, optional Redis driver, write queue, transaction context and revision state. `GlobalDatabase` and `LocalDatabase` are distinct injectable types over the shared `CoreDatabase` implementation, so repository constructors can request the intended destination directly. Their PostgreSQL `databaseName` comes from their own `PostgresSettings`. This is independent of `TenantScope`, which determines row-level tenant columns, and `InstanceMode`, which controls holder caching and coordination requirements.
+
+```java
+final PostgresDriver globalPostgresDriver = new PostgresDriver(globalPostgresSettings);
+final RedisDriver globalRedisDriver = new RedisDriver(redisSettings);
+final GlobalDatabase globalDatabase = new GlobalDatabase(globalPostgresDriver, globalRedisDriver, tenant);
+
+final PostgresDriver localPostgresDriver = new PostgresDriver(localPostgresSettings);
+final LocalDatabase localDatabase = new LocalDatabase(localPostgresDriver, new Tenant("game", 1));
+
+final AccountRepository accountRepository = new AccountRepository(globalDatabase);
+final AccountManager accountManager = new AccountManager(accountRepository); // MULTI_INSTANCE
+final GroupRepository groupRepository = new GroupRepository(localDatabase);
+final GroupManager groupManager = new GroupManager(groupRepository); // SINGLE_INSTANCE
+```
+
+The managers use the same lifecycle methods; the holder selects local or multi-instance coordination and its Redis policy:
+
+```java
+public final class AccountManager extends AbstractEntityHolder<Account> {
+
+    public AccountManager(final AccountRepository repository) {
+        super(repository, InstanceMode.MULTI_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
+    }
+}
+
+public final class GroupManager extends AbstractEntityHolder<Group> {
+
+    public GroupManager(final GroupRepository repository) {
+        super(repository, InstanceMode.SINGLE_INSTANCE, RedisMode.DISABLED, Duration.ofMinutes(30), Duration.ofHours(1));
+    }
+}
+```
+
+Both expose `save`, `update` and `delete`. Account changes go through the GLOBAL repository's Redis invalidation and outbox after PostgreSQL commit. Group changes use the LOCAL repository's own queue and PostgreSQL driver; `RedisMode.DISABLED` keeps that holder's entity path off Redis even if the server's shared configuration also provides Redis.
+
+`CoreDatabase` is the shared implementation; `GlobalDatabase` and `LocalDatabase` are separate configured instances. Set their PostgreSQL names in their respective `PostgresSettings`, such as `application_global` and `application_local`. Register each through its own `@Provider` method, then type repository constructors to the matching database so the Injector resolves the right destination without ambiguity. Start and stop each database independently; their queues and transactions never cross. Configure the local database with the server's unique tenant instance (for example, `new Tenant("game", 1)`) and use `TenantScope.INSTANCE` so each game server stores its own group rows. `TenantScope` partitions rows inside the chosen database; it does not select that database. If both databases share Redis, the table and tenant are included in Redis namespaces to keep their data isolated.
 
 ### Tenants
 
@@ -332,7 +402,7 @@ redisDriver.publish("app:events", "Cache cleared");
 
 ### Local cache
 
-`LocalStorage` is an in memory map with per entry expiry and pinning. Pinned entries never expire, and unpinning puts the normal expiry back.
+`LocalStorage` is an in memory map with per entry expiry and pinning. Pinned entries never expire, and unpinning puts the normal expiry back. Sliding expiry is opt-in; MULTI_INSTANCE holders use it while SINGLE_INSTANCE holders retain their existing fixed expiry behavior.
 
 ### Redis storage
 
@@ -346,13 +416,61 @@ redisDriver.publish("app:events", "Cache cleared");
 
 `TieredLookup` walks the tiers in order and stops at the first hit:
 
-1. **Local:** the in memory cache, in `SINGLETON` holders only.
+1. **Local:** the in memory cache, in both holder modes when configured. MULTI_INSTANCE local entries use sliding expiry and Redis invalidation.
 2. **Redis:** when a Redis driver is configured.
 3. **Database:** PostgreSQL.
 
-A value found in a later tier is written back into every earlier tier it missed, so the next lookup is served locally. Concurrent lookups for the same key share a single trip instead of each hitting PostgreSQL, and batch lookups fetch every missing id in one query.
+A value found in a later tier is written back into every earlier tier it missed, so the next lookup is served locally. Concurrent same-JVM lookups for the same key share one lookup. For an id missing from Redis, instances coordinate a short-lived Redis fill lock, recheck Redis after acquiring it, and only the lock owner loads from PostgreSQL. Other instances wait for that Redis result. The lock is a load-reduction mechanism, not a database correctness lock; its lease and fenced cache write prevent a late loader from replacing a newer cache value. Batch lookups coordinate per id and load the ids owned by that caller in one database query.
+
+Redis caches short-lived negative lookups and briefly shares a failed-fill marker, so concurrent requests do not immediately stampede PostgreSQL when an id is absent or a fill fails. A later request retries after those markers expire.
 
 Lookups by property work the same way. Properties with a `UNIQUE` index also keep a Redis index from value to id, so another server can find an entity by name without touching PostgreSQL.
+
+### ID and property indexes
+
+`getById(id)` is the primary-key lookup. It checks the local cache by UUID, then the Redis entity hash, then PostgreSQL's primary key. When it loads an entity from Redis or PostgreSQL, the holder fills the earlier cache tiers and populates every registered property and composite index for that entity.
+
+`getByProperty(property, value)` uses an O(1) local value-to-id map and, when Redis is enabled, a Redis value-to-id index only when that property is declared `UNIQUE` by the repository. It then loads the entity through the normal ID lookup. If the property is not indexed, the local fallback scans cached entities and PostgreSQL performs a property query; use a declared index when indexed lookup performance is required.
+
+Each lookup also accepts a `Set<LookupTier>` to limit which tiers it reads. The overload without a tier set searches all available tiers. A local-only lookup returns empty on a local miss and does not fall through to Redis or PostgreSQL. For a registered index, the local lookup uses its value-to-id map; unindexed property lookups use the existing local scan.
+
+```java
+final Set<LookupTier> localOnly = EnumSet.of(LookupTier.LOCAL);
+holder.getById(entityId, localOnly);
+holder.getByProperty(property, value, localOnly);
+holder.getByIndex(entityIndex, localOnly, firstValue, secondValue);
+```
+
+For a case-insensitive property, register it with `EntityProperty.registerCaseInsensitive`. Foundation lowercases values only for local and Redis index keys and uses `lower(column)` for PostgreSQL comparisons and functional indexes. It does not lowercase or rewrite the stored property value: a mixed-case display value remains exactly as saved in PostgreSQL and on the loaded entity. Changing only the input casing does not change the normalized index key.
+
+```java
+@Override
+public Map<EntityProperty<? super Account, ?>, IndexType> getIndexes() {
+    return Map.of(AccountProperties.NAME, IndexType.UNIQUE);
+}
+
+final Optional<Account> byId = accountHolder.getById(accountId);
+final String lookupValue = "some-value";
+final Optional<Account> byName = accountHolder.getByProperty(AccountProperties.NAME, lookupValue);
+```
+
+The local index points to the entity in local storage; it is not a second entity cache. Its lookup is constant-time, and an expired or missing entity makes the holder discard that stale local reference. Pinning a single-instance entity also makes its indexed properties resolve locally until unpinned. Multi-instance holders do not support pinning. Redis entity and index entries use the holder's Redis expiry; local entries follow the holder's local expiry and maximum-age rules.
+
+Holder updates reindex the changed entity locally. After PostgreSQL commits, the outbox invalidates the entity hash and tells other multi-instance holders to evict their local copy. A Redis property pointer that no longer matches the loaded entity is removed and repaired on a later lookup. Invalidation is eventual, so a stale cached result may be visible briefly before delivery.
+
+When ownership of a unique indexed value must move between entities, use the holder's transfer operation instead of two independent `update` calls:
+
+```java
+holder.transferUniqueProperty(
+        claimantId,
+        currentOwnerId,
+        uniqueProperty,
+        claimedValue,
+        replacementValue
+);
+```
+
+The operation requires a persistent unique property and two existing, different entities. It changes both rows in one PostgreSQL transaction, verifies that the previous owner still holds the requested value, and records both invalidations in the outbox. A conflicting replacement or stale revision rolls the transaction back. The replacement value is chosen by the caller. Pending writes are flushed first, and the transfer fails if the database is still unable to drain them.
 
 ## Database-Core
 
@@ -401,27 +519,33 @@ On start, each repository's table is created if it is missing, and any missing c
 
 Every write goes through a write behind queue instead of hitting PostgreSQL straight away:
 
-- **Coalescing:** several saves of the same entity between flushes become one write, keeping the newest value of each column. A delete replaces anything queued before it.
-- **Upserts:** saves are written as `INSERT ... ON CONFLICT DO UPDATE`, touching only the changed columns.
-- **Transactions:** writes are sent in chunks, each in its own transaction.
+- **Coalescing:** a create followed by updates before its first flush becomes one insert containing the latest values. Updates to the same entity coalesce by column. A queued update followed by a delete becomes a delete. Unsafe create/delete or delete/recreate sequences are rejected while the earlier operation is pending.
+- **Insert-only creation:** `save` issues an insert with conflict rejection. It never overwrites a row with the same UUID. PostgreSQL constraints decide cross-JVM duplicate races; the losing create is reported to the failure handler.
+- **Update-only changes:** `update` issues an `UPDATE` against the existing id and tenant; it cannot recreate a missing row. Holder updates use tracked snapshots, while a direct repository update loads a PostgreSQL baseline before calculating changes. An unchanged entity causes no PostgreSQL write or invalidation.
+- **Transactions:** writes are sent in chunks, each in its own transaction. When Redis is configured, cache invalidations are added to a PostgreSQL outbox in the same transaction as the entity write.
 - **Retries:** if PostgreSQL is unreachable, or fails with a temporary error such as a lost connection, a deadlock or running out of resources, the writes stay queued and are tried again on the next flush.
-- **Bad writes:** a write PostgreSQL rejects outright, such as a duplicate unique value, is retried on its own so the rest of the chunk still lands, then dropped and reported to the failure handler.
+- **Bad writes:** a write PostgreSQL rejects outright, such as a duplicate UUID or unique value, is retried on its own so the rest of the chunk still lands, then reported to the failure handler. A failed create removes its provisional local cache/tracking state. A missing-row update is reported and never becomes an insert.
 - **Shutdown:** `stop()` flushes up to ten more times to empty the queue, and reports anything it still could not write.
+- **Capacity:** the queue holds at most 10,000 distinct outstanding entity keys by default, including writes currently being flushed. Pass `maximumPendingWrites` to the extended `CoreDatabase` constructor to change the limit. When full, a new distinct write throws `DatabaseException` synchronously; the caller must handle or retry it. Writes for an already queued key continue to coalesce. The queue is in memory, so this is bounded overload protection, not durable write storage.
+- **Commit callbacks:** callbacks are kept in registration order when writes coalesce and remain registered across retries. Outstanding callback registrations are capped at 100,000 by default, including callbacks attached to in-flight writes. A write that would exceed this limit throws `DatabaseException` synchronously without changing the queue.
 
 Reads go straight to PostgreSQL, so a value saved through the repository is visible there after the next flush.
 
 ### Holders
 
-`AbstractEntityHolder` keeps entities in the local cache for 30 minutes and in Redis for an hour by default. Both can be changed through its other constructor:
+`AbstractEntityHolder` receives the local-cache expiry and Redis expiry in its constructor. In MULTI_INSTANCE, the local expiry is an idle timeout refreshed on reads.
 
 ```java
-super(accountRepository, InstanceMode.SINGLETON, Duration.ofMinutes(10), Duration.ofHours(6));
+super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(10), Duration.ofHours(6));
 ```
 
-- **Change tracking:** the holder remembers each entity's values when it is loaded or saved. Saving writes only the properties that changed.
+- **Change tracking:** the holder remembers each entity's values when it is loaded or saved. `update` writes only changed persistent properties; nonpersistent properties remain local/Redis-only. Existing automatic flush behavior also persists dirty tracked entities, including entities whose local cache entry expires.
 - **Automatic writes:** on every flush, changes made to entities in the local cache are written without calling `save`, including entities whose cache entry just expired.
 - **Unique claims:** saving a value for a `UNIQUE` property claims it in Redis with a short lease. A value owned by another entity throws `UniqueValueTakenException` before anything is written. A claim held by an entity that no longer has that value is taken over, and a claim still being made on another server is respected. Deleting an entity releases its claims.
-- **Increments:** `increment` adds to the value with an atomic Redis `HINCRBY` when Redis is configured, so servers incrementing the same entity never lose an update.
+- **Cache invalidation:** committed writes and deletes enqueue an outbox event in the PostgreSQL transaction. A Redis-coordinated dispatcher removes the entity hash and negative-cache marker, then publishes the id so MULTI_INSTANCE local caches evict it. Events are idempotent and remain in PostgreSQL if Redis dispatch fails; reconnecting Pub/Sub listeners clear their local Multi caches to recover missed messages. Delivery is eventual, so reads can briefly observe a cached value between commit and invalidation. Outbox dispatch is throttled and batched.
+- **Increments:** `increment` uses Redis `HINCRBY` when Redis is configured and queues the resulting entity value for PostgreSQL persistence. The Redis operation is atomic, but this is not a PostgreSQL compare-and-swap protocol; concurrent absolute writes from different JVMs still use last committed write semantics. Use a database-native atomic update for counters that must remain correct across failures or conflicting writers.
+
+Last-write-wins remains the default. To reject stale edits for a repository, construct its repository with the optimistic-locking option enabled; entity classes need no revision field or interface. Foundation stores revisions internally by entity object identity, persists the authoritative value in a `revision` column, and carries it in Redis cache entries. Each changed write updates only when its expected revision still matches. A stale write is rejected and reported to the configured failure handler as `OptimisticLockException`; reload or merge the entity before retrying. If another save of the same entity instance is waiting behind an in-flight write, its revision advances after the preceding write commits; separately loaded stale instances still fail the revision check. The revision increments only when persisted values change. Existing tables receive the revision column with a default of zero. Optimistic locking detects conflicting entity snapshots; it does not merge independent field edits automatically. Since revisions are scoped to an entity row and reset when a row is recreated, do not reuse an entity UUID after deletion while stale instances of the old entity may still exist; otherwise an old instance could match the recreated row's revision.
 
 ## Dependency injection
 
@@ -464,7 +588,7 @@ public final class DatabaseConnector implements Lifecycle {
 public final class AccountRepository extends AbstractEntityRepository<Account> {
 
     public AccountRepository(final CoreDatabase coreDatabase) {
-        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, AccountProperties.class);
+        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
     }
 }
 
@@ -472,7 +596,7 @@ public final class AccountRepository extends AbstractEntityRepository<Account> {
 public final class AccountHolder extends AbstractEntityHolder<Account> {
 
     public AccountHolder(final AccountRepository accountRepository) {
-        super(accountRepository, InstanceMode.SINGLETON);
+        super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 ```
@@ -516,18 +640,18 @@ public class DatabaseConfiguration {
 }
 
 @Component
-public class AccountRepository extends AbstractEntityRepository<Account> {
+public final class AccountRepository extends AbstractEntityRepository<Account> {
 
     public AccountRepository(final CoreDatabase coreDatabase) {
-        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, AccountProperties.class);
+        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
     }
 }
 
 @Service
-public class AccountHolder extends AbstractEntityHolder<Account> {
+public final class AccountHolder extends AbstractEntityHolder<Account> {
 
     public AccountHolder(final AccountRepository accountRepository) {
-        super(accountRepository, InstanceMode.SINGLETON);
+        super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Duration.ofMinutes(30), Duration.ofHours(1));
     }
 }
 ```
@@ -536,17 +660,30 @@ Spring destroys beans in reverse dependency order, so holders and repositories g
 
 ## Building and testing
 
-The tests run against a real PostgreSQL and Redis. Start both, for example with Docker:
+The tests use real PostgreSQL and Redis. Start the isolated, disposable Docker Compose environment from the repository root:
 
 ```
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=foundation_test postgres
-docker run -d -p 6379:6379 redis
+docker compose -p foundation-db-audit -f Database/docker-compose.audit.yml up -d --wait
 ```
 
-Then from the repository root:
+It binds only to localhost on ports `55432` and `56379`, creates no persistent volumes, and uses dedicated test credentials. Run the database suite with:
 
 ```
-mvn -f Database/pom.xml test
+mvn -f Database/pom.xml test `
+  "-Dpostgres.host=localhost" `
+  "-Dpostgres.port=55432" `
+  "-Dpostgres.database=foundation_audit" `
+  "-Dpostgres.username=foundation_audit" `
+  "-Dpostgres.password=foundation_audit_test_only" `
+  "-Dredis.host=localhost" `
+  "-Dredis.port=56379" `
+  "-Dredis.database=0"
+```
+
+Stop and remove only this test project when finished:
+
+```
+docker compose -p foundation-db-audit -f Database/docker-compose.audit.yml down
 ```
 
 Connection details default to `localhost` and can be changed with system properties:
@@ -560,4 +697,8 @@ Connection details default to `localhost` and can be changed with system propert
 | `redis.password` | None |
 | `redis.database` | `15` |
 
-On Windows PowerShell, quote each one, for example `"-Dpostgres.port=5433"`. Tests that need PostgreSQL or Redis are skipped, not failed, when either cannot be reached.
+Tests that need PostgreSQL or Redis are skipped when either cannot be reached. Use the Compose command above to ensure the integration tests actually run.
+
+`MultiJvmInvalidationTest` starts separate Java processes. Its cold-load test uses five JVMs by default; set `-DmultiJvm.count=20` to run the same coordinated cold-load scenario with 20 independent JVMs (the supported range is 2–100). The isolated PostgreSQL container allows 200 connections. Worker pools default to four PostgreSQL connections; use `-DmultiJvm.postgresPoolSize=1` for a 100-JVM cold-load run. A production deployment still needs its per-JVM pool sizes and PostgreSQL connection capacity sized together.
+
+The destructive container-recovery test is opt-in because it stops containers. Start the isolated Compose project above, then pass `-DcontainerRecoveryTests=true`, `-Daudit.postgres.container=<postgres-container-name>`, and `-Daudit.redis.container=<redis-container-name>` to Maven. Get the exact names from `docker compose -p foundation-db-audit -f Database/docker-compose.audit.yml ps`. The test restarts both containers in its cleanup path.

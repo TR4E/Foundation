@@ -21,11 +21,14 @@ public final class HolderCache<E extends Entity> {
     public List<E> getPinned() {
         final LocalStorage<UUID, E> localStorage = this.holderComponents.getLocalStorage();
 
-        return localStorage == null ? Collections.emptyList() : localStorage.getPinnedValues();
+        return this.instanceMode == InstanceMode.SINGLE_INSTANCE && localStorage != null ? localStorage.getPinnedValues() : Collections.emptyList();
     }
 
     public void pin(final E entity) {
-        this.requireLocal("pin").pin(entity.getId(), entity);
+        final LocalStorage<UUID, E> localStorage = this.requireLocal("pin");
+
+        this.holderComponents.getLocalEntityIndex().index(entity);
+        localStorage.pin(entity.getId(), entity);
 
         this.track(entity);
     }
@@ -38,7 +41,7 @@ public final class HolderCache<E extends Entity> {
 
     public void cache(final E entity) {
         if (this.holderComponents.getLocalStorage() != null) {
-            this.holderComponents.getLocalStorage().put(entity.getId(), entity);
+            this.holderComponents.getLocalEntityIndex().put(entity, this.holderComponents.getLocalStorage());
         }
 
         this.track(entity);
@@ -48,18 +51,13 @@ public final class HolderCache<E extends Entity> {
         if (this.holderComponents.getLocalStorage() != null) {
             this.holderComponents.getHolderWriter().writeChanged(entity);
 
-            this.holderComponents.getLocalStorage().remove(entity.getId());
+            this.holderComponents.getLocalEntityIndex().remove(entity.getId(), this.holderComponents.getLocalStorage());
         }
 
         this.holderComponents.getChangeTracker().forget(entity.getId());
     }
 
     public void track(final E entity) {
-        if (this.instanceMode == InstanceMode.MULTI_INSTANCE) {
-            this.holderComponents.getChangeTracker().snapshot(entity);
-            return;
-        }
-
         this.holderComponents.getChangeTracker().snapshotIfAbsent(entity);
     }
 
@@ -69,10 +67,7 @@ public final class HolderCache<E extends Entity> {
         if (localStorage != null) {
             localStorage.getValues().forEach(this::writeSafely);
 
-            localStorage.evictExpired().forEach(entity -> {
-                this.writeSafely(entity);
-                this.holderComponents.getChangeTracker().forget(entity.getId());
-            });
+            localStorage.evictExpired().forEach(this::writeAndForget);
         }
 
         this.holderComponents.getChangeTracker().evictExpired();
@@ -86,10 +81,16 @@ public final class HolderCache<E extends Entity> {
         }
     }
 
+    private void writeAndForget(final E entity) {
+        this.writeSafely(entity);
+        this.holderComponents.getLocalEntityIndex().remove(entity.getId(), this.holderComponents.getLocalStorage());
+        this.holderComponents.getChangeTracker().forget(entity.getId());
+    }
+
     private LocalStorage<UUID, E> requireLocal(final String action) {
         final LocalStorage<UUID, E> localStorage = this.holderComponents.getLocalStorage();
 
-        if (localStorage == null) {
+        if (this.instanceMode != InstanceMode.SINGLE_INSTANCE || localStorage == null) {
             throw new UnsupportedOperationException("Cannot %s on a %s holder".formatted(action, this.instanceMode));
         }
 

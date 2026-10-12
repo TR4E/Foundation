@@ -9,17 +9,19 @@ import me.trae.foundation.database.api.repository.EntityRepository;
 import me.trae.foundation.database.api.tenant.Tenant;
 import me.trae.foundation.database.api.tenant.TenantScope;
 import me.trae.foundation.database.core.batch.BatchQueue;
+import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.registry.RepositoryRegistry;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.storage.driver.RedisDriver;
+import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-public final class CoreDatabase implements Database {
+public sealed class CoreDatabase implements Database permits GlobalDatabase, LocalDatabase {
 
     @Getter
     private final PostgresDriver postgresDriver;
@@ -28,16 +30,24 @@ public final class CoreDatabase implements Database {
     private final BatchQueue batchQueue;
 
     private final RedisDriver redisDriver;
+
+    @Getter
+    private final EntityRevisionStore entityRevisionStore;
     private final Tenant tenant;
     private final RepositoryRegistry repositoryRegistry;
 
     private volatile boolean started;
 
     public CoreDatabase(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Tenant tenant, final Duration flushInterval, final int chunkSize) {
+        this(postgresDriver, redisDriver, tenant, flushInterval, chunkSize, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
+    }
+
+    public CoreDatabase(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Tenant tenant, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
         this.postgresDriver = postgresDriver;
         this.redisDriver = redisDriver;
+        this.entityRevisionStore = new EntityRevisionStore();
         this.tenant = tenant;
-        this.batchQueue = new BatchQueue(postgresDriver, flushInterval, chunkSize);
+        this.batchQueue = new BatchQueue(postgresDriver, redisDriver, flushInterval, chunkSize, maximumPendingWrites);
         this.repositoryRegistry = new RepositoryRegistry(postgresDriver);
     }
 
@@ -49,19 +59,20 @@ public final class CoreDatabase implements Database {
         this(postgresDriver, null, null);
     }
 
-    public synchronized void start() {
+    public final synchronized void start() {
         if (this.started) {
             return;
         }
 
         this.repositoryRegistry.synchronizeAll();
+        this.batchQueue.synchronizeOutbox();
 
         this.batchQueue.start();
 
         this.started = true;
     }
 
-    public synchronized void stop() {
+    public final synchronized void stop() {
         if (!this.started) {
             return;
         }
@@ -70,11 +81,11 @@ public final class CoreDatabase implements Database {
         this.batchQueue.stop();
     }
 
-    public synchronized void register(final AbstractEntityRepository<?> repository) {
+    public final synchronized void register(final AbstractEntityRepository<?> repository) {
         this.repositoryRegistry.register(repository, this.started);
     }
 
-    public Optional<String> resolveTenantId(final TenantScope tenantScope) {
+    public final Optional<String> resolveTenantId(final TenantScope tenantScope) {
         if (tenantScope == TenantScope.NONE) {
             return Optional.empty();
         }
@@ -86,30 +97,30 @@ public final class CoreDatabase implements Database {
         return this.tenant.resolve(tenantScope);
     }
 
-    public Optional<RedisDriver> getRedisDriver() {
+    public final Optional<RedisDriver> getRedisDriver() {
         return Optional.ofNullable(this.redisDriver);
     }
 
-    public Optional<Tenant> getTenant() {
+    public final Optional<Tenant> getTenant() {
         return Optional.ofNullable(this.tenant);
     }
 
-    public void setFailureHandler(final Consumer<DatabaseException> failureHandler) {
+    public final void setFailureHandler(final Consumer<DatabaseException> failureHandler) {
         this.batchQueue.setFailureHandler(failureHandler);
     }
 
     @Override
-    public boolean isReady() {
+    public final boolean isReady() {
         return this.started && this.postgresDriver.isConnected();
     }
 
     @Override
-    public List<EntityRepository<?>> getRepositories() {
+    public final List<EntityRepository<?>> getRepositories() {
         return this.repositoryRegistry.getRepositories();
     }
 
     @Override
-    public <E extends Entity> Optional<EntityRepository<E>> getRepository(final Class<E> entityType) {
+    public final <E extends Entity> Optional<EntityRepository<E>> getRepository(final Class<E> entityType) {
         return this.repositoryRegistry.getRepository(entityType);
     }
 }

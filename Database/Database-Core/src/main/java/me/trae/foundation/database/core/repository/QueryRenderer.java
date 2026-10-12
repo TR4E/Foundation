@@ -26,7 +26,7 @@ public class QueryRenderer {
         Condition condition = toTenantCondition(tableSchema, query.getTenantSelection(), query.getTenantId(), ownTenantId);
 
         for (final me.trae.foundation.database.api.query.Condition<E> queryCondition : query.getConditionList()) {
-            condition = condition.and(render(tableSchema.getField(queryCondition.getEntityProperty()), queryCondition.getOperator(), toStoredValue(queryCondition.getEntityProperty(), queryCondition.getOperator(), queryCondition.getValue())));
+            condition = condition.and(render(tableSchema.getField(queryCondition.getEntityProperty()), queryCondition.getEntityProperty(), queryCondition.getOperator(), toStoredValue(queryCondition.getEntityProperty(), queryCondition.getOperator(), queryCondition.getValue())));
         }
 
         return condition;
@@ -58,21 +58,22 @@ public class QueryRenderer {
 
     private Object toStoredValue(final EntityProperty<?, ?> entityProperty, final Operator operator, final Object value) {
         return switch (operator) {
-            case IN -> toCollection(value).stream().map(element -> ColumnValueMapper.toStoredObject(entityProperty, element)).toList();
+            case IN -> toCollection(value).stream().map(element -> ColumnValueMapper.toStoredObject(entityProperty, entityProperty.normalizeIndexValue(element))).toList();
             case LIKE, IS_NULL, IS_NOT_NULL -> value;
+            case EQUALS, NOT_EQUALS -> ColumnValueMapper.toStoredObject(entityProperty, entityProperty.isCaseInsensitive() && value instanceof final String string ? string.toLowerCase(java.util.Locale.ROOT) : value);
             default -> ColumnValueMapper.toStoredObject(entityProperty, value);
         };
     }
 
-    private <Type> Condition render(final Field<Type> field, final Operator operator, final Object value) {
+    private <Type> Condition render(final Field<Type> field, final EntityProperty<?, ?> entityProperty, final Operator operator, final Object value) {
         return switch (operator) {
-            case EQUALS -> field.eq(DSL.val(value, field));
-            case NOT_EQUALS -> field.ne(DSL.val(value, field));
+            case EQUALS -> entityProperty.isCaseInsensitive() ? DSL.lower(field.coerce(String.class)).eq((String) value) : field.eq(DSL.val(value, field));
+            case NOT_EQUALS -> entityProperty.isCaseInsensitive() ? DSL.lower(field.coerce(String.class)).ne((String) value) : field.ne(DSL.val(value, field));
             case GREATER_THAN -> field.gt(DSL.val(value, field));
             case GREATER_THAN_OR_EQUALS -> field.ge(DSL.val(value, field));
             case LESS_THAN -> field.lt(DSL.val(value, field));
             case LESS_THAN_OR_EQUALS -> field.le(DSL.val(value, field));
-            case IN -> field.in(toCollection(value).stream().map(element -> DSL.val(element, field)).toList());
+            case IN -> entityProperty.isCaseInsensitive() ? DSL.lower(field.coerce(String.class)).in(toCollection(value).stream().map(String.class::cast).toList()) : field.in(toCollection(value).stream().map(element -> DSL.val(element, field)).toList());
             case LIKE -> field.like(String.valueOf(value));
             case IS_NULL -> field.isNull();
             case IS_NOT_NULL -> field.isNotNull();

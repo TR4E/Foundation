@@ -4,6 +4,7 @@ import io.lettuce.core.RedisException;
 import lombok.AllArgsConstructor;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.ConnectionException;
+import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.api.exception.UniqueValueTakenException;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.query.Operator;
@@ -15,6 +16,7 @@ import me.trae.foundation.database.lookup.index.EntityIndexKey;
 import me.trae.foundation.database.lookup.index.RedisEntityIndex;
 import me.trae.foundation.database.lookup.index.RedisPropertyIndex;
 import me.trae.foundation.database.storage.driver.RedisDriver;
+import me.trae.foundation.database.storage.redis.RedisNamespace;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -55,6 +57,26 @@ public final class UniqueClaimer<E extends Entity> {
         return callbackList;
     }
 
+    public EntityIdClaim claimId(final E entity) {
+        if (this.redisDriver == null) {
+            return EntityIdClaim.noop();
+        }
+
+        final String key = this.getEntityIdClaimKey(entity.getId());
+        final String token = UUID.randomUUID().toString();
+        final String owner = ClaimScripts.claim(this.redisDriver, key, token, LEASE);
+
+        if (!token.equals(owner)) {
+            throw new DatabaseException("Cannot save %s %s because its ID is already claimed".formatted(entity.getClass().getSimpleName(), entity.getId()));
+        }
+
+        return new EntityIdClaim(this.redisDriver, key, token, entity.getId().toString());
+    }
+
+    public void cacheRedisIndexes(final E entity) {
+        this.holderLookups.cacheRedisIndexes(entity);
+    }
+
     public void release(final E entity) {
         for (final EntityProperty<? super E, ?> entityProperty : this.repository.getUniqueProperties()) {
             this.releaseProperty(entityProperty, entity);
@@ -62,6 +84,10 @@ public final class UniqueClaimer<E extends Entity> {
 
         for (final EntityIndex<E> entityIndex : this.repository.getCompositeIndexes()) {
             this.releaseIndex(entityIndex, entity);
+        }
+
+        if (this.redisDriver != null) {
+            ClaimScripts.release(this.redisDriver, this.getEntityIdClaimKey(entity.getId()), entity.getId().toString());
         }
     }
 
@@ -126,6 +152,42 @@ public final class UniqueClaimer<E extends Entity> {
         return this.holderLookups.getPropertyIndex(entityProperty)
                 .map(propertyIndex -> propertyIndex.getClaimKey(value))
                 .orElseThrow(() -> new IllegalStateException("No Redis index for %s".formatted(entityProperty.getName())));
+    }
+
+    private String getEntityIdClaimKey(final UUID id) {
+        final RedisNamespace namespace = RedisNamespace.of(this.repository.getTable(), this.repository.getTenantId().orElse(null));
+        return namespace.getKey("claim:id:%s".formatted(id));
+    }
+
+    public static final class EntityIdClaim {
+
+        private final RedisDriver redisDriver;
+        private final String key;
+        private final String token;
+        private final String entityId;
+
+        private EntityIdClaim(final RedisDriver redisDriver, final String key, final String token, final String entityId) {
+            this.redisDriver = redisDriver;
+            this.key = key;
+            this.token = token;
+            this.entityId = entityId;
+        }
+
+        private static EntityIdClaim noop() {
+            return new EntityIdClaim(null, null, null, null);
+        }
+
+        public void commit() {
+            if (this.redisDriver != null) {
+                ClaimScripts.transfer(this.redisDriver, this.key, this.token, this.entityId);
+            }
+        }
+
+        public void release() {
+            if (this.redisDriver != null) {
+                ClaimScripts.release(this.redisDriver, this.key, this.token);
+            }
+        }
     }
 
     public <Value> void transferProperty(final EntityProperty<? super E, Value> entityProperty, final Value claimantPreviousValue, final Value claimedValue, final UUID claimantId, final UUID currentOwnerId) {

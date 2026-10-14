@@ -26,6 +26,8 @@ import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record;
+import org.jooq.UpdateSetMoreStep;
+import org.jooq.impl.DSL;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -226,6 +228,72 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         if (this.tableSchema.isOptimisticLocking()) {
             this.coreDatabase.getEntityRevisionStore().setRevision(entity, this.coreDatabase.getEntityRevisionStore().getState(baseline).getRevision());
         }
+    }
+
+    public final long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta, final boolean redisEnabled) {
+        if (!entityProperty.isPersistent() || entityProperty.getValueConverter().isPresent()) {
+            throw new SchemaException("Property %s cannot be incremented because it is not a persistent primitive number".formatted(entityProperty.getName()));
+        }
+
+        if (this.getUniqueProperties().stream().anyMatch(property -> property.getName().equals(entityProperty.getName()))
+                || this.getCompositeIndexes().stream().anyMatch(index -> index.getProperties().stream().anyMatch(property -> property.getName().equals(entityProperty.getName())))) {
+            throw new SchemaException("Indexed property %s cannot be incremented".formatted(entityProperty.getName()));
+        }
+
+        final Class<?> valueType = entityProperty.getValueType();
+        if (valueType != Long.class && valueType != Integer.class) {
+            throw new SchemaException("Property %s must be a Long or Integer to be incremented".formatted(entityProperty.getName()));
+        }
+
+        final long[] result = new long[1];
+        final Long[] expectedRevision = new Long[1];
+        this.coreDatabase.getBatchQueue().executeAtomically(dslContext -> {
+            expectedRevision[0] = this.tableSchema.isOptimisticLocking()
+                    ? this.coreDatabase.getEntityRevisionStore().getState(entity).getRevision()
+                    : null;
+            if (expectedRevision[0] != null && (expectedRevision[0] < 0L || expectedRevision[0] == Long.MAX_VALUE)) {
+                throw new IllegalStateException("Invalid entity revision %s for %s".formatted(expectedRevision[0], entity.getId()));
+            }
+
+            if (valueType == Integer.class) {
+                final int increment = Math.toIntExact(delta);
+                final Field<Integer> field = this.tableSchema.getField(entityProperty).coerce(Integer.class);
+                result[0] = this.incrementValue(dslContext, entity, field, 0, increment, expectedRevision[0]).longValue();
+            } else {
+                final Field<Long> field = this.tableSchema.getField(entityProperty).coerce(Long.class);
+                result[0] = this.incrementValue(dslContext, entity, field, 0L, delta, expectedRevision[0]);
+            }
+
+            CacheInvalidationOutbox.insertInvalidations(dslContext, List.of(this.repositoryWriter.createInvalidation(entity.getId(), redisEnabled)));
+        });
+
+        if (expectedRevision[0] != null) {
+            this.coreDatabase.getEntityRevisionStore().setRevision(entity, expectedRevision[0] + 1L);
+        }
+
+        return result[0];
+    }
+
+    private <NumberType extends Number> NumberType incrementValue(final DSLContext dslContext, final E entity, final Field<NumberType> field, final NumberType zero, final NumberType increment, final Long expectedRevision) {
+        final Field<NumberType> valueField = DSL.coalesce(field, DSL.val(zero, field)).add(increment);
+        UpdateSetMoreStep<Record> updateStep = dslContext.update(this.tableSchema.getTable()).set(field, valueField);
+        Condition condition = this.tableSchema.getKeyCondition(this.tenantId, entity.getId());
+
+        if (expectedRevision != null) {
+            updateStep = updateStep.set(TableSchema.REVISION_FIELD, expectedRevision + 1L);
+            condition = condition.and(TableSchema.REVISION_FIELD.eq(expectedRevision));
+        }
+
+        final Record record = updateStep.where(condition).returning(field).fetchOne();
+        if (record == null) {
+            if (expectedRevision != null) {
+                throw new OptimisticLockException("Cannot increment stale entity %s".formatted(entity.getId()));
+            }
+
+            throw new DatabaseException("Cannot increment missing %s %s".formatted(this.entityType.getSimpleName(), entity.getId()));
+        }
+
+        return record.get(field);
     }
 
     public final <Value> void transferUniqueProperty(final E claimant, final E currentOwner, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue, final boolean redisEnabled) {

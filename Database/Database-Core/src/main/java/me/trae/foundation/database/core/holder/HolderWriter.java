@@ -10,7 +10,7 @@ import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,13 +36,25 @@ public final class HolderWriter<E extends Entity> {
             }
 
             final Map<String, String> encodedMap = this.changeTracker.encode(entity);
-
-            final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, this.repository.getProperties());
+            final UniqueClaimer.EntityIdClaim idClaim = this.uniqueClaimer.claimId(entity);
 
             try {
-                this.repository.save(entity, callbackList, List.of(() -> this.handleFailedWrite(entity, true)), this.redisEnabled);
+                final List<Runnable> callbackList = new ArrayList<>(this.uniqueClaimer.claim(entity, this.repository.getProperties()));
+                callbackList.add(idClaim::commit);
+                if (this.redisStorage != null) {
+                    callbackList.add(() -> this.cacheRedisEntity(entity.getId()));
+                }
+
+                this.repository.save(entity, callbackList, List.of(() -> {
+                    try {
+                        this.handleFailedWrite(entity, true);
+                    } finally {
+                        idClaim.release();
+                    }
+                }), this.redisEnabled);
             } catch (final RuntimeException exception) {
                 this.uniqueClaimer.release(entity);
+                idClaim.release();
                 throw exception;
             }
 
@@ -115,15 +127,11 @@ public final class HolderWriter<E extends Entity> {
 
     public long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta) {
         synchronized (this.getLock(entity.getId())) {
-            final Number current = entityProperty.getValue(entity);
-
-            final long value = this.redisStorage != null ? this.redisStorage.increment(entity.getId(), entityProperty, delta) : (current == null ? 0L : current.longValue()) + delta;
+            final long value = this.repository.increment(entity, entityProperty, delta, this.redisEnabled);
 
             this.apply(entityProperty, entity, value);
 
             final Map<String, String> encodedMap = this.changeTracker.encode(entity);
-
-            this.repository.update(entity, List.of(entityProperty), Collections.emptyList(), Collections.emptyList(), this.redisEnabled);
 
             this.changeTracker.commit(entity.getId(), encodedMap, List.of(entityProperty));
             this.localEntityIndex.index(entity);
@@ -134,6 +142,11 @@ public final class HolderWriter<E extends Entity> {
 
     private Object getLock(final UUID id) {
         return this.lockArray[Math.floorMod(id.hashCode(), this.lockArray.length)];
+    }
+
+    private void cacheRedisEntity(final UUID id) {
+        this.redisStorage.refresh(id, () -> this.repository.findById(id))
+                .ifPresent(this.uniqueClaimer::cacheRedisIndexes);
     }
 
     private void handleFailedWrite(final E entity, final boolean releaseUniqueClaims) {

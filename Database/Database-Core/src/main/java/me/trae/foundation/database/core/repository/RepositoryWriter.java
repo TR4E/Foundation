@@ -40,7 +40,7 @@ public final class RepositoryWriter<E extends Entity> {
             valueMap.put(TableSchema.REVISION_FIELD, revisionState.getRevision());
         }
 
-        this.pendingWriteStore.queueInsert(this.tableSchema, this.tenantId, entity.getId(), valueMap, new ArrayList<>(commitCallbackList), new ArrayList<>(failureCallbackList), this.createInvalidation(entity.getId(), redisEnabled));
+        this.pendingWriteStore.queueInsert(this.tableSchema, this.tenantId, entity.getId(), valueMap, new ArrayList<>(commitCallbackList), new ArrayList<>(failureCallbackList), this.createInvalidation(entity.getId(), redisEnabled, false));
     }
 
     public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
@@ -86,7 +86,11 @@ public final class RepositoryWriter<E extends Entity> {
     }
 
     public RedisInvalidation createInvalidation(final java.util.UUID id, final boolean redisEnabled) {
-        return !redisEnabled || this.redisNamespace == null ? null : this.redisNamespace.getInvalidation(id, this.redisInstanceId);
+        return this.createInvalidation(id, redisEnabled, true);
+    }
+
+    private RedisInvalidation createInvalidation(final java.util.UUID id, final boolean redisEnabled, final boolean invalidateCache) {
+        return !redisEnabled || this.redisNamespace == null ? null : this.redisNamespace.getInvalidation(id, this.redisInstanceId, invalidateCache);
     }
 
 }

@@ -54,6 +54,6 @@ public final class EntityProperty<E extends Entity, Value> {
     }
 
     public Object normalizeIndexValue(final Object value) {
-        return this.caseInsensitive ? String.class.cast(value).toLowerCase(Locale.ROOT) : value;
+        return this.caseInsensitive && value != null ? String.class.cast(value).toLowerCase(Locale.ROOT) : value;
     }
 }

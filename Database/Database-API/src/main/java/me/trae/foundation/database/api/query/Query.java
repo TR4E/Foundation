@@ -10,6 +10,8 @@ import me.trae.foundation.database.api.property.EntityProperty;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 @Getter
@@ -19,6 +21,7 @@ public final class Query<E extends Entity> {
     private final List<Order<E>> orderList = new ArrayList<>();
 
     private int limit, offset;
+    private UUID excludedId;
     private TenantSelection tenantSelection = TenantSelection.OWN;
     private String tenantId;
 
@@ -45,6 +48,11 @@ public final class Query<E extends Entity> {
 
     public <Value> Query<E> andIn(final EntityProperty<? super E, Value> entityProperty, final Collection<? extends Value> values) {
         this.conditionList.add(new Condition<>(entityProperty, Operator.IN, List.copyOf(values)));
+        return this;
+    }
+
+    public Query<E> andIdNotEquals(final UUID id) {
+        this.excludedId = Objects.requireNonNull(id, "id");
         return this;
     }
 

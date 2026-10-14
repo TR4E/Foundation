@@ -146,6 +146,46 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         throw new IllegalStateException("Timed out waiting for the Redis cache fill lock for %s".formatted(id));
     }
 
+    public Optional<E> refresh(final UUID id, final Supplier<Optional<E>> loader) {
+        final String lockKey = this.getLockKey(id);
+        final String owner = UUID.randomUUID().toString();
+        final long deadline = System.nanoTime() + Duration.ofMillis(FILL_WAIT_MILLIS).toNanos();
+
+        while (System.nanoTime() < deadline) {
+            if (this.acquireLockIfAvailable(lockKey, owner)) {
+                try {
+                    final Optional<E> loaded;
+                    try {
+                        loaded = loader.get();
+                    } catch (final RuntimeException exception) {
+                        this.writeFailureMarker(id, lockKey, owner, exception);
+                        throw exception;
+                    }
+
+                    if (loaded.isPresent()) {
+                        if (!this.redisHashWriter.writeIfLockOwner(this.redisNamespace.getKey(id), lockKey, owner, this.encode(loaded.get()))) {
+                            throw new IllegalStateException("Redis cache refresh lock expired while loading %s".formatted(id));
+                        }
+                        this.redisDriver.getCommands().del(this.getMissingKey(id));
+                    } else {
+                        this.redisDriver.getCommands().del(this.redisNamespace.getKey(id));
+                        if (!this.writeMissingIfLockOwner(id, lockKey, owner)) {
+                            throw new IllegalStateException("Redis cache refresh lock expired while loading %s".formatted(id));
+                        }
+                    }
+
+                    return loaded;
+                } finally {
+                    this.releaseLock(lockKey, owner);
+                }
+            }
+
+            this.pauseBeforeRetry(deadline);
+        }
+
+        throw new IllegalStateException("Timed out waiting for the Redis cache refresh lock for %s".formatted(id));
+    }
+
     public Map<UUID, E> getOrLoadAll(final Collection<UUID> ids, final Function<Collection<UUID>, ? extends Collection<E>> loader) {
         final List<UUID> idList = ids.stream().distinct().sorted(Comparator.naturalOrder()).toList();
 

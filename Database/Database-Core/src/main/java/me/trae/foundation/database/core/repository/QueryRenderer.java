@@ -25,6 +25,10 @@ public class QueryRenderer {
     public <E extends Entity> Condition toCondition(final TableSchema<E> tableSchema, final Query<E> query, final String ownTenantId) {
         Condition condition = toTenantCondition(tableSchema, query.getTenantSelection(), query.getTenantId(), ownTenantId);
 
+        if (query.getExcludedId() != null) {
+            condition = condition.and(TableSchema.ID_FIELD.ne(query.getExcludedId()));
+        }
+
         for (final me.trae.foundation.database.api.query.Condition<E> queryCondition : query.getConditionList()) {
             condition = condition.and(render(tableSchema.getField(queryCondition.getEntityProperty()), queryCondition.getEntityProperty(), queryCondition.getOperator(), toStoredValue(queryCondition.getEntityProperty(), queryCondition.getOperator(), queryCondition.getValue())));
         }

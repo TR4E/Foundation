@@ -53,13 +53,18 @@ public final class RedisNamespace {
     }
 
     public RedisInvalidation getInvalidation(final UUID id, final String instanceId) {
+        return this.getInvalidation(id, instanceId, true);
+    }
+
+    public RedisInvalidation getInvalidation(final UUID id, final String instanceId, final boolean invalidateCache) {
         return new RedisInvalidation(
                 this.getKey(id),
                 this.getKey("cache:missing:%s".formatted(id)),
                 this.getKey("cache:fill:%s".formatted(id)),
                 this.getInvalidationChannel(),
                 id,
-                instanceId
+                instanceId,
+                invalidateCache
         );
     }
 }

@@ -285,6 +285,13 @@ final class DatabaseTest {
 
         final String caseInsensitiveSql = dslContext.renderInlined(QueryRenderer.toCondition(tableSchema, Query.where(NAME, Operator.EQUALS, "SAMPLE-VALUE"), null));
         assertTrue(caseInsensitiveSql.contains("lower(\"name\") = 'sample-value'"));
+
+        final UUID excludedId = UUID.randomUUID();
+        final String idExclusionSql = dslContext.renderInlined(QueryRenderer.toCondition(tableSchema, Query.where(NAME, Operator.EQUALS, "sample-value").andIdNotEquals(excludedId), null));
+        assertTrue(idExclusionSql.contains("lower(\"name\") = 'sample-value'"));
+        assertTrue(idExclusionSql.contains("\"id\" <>"));
+        assertTrue(idExclusionSql.contains(excludedId.toString()));
+
         assertFalse(dslContext.renderInlined(QueryRenderer.toCondition(tableSchema, Query.of(Account.class).allTenants(), "lobby-1")).contains("tenant_id"));
 
         assertEquals(Instant.class, tableSchema.getField(CREATED_AT).getType());
@@ -367,7 +374,7 @@ final class DatabaseTest {
         firstHolder.save(original);
         firstDatabase.getBatchQueue().flush();
 
-        final CoreDatabase secondDatabase = this.openDatabase(null);
+        final CoreDatabase secondDatabase = this.openDatabaseWithoutRedis();
 
         final AccountRepository secondRepository = new AccountRepository(secondDatabase, this.table, TenantScope.NONE);
 
@@ -800,6 +807,34 @@ final class DatabaseTest {
     }
 
     @Test
+    void incrementsFromDifferentInstancesCannotOverwriteEachOther() {
+        final CoreDatabase first = this.openDatabase(null);
+        final AccountRepository firstRepository = new AccountRepository(first, this.table, TenantScope.NONE);
+        final AccountHolder firstHolder = new AccountHolder(firstRepository);
+        first.start();
+
+        final CoreDatabase second = this.openDatabase(null);
+        final AccountRepository secondRepository = new AccountRepository(second, this.table, TenantScope.NONE);
+        final AccountHolder secondHolder = new AccountHolder(secondRepository);
+        second.start();
+
+        final Account account = this.createAccount("incremented");
+        firstHolder.save(account);
+        first.getBatchQueue().flush();
+
+        final Account firstCopy = firstHolder.getById(account.getId()).orElseThrow();
+        final Account secondCopy = secondHolder.getById(account.getId()).orElseThrow();
+
+        assertEquals(101L, firstHolder.increment(firstCopy, COINS, 1L));
+        assertEquals(102L, secondHolder.increment(secondCopy, COINS, 1L));
+
+        second.getBatchQueue().flush();
+        first.getBatchQueue().flush();
+
+        assertEquals(102L, firstRepository.findById(account.getId()).orElseThrow().getCoins());
+    }
+
+    @Test
     void uniqueValueHeldByAnotherInstanceIsRejected() {
         final CoreDatabase first = this.openDatabase(null);
 
@@ -815,6 +850,52 @@ final class DatabaseTest {
         first.getBatchQueue().flush();
 
         assertThrows(UniqueValueTakenException.class, () -> secondHolder.save(this.createAccount("sample-value")));
+    }
+
+    @Test
+    void duplicateEntityIdIsRejectedAcrossInstancesBeforeQueueing() {
+        final CoreDatabase first = this.openDatabase(null);
+        final AccountRepository firstRepository = new AccountRepository(first, this.table, TenantScope.NONE);
+        final AccountHolder firstHolder = new AccountHolder(firstRepository);
+        first.start();
+
+        final CoreDatabase second = this.openDatabase(null);
+        final AccountRepository secondRepository = new AccountRepository(second, this.table, TenantScope.NONE);
+        final AccountHolder secondHolder = new AccountHolder(secondRepository);
+        second.start();
+
+        final Account original = this.createAccount("original");
+        firstHolder.save(original);
+
+        final Account duplicate = new Account(original.getId());
+        duplicate.setName("duplicate");
+        duplicate.setCoins(200L);
+        duplicate.setRank(Rank.MEMBER);
+        duplicate.setTags(List.of());
+        duplicate.setCreatedAt(Instant.now().truncatedTo(ChronoUnit.MILLIS));
+
+        assertThrows(DatabaseException.class, () -> secondHolder.save(duplicate));
+        assertEquals(0, second.getBatchQueue().getPendingWriteStore().size());
+
+        first.getBatchQueue().flush();
+
+        assertThrows(DatabaseException.class, () -> secondHolder.save(duplicate));
+        assertThrows(UniqueValueTakenException.class, () -> secondHolder.save(this.createAccount("original")));
+        assertEquals("original", firstRepository.findById(original.getId()).orElseThrow().getName());
+
+        firstHolder.delete(original);
+        first.getBatchQueue().flush();
+
+        final Account recreated = new Account(original.getId());
+        recreated.setName("recreated");
+        recreated.setCoins(200L);
+        recreated.setRank(Rank.MEMBER);
+        recreated.setTags(List.of());
+        recreated.setCreatedAt(Instant.now().truncatedTo(ChronoUnit.MILLIS));
+        secondHolder.save(recreated);
+        second.getBatchQueue().flush();
+
+        assertEquals("recreated", secondRepository.findById(recreated.getId()).orElseThrow().getName());
     }
 
     @Test
@@ -869,6 +950,8 @@ final class DatabaseTest {
 
         final EntityIndex<Account> nameIndex = EntityIndex.of(NAME.getName(), NAME);
         final RedisEntityIndex<Account> redisEntityIndex = new RedisEntityIndex<>(this.redisDriver, RedisNamespace.of(this.table), nameIndex, Duration.ofHours(1));
+        assertTrue(new AccountHolder(repository).getById(account.getId(), EnumSet.of(LookupTier.REDIS)).isPresent());
+        assertEquals(account.getId(), redisEntityIndex.find(nameIndex.getValues(account)).orElseThrow());
         redisEntityIndex.remove(nameIndex.getValues(account), account.getId());
 
         final AccountHolder reader = new AccountHolder(repository);

@@ -92,11 +92,17 @@ public final class EntityLookups {
     }
 
     private static <E extends Entity, Value> Optional<E> findLocal(final LocalStorage<UUID, E> localStorage, final EntityProperty<? super E, Value> entityProperty, final Value value) {
-        return localStorage.getValues().stream().filter(entity -> Objects.equals(entityProperty.getValue(entity), value)).findFirst();
+        final Object normalizedValue = entityProperty.normalizeIndexValue(value);
+
+        return localStorage.getValues().stream()
+                .filter(entity -> Objects.equals(entityProperty.normalizeIndexValue(entityProperty.getValue(entity)), normalizedValue))
+                .findFirst();
     }
 
     private static <E extends Entity, Value> Optional<E> findRedis(final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityProperty<? super E, Value> entityProperty, final Value value) {
-        final Optional<E> result = propertyIndex.find(value).flatMap(redisStorage::get).filter(entity -> Objects.equals(entityProperty.getValue(entity), value));
+        final Object normalizedValue = entityProperty.normalizeIndexValue(value);
+        final Optional<E> result = propertyIndex.find(value).flatMap(redisStorage::get)
+                .filter(entity -> Objects.equals(entityProperty.normalizeIndexValue(entityProperty.getValue(entity)), normalizedValue));
 
         if (result.isEmpty()) {
             propertyIndex.remove(value);

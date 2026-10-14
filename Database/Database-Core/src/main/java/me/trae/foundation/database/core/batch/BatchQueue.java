@@ -115,13 +115,7 @@ public final class BatchQueue {
             }
         }
 
-        if (this.cacheInvalidationOutbox != null) {
-            try {
-                this.cacheInvalidationOutbox.dispatch();
-            } catch (final RuntimeException exception) {
-                this.reportFailure(new DatabaseException("Failed to dispatch cache invalidation outbox", exception));
-            }
-        }
+        this.dispatchCacheInvalidations(false);
     }
 
     public synchronized void executeAtomically(final Consumer<DSLContext> operation) {
@@ -133,10 +127,28 @@ public final class BatchQueue {
 
             this.postgresDriver.getDslContext().transaction(configuration -> operation.accept(DSL.using(configuration)));
         });
+
+        this.dispatchCacheInvalidations(true);
     }
 
     public void reportFailure(final DatabaseException exception) {
         this.failureHandler.accept(exception);
+    }
+
+    private void dispatchCacheInvalidations(final boolean force) {
+        if (this.cacheInvalidationOutbox == null) {
+            return;
+        }
+
+        try {
+            if (force) {
+                this.cacheInvalidationOutbox.dispatchNow();
+            } else {
+                this.cacheInvalidationOutbox.dispatch();
+            }
+        } catch (final RuntimeException exception) {
+            this.reportFailure(new DatabaseException("Failed to dispatch cache invalidation outbox", exception));
+        }
     }
 
     private void runSafely(final Runnable task) {

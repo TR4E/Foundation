@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class LookupTest {
 
-    private static final EntityProperty<Member, String> NAME = EntityProperty.register(Member.class, "name", Member::getName, Member::setName, String.class, true);
+    private static final EntityProperty<Member, String> NAME = EntityProperty.registerCaseInsensitive(Member.class, "name", Member::getName, Member::setName, true);
 
     private final Map<String, String> localMap = new HashMap<>();
     private final Map<String, String> redisMap = new HashMap<>();
@@ -157,6 +157,17 @@ final class LookupTest {
         assertEquals(0, this.repository.readCount.get());
         assertSame(stored, nameLookup.lookup("stored").orElseThrow());
         assertTrue(this.localStorage.get(stored.getId()).isPresent());
+    }
+
+    @Test
+    void findsCaseInsensitivePropertyFromTheLocalCache() {
+        final Member member = this.repository.add("MiXeD-Value");
+        this.localStorage.put(member.getId(), member);
+
+        final TieredLookup<String, Member> nameLookup = EntityLookups.byProperty(NAME, this.localStorage, null, null, this.repository);
+
+        assertSame(member, nameLookup.lookup("mixed-value", EnumSet.of(LookupTier.LOCAL)).orElseThrow());
+        assertEquals(0, this.repository.readCount.get());
     }
 
     @Test

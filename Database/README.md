@@ -245,8 +245,14 @@ final List<Account> richest = accountRepository.findMany(Query.where(AccountProp
 
 final long staff = accountRepository.count(Query.whereIn(AccountProperties.RANK, List.of(Rank.ADMIN, Rank.MODERATOR)));
 
+final Optional<Account> previousNameOwner = accountRepository.findOne(
+        Query.where(AccountProperties.NAME, Operator.EQUALS, previousName)
+                .andIdNotEquals(loginAccountId));
+
 final List<Account> everyone = accountRepository.findMany(Query.of(Account.class));
 ```
+
+`andIdNotEquals(id)` adds a predicate on the built-in `id` column alongside registered property conditions. It does not register `id` as an entity property or add it to schema properties. Repository queries go directly to PostgreSQL; holder lookups such as `getByProperty` use their cache/index path instead. A unique name index permits only one row per name (per tenant when tenant scoped), so if the excluded account currently owns `previousName`, this query returns empty. It cannot find a second account with that name, and therefore does not by itself solve a previous-name lookup when the triggering account still owns the name.
 
 | Operator | Notes |
 |---|---|
@@ -312,7 +318,7 @@ public final class AccountRepository extends AbstractEntityRepository<Account> {
 | `delete(entity)` | Remove the entity and queue deletion |
 | `cache(entity)`, `evict(entity)` | Add to or remove from the local cache, with `evict` writing any changes first |
 | `pin(entity)`, `unpin(entity)`, `getPinned()` | Keep an entity cached until unpinned, for example while a user is logged in |
-| `increment(entity, property, delta)` | Atomically add to a `Long` or `Integer` property |
+| `increment(entity, property, delta)` | Atomically add to an unindexed persistent `Long` or `Integer` property in PostgreSQL |
 
 `InstanceMode.SINGLE_INSTANCE` keeps a local copy of each entity and tracks changes to it. Its existing pinning behavior is unchanged. It can use a CoreDatabase with or without Redis. `InstanceMode.MULTI_INSTANCE` requires a Redis-configured CoreDatabase and uses a short-lived local cache; reads refresh that entry's idle expiry, but cannot extend its absolute age. The default maximum age is five minutes and can be changed through the `HolderComponents.create` overload. Redis Pub/Sub invalidation evicts changed entries on other instances; the absolute age bounds stale data if a notification is missed. Pinning is not available in that mode. If Redis becomes unavailable after startup, Foundation uses its existing PostgreSQL fallback and recovery behavior; cache coordination and invalidation resume when Redis recovers.
 
@@ -432,6 +438,8 @@ Lookups by property work the same way. Properties with a `UNIQUE` index also kee
 
 `getByProperty(property, value)` uses an O(1) local value-to-id map and, when Redis is enabled, a Redis value-to-id index only when that property is declared `UNIQUE` by the repository. It then loads the entity through the normal ID lookup. If the property is not indexed, the local fallback scans cached entities and PostgreSQL performs a property query; use a declared index when indexed lookup performance is required.
 
+Holder `save(entity)` puts the entity in that holder's local cache immediately and queues the PostgreSQL insert. After the insert commits, a Redis-enabled holder reloads the committed row under the cache-fill lock and warms the shared Redis entity cache and registered Redis indexes. In MULTI_INSTANCE mode, Redis also reserves the entity ID while the insert is pending, so another holder cannot queue a second insert with that ID.
+
 Each lookup also accepts a `Set<LookupTier>` to limit which tiers it reads. The overload without a tier set searches all available tiers. A local-only lookup returns empty on a local miss and does not fall through to Redis or PostgreSQL. For a registered index, the local lookup uses its value-to-id map; unindexed property lookups use the existing local scan.
 
 ```java
@@ -541,9 +549,9 @@ super(accountRepository, InstanceMode.SINGLE_INSTANCE, RedisMode.ENABLED, Durati
 
 - **Change tracking:** the holder remembers each entity's values when it is loaded or saved. `update` writes only changed persistent properties; nonpersistent properties remain local/Redis-only. Existing automatic flush behavior also persists dirty tracked entities, including entities whose local cache entry expires.
 - **Automatic writes:** on every flush, changes made to entities in the local cache are written without calling `save`, including entities whose cache entry just expired.
-- **Unique claims:** saving a value for a `UNIQUE` property claims it in Redis with a short lease. A value owned by another entity throws `UniqueValueTakenException` before anything is written. A claim held by an entity that no longer has that value is taken over, and a claim still being made on another server is respected. Deleting an entity releases its claims.
-- **Cache invalidation:** committed writes and deletes enqueue an outbox event in the PostgreSQL transaction. A Redis-coordinated dispatcher removes the entity hash and negative-cache marker, then publishes the id so MULTI_INSTANCE local caches evict it. Events are idempotent and remain in PostgreSQL if Redis dispatch fails; reconnecting Pub/Sub listeners clear their local Multi caches to recover missed messages. Delivery is eventual, so reads can briefly observe a cached value between commit and invalidation. Outbox dispatch is throttled and batched.
-- **Increments:** `increment` uses Redis `HINCRBY` when Redis is configured and queues the resulting entity value for PostgreSQL persistence. The Redis operation is atomic, but this is not a PostgreSQL compare-and-swap protocol; concurrent absolute writes from different JVMs still use last committed write semantics. Use a database-native atomic update for counters that must remain correct across failures or conflicting writers.
+- **Unique claims:** saving a value for a `UNIQUE` property claims it in Redis with a short lease. In Redis-enabled holders, saving also reserves the entity UUID while the insert is pending, preventing another holder from queueing a duplicate UUID. A value owned by another entity throws `UniqueValueTakenException` before anything is written. A claim held by an entity that no longer has that value is taken over, and a claim still being made on another server is respected. Deleting an entity releases its claims.
+- **Cache invalidation:** committed writes and deletes enqueue an outbox event in the PostgreSQL transaction. A Redis-coordinated dispatcher removes stale entity hashes and negative-cache markers, then publishes the id so MULTI_INSTANCE local caches evict it. Successful inserts preserve the Redis hash warmed from the committed PostgreSQL row while clearing negative markers. Events are idempotent and remain in PostgreSQL if Redis dispatch fails; reconnecting Pub/Sub listeners clear their local Multi caches to recover missed messages. Delivery is eventual, so reads can briefly observe a cached value between commit and invalidation. Outbox dispatch is throttled and batched.
+- **Increments:** `increment` runs a PostgreSQL atomic `UPDATE ... RETURNING` inside a transaction, after flushing pending writes on that database queue. Concurrent increments from separate JVMs add to the latest stored value rather than overwriting one another. It updates the supplied entity after commit and records and dispatches cache invalidation after commit. Incremented properties must not participate in registered unique or composite indexes, because those indexes need coordinated value claims and updates.
 
 Last-write-wins remains the default. To reject stale edits for a repository, construct its repository with the optimistic-locking option enabled; entity classes need no revision field or interface. Foundation stores revisions internally by entity object identity, persists the authoritative value in a `revision` column, and carries it in Redis cache entries. Each changed write updates only when its expected revision still matches. A stale write is rejected and reported to the configured failure handler as `OptimisticLockException`; reload or merge the entity before retrying. If another save of the same entity instance is waiting behind an in-flight write, its revision advances after the preceding write commits; separately loaded stale instances still fail the revision check. The revision increments only when persisted values change. Existing tables receive the revision column with a default of zero. Optimistic locking detects conflicting entity snapshots; it does not merge independent field edits automatically. Since revisions are scoped to an entity row and reset when a row is recreated, do not reuse an entity UUID after deletion while stale instances of the old entity may still exist; otherwise an old instance could match the recreated row's revision.
 

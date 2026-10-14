@@ -75,6 +75,10 @@ public final class HolderLookups<E extends Entity> {
     public void cache(final E entity) {
         this.localEntityIndex.put(entity, this.localStorage);
 
+        this.cacheRedisIndexes(entity);
+    }
+
+    public void cacheRedisIndexes(final E entity) {
         for (final EntityIndex<E> entityIndex : this.repository.getEntityIndexes()) {
             if (entityIndex.hasValues(entity)) {
                 this.getRedisEntityIndex(entityIndex).ifPresent(redisEntityIndex -> {

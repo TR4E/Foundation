@@ -20,6 +20,11 @@ public final class RedisInvalidation {
     private final String channel;
     private final UUID entityId;
     private final String instanceId;
+    private final boolean invalidateCache;
+
+    public RedisInvalidation(final String cacheKey, final String missingKey, final String lockKey, final String channel, final UUID entityId, final String instanceId) {
+        this(cacheKey, missingKey, lockKey, channel, entityId, instanceId, true);
+    }
 
     public void dispatch(final RedisDriver redisDriver) {
         final String owner = UUID.randomUUID().toString();
@@ -29,7 +34,11 @@ public final class RedisInvalidation {
         while (System.nanoTime() < deadline) {
             if (redisDriver.tryAcquireLock(this.lockKey, owner, Duration.ofMillis(LOCK_MILLIS))) {
                 try {
-                    redisDriver.getCommands().del(this.cacheKey, this.missingKey);
+                    if (this.invalidateCache) {
+                        redisDriver.getCommands().del(this.cacheKey, this.missingKey);
+                    } else {
+                        redisDriver.getCommands().del(this.missingKey);
+                    }
                     redisDriver.publish(this.channel, "%s|%s".formatted(this.instanceId, this.entityId));
                     return;
                 } finally {

@@ -2,6 +2,7 @@ package me.trae.foundation.database.core;
 
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.database.api.property.EntityProperty;
+import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
 import me.trae.foundation.database.storage.driver.RedisDriver;
@@ -25,7 +26,7 @@ public final class MultiJvmDatabaseWorker {
         postgresDriver.connect();
         redisDriver.connect();
 
-        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
 
         final boolean deferred = Boolean.parseBoolean(argumentList[11]);
 
@@ -131,5 +132,4 @@ public final class MultiJvmDatabaseWorker {
             postgresDriver.disconnect();
         }
     }
-
 }

@@ -1,5 +1,6 @@
 package me.trae.foundation.database.core;
 
+import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
 import me.trae.foundation.database.storage.driver.RedisDriver;
@@ -49,7 +50,7 @@ final class MultiJvmInvalidationTest {
 
         final UUID id = UUID.randomUUID();
 
-        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
 
         final List<Process> processList = new ArrayList<>();
 
@@ -138,7 +139,7 @@ final class MultiJvmInvalidationTest {
 
         final UUID id = UUID.randomUUID();
 
-        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
 
         final List<Process> processList = new ArrayList<>();
 
@@ -216,7 +217,7 @@ final class MultiJvmInvalidationTest {
 
         final int jvmCount = Integer.getInteger("multiJvm.count", 5);
 
-        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
 
         final List<Process> processList = new ArrayList<>();
 
@@ -299,7 +300,7 @@ final class MultiJvmInvalidationTest {
 
         final UUID id = UUID.randomUUID();
 
-        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
 
         final List<Process> processList = new ArrayList<>();
 

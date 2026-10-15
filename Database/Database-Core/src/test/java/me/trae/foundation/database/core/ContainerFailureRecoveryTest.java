@@ -1,5 +1,6 @@
 package me.trae.foundation.database.core;
 
+import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
 import me.trae.foundation.database.storage.driver.RedisDriver;
@@ -43,7 +44,7 @@ final class ContainerFailureRecoveryTest {
         ));
         final String table = "container_recovery_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
 
-        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100);
+        final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
         boolean postgresStopped = false;
         boolean redisStopped = false;
 

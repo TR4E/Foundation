@@ -647,10 +647,9 @@ final class DatabaseTest {
         localPostgresDriver.connect();
         this.additionalPostgresDriverList.add(localPostgresDriver);
 
-        try {
-            final GlobalDatabase globalDatabase = new GlobalDatabase(this.postgresDriver, this.redisDriver, null);
+        try {            final GlobalDatabase globalDatabase = new GlobalDatabase(this.postgresDriver, this.redisDriver, null, Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
 
-            final LocalDatabase localDatabase = new LocalDatabase(localPostgresDriver, new Tenant("LIFESTEAL", 1));
+            final LocalDatabase localDatabase = new LocalDatabase(localPostgresDriver, this.redisDriver, new Tenant("LIFESTEAL", 1), Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
             this.databaseList.add(localDatabase);
 
             final AccountRepository globalRepository = new AccountRepository(globalDatabase, globalTable, TenantScope.NONE);
@@ -1258,7 +1257,7 @@ final class DatabaseTest {
     void duplicateWritesWithoutRedisAreDroppedAndReported() {
         this.connect();
 
-        final CoreDatabase database = new CoreDatabase(this.postgresDriver, null, null, Duration.ofHours(1), 500);
+        final CoreDatabase database = new CoreDatabase(this.postgresDriver, null, null, Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
         this.databaseList.add(database);
 
         final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
@@ -1378,7 +1377,7 @@ final class DatabaseTest {
     private CoreDatabase openDatabase(final Tenant tenant) {
         this.connect();
 
-        final CoreDatabase coreDatabase = new CoreDatabase(this.postgresDriver, this.redisDriver, tenant, Duration.ofHours(1), 500);
+        final CoreDatabase coreDatabase = new CoreDatabase(this.postgresDriver, this.redisDriver, tenant, Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
         this.databaseList.add(coreDatabase);
         return coreDatabase;
     }
@@ -1386,7 +1385,7 @@ final class DatabaseTest {
     private CoreDatabase openDatabaseWithoutRedis() {
         this.connect();
 
-        final CoreDatabase coreDatabase = new CoreDatabase(this.postgresDriver, null, null, Duration.ofHours(1), 500);
+        final CoreDatabase coreDatabase = new CoreDatabase(this.postgresDriver, null, null, Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
         this.databaseList.add(coreDatabase);
         return coreDatabase;
     }

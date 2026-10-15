@@ -70,7 +70,7 @@ public final class UniqueClaimer<E extends Entity> {
             throw new DatabaseException("Cannot save %s %s because its ID is already claimed".formatted(entity.getClass().getSimpleName(), entity.getId()));
         }
 
-        return new EntityIdClaim(this.redisDriver, key, token, entity.getId().toString());
+        return new EntityIdClaim(this.redisDriver, key, token);
     }
 
     public void cacheRedisIndexes(final E entity) {
@@ -85,9 +85,26 @@ public final class UniqueClaimer<E extends Entity> {
         for (final EntityIndex<E> entityIndex : this.repository.getCompositeIndexes()) {
             this.releaseIndex(entityIndex, entity);
         }
+    }
 
-        if (this.redisDriver != null) {
-            ClaimScripts.release(this.redisDriver, this.getEntityIdClaimKey(entity.getId()), entity.getId().toString());
+    public void releaseFailedCreate(final E entity, final Optional<E> persistedEntityOptional) {
+        if (persistedEntityOptional.isEmpty()) {
+            this.release(entity);
+            return;
+        }
+
+        final E persistedEntity = persistedEntityOptional.get();
+
+        for (final EntityProperty<? super E, ?> entityProperty : this.repository.getUniqueProperties()) {
+            if (!this.hasSameIndexValue(entityProperty, entity, persistedEntity)) {
+                this.releaseProperty(entityProperty, entity);
+            }
+        }
+
+        for (final EntityIndex<E> entityIndex : this.repository.getCompositeIndexes()) {
+            if (entityIndex.hasValues(entity) && (!entityIndex.hasValues(persistedEntity) || !entityIndex.getValues(entity).equals(entityIndex.getValues(persistedEntity)))) {
+                this.releaseIndex(entityIndex, entity);
+            }
         }
     }
 
@@ -164,23 +181,15 @@ public final class UniqueClaimer<E extends Entity> {
         private final RedisDriver redisDriver;
         private final String key;
         private final String token;
-        private final String entityId;
 
-        private EntityIdClaim(final RedisDriver redisDriver, final String key, final String token, final String entityId) {
+        private EntityIdClaim(final RedisDriver redisDriver, final String key, final String token) {
             this.redisDriver = redisDriver;
             this.key = key;
             this.token = token;
-            this.entityId = entityId;
         }
 
         private static EntityIdClaim noop() {
-            return new EntityIdClaim(null, null, null, null);
-        }
-
-        public void commit() {
-            if (this.redisDriver != null) {
-                ClaimScripts.transfer(this.redisDriver, this.key, this.token, this.entityId);
-            }
+            return new EntityIdClaim(null, null, null);
         }
 
         public void release() {
@@ -188,6 +197,10 @@ public final class UniqueClaimer<E extends Entity> {
                 ClaimScripts.release(this.redisDriver, this.key, this.token);
             }
         }
+    }
+
+    private <Value> boolean hasSameIndexValue(final EntityProperty<? super E, Value> entityProperty, final E first, final E second) {
+        return Objects.equals(entityProperty.normalizeIndexValue(entityProperty.getValue(first)), entityProperty.normalizeIndexValue(entityProperty.getValue(second)));
     }
 
     public <Value> void transferProperty(final EntityProperty<? super E, Value> entityProperty, final Value claimantPreviousValue, final Value claimedValue, final UUID claimantId, final UUID currentOwnerId) {

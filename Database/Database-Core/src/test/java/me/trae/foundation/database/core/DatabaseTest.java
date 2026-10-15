@@ -853,7 +853,7 @@ final class DatabaseTest {
     }
 
     @Test
-    void duplicateEntityIdIsRejectedAcrossInstancesBeforeQueueing() {
+    void duplicateEntityIdIsReservedWhileCreateIsPendingAndRejectedByPostgresAfterCommit() {
         final CoreDatabase first = this.openDatabase(null);
         final AccountRepository firstRepository = new AccountRepository(first, this.table, TenantScope.NONE);
         final AccountHolder firstHolder = new AccountHolder(firstRepository);
@@ -863,8 +863,12 @@ final class DatabaseTest {
         final AccountRepository secondRepository = new AccountRepository(second, this.table, TenantScope.NONE);
         final AccountHolder secondHolder = new AccountHolder(secondRepository);
         second.start();
+        final List<DatabaseException> failureList = new CopyOnWriteArrayList<>();
+        second.setFailureHandler(failureList::add);
 
         final Account original = this.createAccount("original");
+        final String originalNameClaim = new RedisPropertyIndex<>(this.redisDriver, RedisNamespace.of(this.table), NAME).getClaimKey("original");
+        final String duplicateNameClaim = new RedisPropertyIndex<>(this.redisDriver, RedisNamespace.of(this.table), NAME).getClaimKey("duplicate");
         firstHolder.save(original);
 
         final Account duplicate = new Account(original.getId());
@@ -879,23 +883,15 @@ final class DatabaseTest {
 
         first.getBatchQueue().flush();
 
-        assertThrows(DatabaseException.class, () -> secondHolder.save(duplicate));
-        assertThrows(UniqueValueTakenException.class, () -> secondHolder.save(this.createAccount("original")));
-        assertEquals("original", firstRepository.findById(original.getId()).orElseThrow().getName());
-
-        firstHolder.delete(original);
-        first.getBatchQueue().flush();
-
-        final Account recreated = new Account(original.getId());
-        recreated.setName("recreated");
-        recreated.setCoins(200L);
-        recreated.setRank(Rank.MEMBER);
-        recreated.setTags(List.of());
-        recreated.setCreatedAt(Instant.now().truncatedTo(ChronoUnit.MILLIS));
-        secondHolder.save(recreated);
+        secondHolder.save(duplicate);
+        assertEquals(1, second.getBatchQueue().getPendingWriteStore().size());
         second.getBatchQueue().flush();
 
-        assertEquals("recreated", secondRepository.findById(recreated.getId()).orElseThrow().getName());
+        assertTrue(failureList.stream().anyMatch(exception -> exception.getMessage().contains("Cannot create duplicate")));
+        assertEquals(original.getId().toString(), this.redisDriver.getCommands().get(originalNameClaim));
+        assertNull(this.redisDriver.getCommands().get(duplicateNameClaim));
+        assertThrows(UniqueValueTakenException.class, () -> secondHolder.save(this.createAccount("original")));
+        assertEquals("original", firstRepository.findById(original.getId()).orElseThrow().getName());
     }
 
     @Test

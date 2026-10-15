@@ -108,8 +108,9 @@ public final class CacheInvalidationOutbox {
         }
 
         final String owner = UUID.randomUUID().toString();
+        final String dispatchLock = "%s:%s".formatted(DISPATCH_LOCK, this.postgresDriver.getPostgresSettings().getJdbcUrl());
 
-        if (!this.redisDriver.tryAcquireLock(DISPATCH_LOCK, owner, Duration.ofMinutes(2))) {
+        if (!this.redisDriver.tryAcquireLock(dispatchLock, owner, Duration.ofMinutes(2))) {
             return;
         }
 
@@ -136,7 +137,7 @@ public final class CacheInvalidationOutbox {
                 dslContext.deleteFrom(TABLE).where(ID.in(recordList.getValues(ID))).execute();
             }
         } finally {
-            this.redisDriver.releaseLock(DISPATCH_LOCK, owner);
+            this.redisDriver.releaseLock(dispatchLock, owner);
         }
     }
 }

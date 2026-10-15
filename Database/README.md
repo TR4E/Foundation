@@ -691,7 +691,7 @@ mvn -f Database/pom.xml test `
 Stop and remove only this test project when finished:
 
 ```
-docker compose -p foundation-db-audit -f Database/docker-compose.audit.yml down
+docker compose -p foundation-db-audit -f Database/docker-compose.audit.yml down -v
 ```
 
 Connection details default to `localhost` and can be changed with system properties:

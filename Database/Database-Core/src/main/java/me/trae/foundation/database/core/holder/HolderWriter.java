@@ -40,10 +40,10 @@ public final class HolderWriter<E extends Entity> {
 
             try {
                 final List<Runnable> callbackList = new ArrayList<>(this.uniqueClaimer.claim(entity, this.repository.getProperties()));
-                callbackList.add(idClaim::commit);
                 if (this.redisStorage != null) {
                     callbackList.add(() -> this.cacheRedisEntity(entity.getId()));
                 }
+                callbackList.add(idClaim::release);
 
                 this.repository.save(entity, callbackList, List.of(() -> {
                     try {
@@ -166,7 +166,7 @@ public final class HolderWriter<E extends Entity> {
             }
 
             if (releaseUniqueClaims) {
-                this.uniqueClaimer.release(entity);
+                this.uniqueClaimer.releaseFailedCreate(entity, this.repository.findById(entity.getId()));
             }
         }
     }

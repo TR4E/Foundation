@@ -11,8 +11,7 @@ public final class RedisSettings {
 
     private final String host;
     private final int port;
-    private final String username;
-    private final String password;
+    private final String username, password;
     private final int database;
     private final Duration timeout;
 

@@ -93,8 +93,18 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     public Optional<E> getOrLoad(final UUID id, final Supplier<Optional<E>> loader) {
         final Optional<E> cached = this.get(id);
 
-        if (cached.isPresent() || this.isMissing(id)) {
+        if (cached.isPresent()) {
             return cached;
+        }
+
+        boolean committedSave = this.awaitPendingSave(id);
+
+        if (!committedSave && this.isMissing(id)) {
+            committedSave = this.awaitPendingSave(id);
+
+            if (!committedSave) {
+                return Optional.empty();
+            }
         }
 
         final String lockKey = this.getLockKey(id);
@@ -108,8 +118,16 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                 try {
                     final Optional<E> latest = this.get(id);
 
-                    if (latest.isPresent() || this.isMissing(id)) {
+                    if (latest.isPresent()) {
                         return latest;
+                    }
+
+                    if (!committedSave && this.isMissing(id)) {
+                        committedSave = this.awaitPendingSave(id);
+
+                        if (!committedSave) {
+                            return latest;
+                        }
                     }
 
                     final Optional<E> loaded;
@@ -124,8 +142,32 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                         if (!this.redisHashWriter.writeIfLockOwner(this.redisNamespace.getKey(id), lockKey, owner, this.encode(loaded.get()))) {
                             return Optional.of(this.get(id).orElseThrow(() -> new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(id))));
                         }
-                    } else if (!this.writeMissingIfLockOwner(id, lockKey, owner)) {
-                        throw new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(id));
+                        this.redisDriver.getCommands().del(this.getMissingKey(id));
+                    } else {
+                        committedSave = this.awaitPendingSave(id);
+
+                        if (committedSave) {
+                            final Optional<E> saved;
+                            try {
+                                saved = loader.get();
+                            } catch (final RuntimeException exception) {
+                                this.writeFailureMarker(id, lockKey, owner, exception);
+                                throw exception;
+                            }
+
+                            if (saved.isPresent()) {
+                                if (!this.redisHashWriter.writeIfLockOwner(this.redisNamespace.getKey(id), lockKey, owner, this.encode(saved.get()))) {
+                                    return Optional.of(this.get(id).orElseThrow(() -> new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(id))));
+                                }
+
+                                this.redisDriver.getCommands().del(this.getMissingKey(id));
+                                return saved;
+                            }
+                        }
+
+                        if (!this.writeMissingIfLockOwner(id, lockKey, owner)) {
+                            throw new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(id));
+                        }
                     }
 
                     return loaded;
@@ -402,6 +444,24 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         }
 
         return marker != null;
+    }
+
+    private boolean awaitPendingSave(final UUID id) {
+        final String claimKey = this.redisNamespace.getKey("claim:id:%s".formatted(id));
+        final String entityId = id.toString();
+        final long deadline = System.nanoTime() + Duration.ofMillis(FILL_WAIT_MILLIS).toNanos();
+        String claim = this.redisDriver.getCommands().get(claimKey);
+
+        while (claim != null && !claim.equals(entityId) && System.nanoTime() < deadline) {
+            this.pauseBeforeRetry(deadline);
+            claim = this.redisDriver.getCommands().get(claimKey);
+        }
+
+        if (claim != null && !claim.equals(entityId)) {
+            throw new IllegalStateException("Timed out waiting for the pending database save for %s".formatted(id));
+        }
+
+        return entityId.equals(claim);
     }
 
     private boolean writeMissingIfLockOwner(final UUID id, final String lockKey, final String owner) {

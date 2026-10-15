@@ -1,6 +1,7 @@
 package me.trae.foundation.database.storage;
 
 import io.lettuce.core.AclSetuserArgs;
+import io.lettuce.core.SetArgs;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -30,6 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -325,6 +327,55 @@ final class StorageTest {
         }
 
         assertEquals(1, loadCount.get());
+    }
+
+    @Test
+    void redisWaitsForPendingSaveBeforeReturningAnEntity() throws Exception {
+        final RedisDriver redisDriver = connect();
+
+        final String table = "test_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+
+        final RedisStorage<Wallet> redisStorage = new RedisStorage<>(redisDriver, RedisNamespace.of(table), Wallet.class, Duration.ofMinutes(1));
+
+        final UUID id = UUID.randomUUID();
+
+        final Wallet wallet = new Wallet(id);
+        wallet.setOwner("sample-value");
+        wallet.setCoins(100L);
+
+        final String claimKey = redisStorage.getRedisNamespace().getKey("claim:id:%s".formatted(id));
+
+        final String missingKey = redisStorage.getRedisNamespace().getKey("cache:missing:%s".formatted(id));
+
+        final AtomicBoolean committed = new AtomicBoolean();
+
+        final CountDownLatch loaderCalled = new CountDownLatch(1);
+
+        try (final ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            redisDriver.getCommands().set(claimKey, UUID.randomUUID().toString(), SetArgs.Builder.px(30_000L));
+            redisDriver.getCommands().set(missingKey, "missing", SetArgs.Builder.px(10_000L));
+
+            final Future<Optional<Wallet>> future = executorService.submit(() -> redisStorage.getOrLoad(id, () -> {
+                loaderCalled.countDown();
+                return committed.get() ? Optional.of(wallet) : Optional.empty();
+            }));
+
+            assertFalse(loaderCalled.await(100L, TimeUnit.MILLISECONDS));
+
+            committed.set(true);
+            redisDriver.getCommands().set(claimKey, id.toString());
+
+            assertEquals("sample-value", future.get(5, TimeUnit.SECONDS).orElseThrow().getOwner());
+            assertEquals("sample-value", redisStorage.get(id).orElseThrow().getOwner());
+            assertFalse(redisDriver.getCommands().exists(missingKey) > 0L);
+            assertTrue(loaderCalled.await(1, TimeUnit.SECONDS));
+        } finally {
+            final List<String> keyList = redisDriver.getCommands().keys("%s*".formatted(table));
+            if (!keyList.isEmpty()) {
+                redisDriver.getCommands().del(keyList.toArray(String[]::new));
+            }
+            redisDriver.disconnect();
+        }
     }
 
     @Test

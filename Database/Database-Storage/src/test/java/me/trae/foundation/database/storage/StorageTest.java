@@ -1,5 +1,6 @@
 package me.trae.foundation.database.storage;
 
+import io.lettuce.core.AclSetuserArgs;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -198,6 +199,33 @@ final class StorageTest {
             }
 
             redisDriver.disconnect();
+        }
+    }
+
+    @Test
+    void redisDriverAuthenticatesWithAclUsername() {
+        final RedisDriver adminRedisDriver = connect();
+        final String username = "foundation_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
+        final String password = UUID.randomUUID().toString();
+
+        try {
+            assertEquals("OK", adminRedisDriver.getCommands().aclSetuser(username, AclSetuserArgs.Builder.on().addPassword(password).allCommands().allKeys().allChannels()));
+
+            final RedisSettings settings = adminRedisDriver.getRedisSettings();
+            final RedisDriver aclRedisDriver = new RedisDriver(new RedisSettings(settings.getHost(), settings.getPort(), username, password, settings.getDatabase(), settings.getTimeout()));
+
+            try {
+                aclRedisDriver.connect();
+                assertTrue(aclRedisDriver.isConnected());
+            } finally {
+                aclRedisDriver.disconnect();
+            }
+        } finally {
+            try {
+                adminRedisDriver.getCommands().aclDeluser(username);
+            } finally {
+                adminRedisDriver.disconnect();
+            }
         }
     }
 

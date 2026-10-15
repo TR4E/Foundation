@@ -121,7 +121,9 @@ public final class RedisDriver {
                 .withDatabase(this.redisSettings.getDatabase())
                 .withTimeout(this.redisSettings.getTimeout());
 
-        if (this.redisSettings.getPassword() != null && !this.redisSettings.getPassword().isEmpty()) {
+        if (this.redisSettings.getUsername() != null && !this.redisSettings.getUsername().isEmpty()) {
+            builder.withAuthentication(this.redisSettings.getUsername(), this.redisSettings.getPassword() == null ? new char[0] : this.redisSettings.getPassword().toCharArray());
+        } else if (this.redisSettings.getPassword() != null && !this.redisSettings.getPassword().isEmpty()) {
             builder.withPassword(this.redisSettings.getPassword().toCharArray());
         }
 

@@ -647,7 +647,8 @@ final class DatabaseTest {
         localPostgresDriver.connect();
         this.additionalPostgresDriverList.add(localPostgresDriver);
 
-        try {            final GlobalDatabase globalDatabase = new GlobalDatabase(this.postgresDriver, this.redisDriver, null, Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
+        try {
+            final GlobalDatabase globalDatabase = new GlobalDatabase(this.postgresDriver, this.redisDriver, null, Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
 
             final LocalDatabase localDatabase = new LocalDatabase(localPostgresDriver, this.redisDriver, new Tenant("LIFESTEAL", 1), Duration.ofHours(1), 500, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
             this.databaseList.add(localDatabase);

@@ -24,16 +24,13 @@ public class UtilFile {
     private static final ConcurrentHashMap<Path, Cache> CACHED_FILE_MAP = new ConcurrentHashMap<>();
 
     public static List<String> read(final Path path) {
-        if (path == null) {
-            throw new IllegalArgumentException("Path cannot be null.");
-        }
-
         final Path normalizedPath = path.toAbsolutePath().normalize();
 
         try {
             final BasicFileAttributes attributes = Files.readAttributes(normalizedPath, BasicFileAttributes.class);
 
             final long size = attributes.size();
+
             final long lastModified = attributes.lastModifiedTime().toMillis();
 
             if (size > maxCacheableInMegaBytes * 1024 * 1024) {
@@ -43,7 +40,6 @@ public class UtilFile {
             }
 
             final Cache cache = CACHED_FILE_MAP.get(normalizedPath);
-
             if (cache != null && cache.getSize() == size && cache.getLastModified() == lastModified) {
                 return cache.getLines();
             }

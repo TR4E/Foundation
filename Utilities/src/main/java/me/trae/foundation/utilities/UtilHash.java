@@ -42,6 +42,7 @@ public class UtilHash {
 
     public static boolean verify(final String algorithm, final String plainString, final String storedString) {
         final byte[] storedBytes = fromHex(storedString);
+
         final byte[] computed = hashToBytes(algorithm, plainString);
 
         return MessageDigest.isEqual(storedBytes, computed);
@@ -56,8 +57,8 @@ public class UtilHash {
             final byte[] hashBytes = mac.doFinal(input.getBytes(StandardCharsets.UTF_8));
 
             return UtilBase64.encodeToString(hashBytes);
-        } catch (final Exception e) {
-            throw new IllegalStateException("Failed to compute HMAC using %s".formatted(algorithm), e);
+        } catch (final Exception exception) {
+            throw new IllegalStateException("Failed to compute HMAC using %s".formatted(algorithm), exception);
         }
     }
 
@@ -74,12 +75,12 @@ public class UtilHash {
             return MessageDigest.class.cast(MESSAGE_DIGEST_CACHE_MAP.computeIfAbsent(algorithm.toUpperCase(Locale.ROOT), key -> {
                 try {
                     return MessageDigest.getInstance(key);
-                } catch (final NoSuchAlgorithmException e) {
-                    throw new IllegalStateException("Unsupported MessageDigest algorithm: %s".formatted(key), e);
+                } catch (final NoSuchAlgorithmException exception) {
+                    throw new IllegalStateException("Unsupported MessageDigest algorithm: %s".formatted(key), exception);
                 }
             }).clone());
-        } catch (final CloneNotSupportedException e) {
-            throw new IllegalStateException("MessageDigest does not support cloning: %s".formatted(algorithm), e);
+        } catch (final CloneNotSupportedException exception) {
+            throw new IllegalStateException("MessageDigest does not support cloning: %s".formatted(algorithm), exception);
         }
     }
 
@@ -88,12 +89,12 @@ public class UtilHash {
             return Mac.class.cast(MAC_CACHE_MAP.computeIfAbsent(algorithm.toUpperCase(Locale.ROOT), key -> {
                 try {
                     return Mac.getInstance(key);
-                } catch (final NoSuchAlgorithmException e) {
-                    throw new IllegalStateException("Unsupported Mac algorithm: %s".formatted(key), e);
+                } catch (final NoSuchAlgorithmException exception) {
+                    throw new IllegalStateException("Unsupported Mac algorithm: %s".formatted(key), exception);
                 }
             }).clone());
-        } catch (final CloneNotSupportedException e) {
-            throw new IllegalStateException("Mac does not support cloning: %s".formatted(algorithm), e);
+        } catch (final CloneNotSupportedException exception) {
+            throw new IllegalStateException("Mac does not support cloning: %s".formatted(algorithm), exception);
         }
     }
 }

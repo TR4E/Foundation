@@ -16,19 +16,23 @@ public class UtilString {
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
     private static final Pattern SLICE_PATTERN = Pattern.compile("[ _.]");
 
-    private static final ConcurrentHashMap<String, String> CLEAN_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, String> SLICE_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, String> UN_SLICE_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, String> CLEAN_CACHE_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, String> SLICE_CACHE_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, String> UN_SLICE_CACHE_MAP = new ConcurrentHashMap<>();
 
     public static String clean(final String input) {
         if (isEmpty(input)) {
             return null;
         }
 
-        return cache(CLEAN_CACHE, input.toLowerCase(Locale.ROOT), key -> WHITESPACE_PATTERN.splitAsStream(key.replace('_', ' '))
-                .filter(word -> !word.isEmpty())
-                .map(word -> Character.toUpperCase(word.charAt(0)) + word.substring(1))
-                .collect(Collectors.joining(" ")));
+        return cache(
+                CLEAN_CACHE_MAP,
+                input.toLowerCase(Locale.ROOT),
+                key -> WHITESPACE_PATTERN.splitAsStream(key.replace('_', ' '))
+                        .filter(word -> !word.isEmpty())
+                        .map(word -> Character.toUpperCase(word.charAt(0)) + word.substring(1))
+                        .collect(Collectors.joining(" "))
+        );
     }
 
     public static String slice(final String input) {
@@ -36,7 +40,7 @@ public class UtilString {
             return null;
         }
 
-        return cache(SLICE_CACHE, input, key -> SLICE_PATTERN.matcher(key).replaceAll(""));
+        return cache(SLICE_CACHE_MAP, input, key -> SLICE_PATTERN.matcher(key).replaceAll(""));
     }
 
     public static String unSlice(final String input) {
@@ -44,10 +48,10 @@ public class UtilString {
             return null;
         }
 
-        return cache(UN_SLICE_CACHE, input, key -> {
+        return cache(UN_SLICE_CACHE_MAP, input, key -> {
             final char[] characters = key.replace('_', ' ').toCharArray();
 
-            final StringBuilder builder = new StringBuilder(characters.length + 8);
+            final StringBuilder stringBuilder = new StringBuilder(characters.length + 8);
 
             for (int index = 0; index < characters.length; index++) {
                 final char current = characters[index];
@@ -58,14 +62,14 @@ public class UtilString {
                     final boolean nextIsLower = index + 1 < characters.length && Character.isLowerCase(characters[index + 1]);
 
                     if (previousIsLower || nextIsLower) {
-                        builder.append(' ');
+                        stringBuilder.append(' ');
                     }
                 }
 
-                builder.append(current);
+                stringBuilder.append(current);
             }
 
-            return builder.toString();
+            return stringBuilder.toString();
         });
     }
 

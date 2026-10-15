@@ -15,10 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @UtilityClass
 public class UtilGeneric {
 
-    private static final ConcurrentHashMap<Cache, Class<?>> CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Cache, Class<?>> CACHE_MAP = new ConcurrentHashMap<>();
 
     public static Class<?> getGenericParameter(final Class<?> sourceClass, final Class<?> targetClass, final int typeIndex) {
-        return CACHE.computeIfAbsent(new Cache(sourceClass, targetClass, typeIndex), key -> resolve(key.getSourceClass(), key.getTargetClass(), key.getIndex(), new HashMap<>()));
+        return CACHE_MAP.computeIfAbsent(new Cache(sourceClass, targetClass, typeIndex), key -> resolve(key.getSourceClass(), key.getTargetClass(), key.getIndex(), new HashMap<>()));
     }
 
     private static Class<?> resolve(final Class<?> sourceClass, final Class<?> targetInterface, final int typeIndex, final Map<TypeVariable<?>, Type> resolvedTypes) {

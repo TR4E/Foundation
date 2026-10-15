@@ -26,11 +26,8 @@ import java.util.function.Consumer;
 public class UtilArgon {
 
     public static final int DEFAULT_ITERATIONS = 3;
-
     public static final int DEFAULT_PARALLELISM = 2;
-
     public static final int DEFAULT_MEMORY_KB = 1024 * 64;
-
     public static final int DEFAULT_MAXIMUM_CACHE_ENTRIES = 4_096;
 
     private static final String CACHE_DIGEST_ALGORITHM = "HmacSHA256";
@@ -68,7 +65,7 @@ public class UtilArgon {
     @Getter
     private static volatile int maximumConcurrency = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
 
-    private static volatile Semaphore argonSemaphore = new Semaphore(maximumConcurrency);
+    private static final ResizableSemaphore argonSemaphore = new ResizableSemaphore(maximumConcurrency);
 
     @Getter
     @Setter
@@ -105,14 +102,20 @@ public class UtilArgon {
         VERIFY_CACHE_MAP.put(storedHash, new Cache(digestKey, System.currentTimeMillis() + cacheTtlMs));
     };
 
-    public static void setMaximumConcurrency(final int newMaximumConcurrency) {
+    public static synchronized void setMaximumConcurrency(final int newMaximumConcurrency) {
         if (newMaximumConcurrency < 1) {
-            throw new IllegalArgumentException("Maximum concurrency must be at least one.");
+            throw new IllegalArgumentException("Maximum concurrency must be at least one");
+        }
+
+        final int difference = newMaximumConcurrency - maximumConcurrency;
+
+        if (difference > 0) {
+            argonSemaphore.release(difference);
+        } else if (difference < 0) {
+            argonSemaphore.reducePermitsBy(-difference);
         }
 
         maximumConcurrency = newMaximumConcurrency;
-
-        argonSemaphore = new Semaphore(newMaximumConcurrency);
     }
 
     public static String hash(final String plainPassword, final String pepper, final String salt) {
@@ -128,10 +131,10 @@ public class UtilArgon {
             } finally {
                 semaphore.release();
             }
-        } catch (final InterruptedException e) {
+        } catch (final InterruptedException exception) {
             Thread.currentThread().interrupt();
 
-            throw new IllegalStateException("Interrupted while hashing password.", e);
+            throw new IllegalStateException("Interrupted while hashing password", exception);
         } finally {
             Arrays.fill(combinedInput, (byte) 0);
         }
@@ -162,10 +165,10 @@ public class UtilArgon {
             } finally {
                 semaphore.release();
             }
-        } catch (final InterruptedException e) {
+        } catch (final InterruptedException exception) {
             Thread.currentThread().interrupt();
 
-            throw new IllegalStateException("Interrupted while verifying password.", e);
+            throw new IllegalStateException("Interrupted while verifying password", exception);
         } finally {
             Arrays.fill(combinedInput, (byte) 0);
         }
@@ -185,8 +188,8 @@ public class UtilArgon {
 
     private static byte[] buildInput(final String plainPassword, final String pepper, final String salt) {
         final byte[] passwordBytes = plainPassword.getBytes(StandardCharsets.UTF_8);
-        final byte[] saltBytes = salt.getBytes(StandardCharsets.UTF_8);
         final byte[] pepperBytes = pepper.getBytes(StandardCharsets.UTF_8);
+        final byte[] saltBytes = salt.getBytes(StandardCharsets.UTF_8);
 
         final byte[] combinedInput = new byte[12 + pepperBytes.length + passwordBytes.length + saltBytes.length];
 
@@ -222,8 +225,8 @@ public class UtilArgon {
 
         try {
             digest = Mac.class.cast(CACHE_DIGEST_MAC.clone()).doFinal(combinedInput);
-        } catch (final CloneNotSupportedException e) {
-            throw new IllegalStateException("HMAC-SHA256 does not support cloning.", e);
+        } catch (final CloneNotSupportedException exception) {
+            throw new IllegalStateException("HMAC-SHA256 does not support cloning", exception);
         }
 
         try {
@@ -244,8 +247,8 @@ public class UtilArgon {
             mac.init(new SecretKeySpec(keyBytes, CACHE_DIGEST_ALGORITHM));
 
             return mac;
-        } catch (final GeneralSecurityException e) {
-            throw new IllegalStateException("HMAC-SHA256 is not available.", e);
+        } catch (final GeneralSecurityException exception) {
+            throw new IllegalStateException("HMAC-SHA256 is not available", exception);
         } finally {
             Arrays.fill(keyBytes, (byte) 0);
         }
@@ -263,5 +266,16 @@ public class UtilArgon {
 
         private final String digestKey;
         private final long expiresAt;
+    }
+
+    private static final class ResizableSemaphore extends Semaphore {
+
+        private ResizableSemaphore(final int permits) {
+            super(permits, true);
+        }
+
+        private void reducePermitsBy(final int reduction) {
+            super.reducePermits(reduction);
+        }
     }
 }

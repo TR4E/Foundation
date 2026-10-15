@@ -11,14 +11,6 @@ import java.util.concurrent.CompletableFuture;
 public class UtilEvent {
 
     public static <T extends Event> void dispatch(final VelocityPlugin velocityPlugin, final T event) {
-        if (velocityPlugin == null) {
-            throw new IllegalArgumentException("Velocity Plugin cannot be null");
-        }
-
-        if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null");
-        }
-
         velocityPlugin.getProxyServer().getEventManager().fireAndForget(event);
     }
 
@@ -27,14 +19,6 @@ public class UtilEvent {
     }
 
     public static <R extends Event> CompletableFuture<R> supply(final VelocityPlugin velocityPlugin, final R event) {
-        if (velocityPlugin == null) {
-            throw new IllegalArgumentException("Velocity Plugin cannot be null");
-        }
-
-        if (event == null) {
-            throw new IllegalArgumentException("Event cannot be null");
-        }
-
         return velocityPlugin.getProxyServer().getEventManager().fire(event);
     }
 

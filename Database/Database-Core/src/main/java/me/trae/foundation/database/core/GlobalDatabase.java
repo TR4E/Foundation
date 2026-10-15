@@ -8,10 +8,6 @@ import java.time.Duration;
 
 public final class GlobalDatabase extends CoreDatabase {
 
-    public GlobalDatabase(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Tenant tenant) {
-        super(postgresDriver, redisDriver, tenant);
-    }
-
     public GlobalDatabase(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Tenant tenant, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
         super(postgresDriver, redisDriver, tenant, flushInterval, chunkSize, maximumPendingWrites);
     }

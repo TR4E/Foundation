@@ -51,17 +51,17 @@ public final class CsrfTokenService {
 
         final boolean production = this.foundationProperties.isProduction();
 
-        final StringBuilder builder = new StringBuilder();
+        final StringBuilder stringBuilder = new StringBuilder();
 
-        builder.append(this.getCookieName()).append('=').append(Base64.getUrlEncoder().withoutPadding().encodeToString(bytes));
-        builder.append("; Path=/");
-        builder.append("; Max-Age=").append(this.csrfProperties.getCookieDuration().toSeconds());
-        builder.append("; SameSite=").append(production ? "Strict" : "Lax");
+        stringBuilder.append(this.getCookieName()).append('=').append(Base64.getUrlEncoder().withoutPadding().encodeToString(bytes));
+        stringBuilder.append("; Path=/");
+        stringBuilder.append("; Max-Age=").append(this.csrfProperties.getCookieDuration().toSeconds());
+        stringBuilder.append("; SameSite=").append(production ? "Strict" : "Lax");
 
         if (production) {
-            builder.append("; Secure");
+            stringBuilder.append("; Secure");
         }
 
-        httpServletResponse.addHeader("Set-Cookie", builder.toString());
+        httpServletResponse.addHeader("Set-Cookie", stringBuilder.toString());
     }
 }

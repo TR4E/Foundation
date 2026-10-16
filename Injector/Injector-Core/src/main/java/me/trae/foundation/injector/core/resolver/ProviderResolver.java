@@ -21,8 +21,8 @@ import java.util.function.Consumer;
 
 public final class ProviderResolver extends AbstractResolver {
 
-    private final Map<Type, Class<?>> ownerMap = new LinkedHashMap<>();
-    private final Map<Type, Optional<Class<?>>> ownerCacheMap = new LinkedHashMap<>();
+    private final LinkedHashMap<Type, Optional<Class<?>>> ownerCacheMap = new LinkedHashMap<>();
+    private final LinkedHashMap<Type, Class<?>> ownerMap = new LinkedHashMap<>();
 
     private final ExtensionRegistry extensionRegistry;
     private final ApplicationContext applicationContext;

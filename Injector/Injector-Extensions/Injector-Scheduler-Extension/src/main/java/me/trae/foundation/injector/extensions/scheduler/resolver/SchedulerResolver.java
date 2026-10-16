@@ -22,7 +22,7 @@ public final class SchedulerResolver {
 
     private static final SchedulerCallback DEFAULT_CALLBACK = new SchedulerCallback() {};
 
-    private final Map<Object, List<ScheduledFuture<?>>> scheduledFutureMap = new IdentityHashMap<>();
+    private final IdentityHashMap<Object, List<ScheduledFuture<?>>> scheduledFutureMap = new IdentityHashMap<>();
     private final Map<Class<?>, List<ScheduledTask>> pendingTaskMap = new HashMap<>();
 
     private ScheduledExecutorService scheduledExecutorService;

@@ -16,15 +16,14 @@ import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public final class ConstructorResolver extends AbstractResolver {
 
-    private final Set<Class<?>> resolvingSet = new LinkedHashSet<>();
-    private final Map<Type, List<Class<?>>> assignableClassCacheMap = new LinkedHashMap<>();
+    private final LinkedHashSet<Class<?>> resolvingSet = new LinkedHashSet<>();
+    private final LinkedHashMap<Type, List<Class<?>>> assignableClassCacheMap = new LinkedHashMap<>();
 
     private final ExtensionRegistry extensionRegistry;
     private final ApplicationContext applicationContext;

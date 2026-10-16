@@ -31,45 +31,48 @@ public enum ChatColor {
     private static final char SECTION_CHARACTER = '§';
     private static final char AMPERSAND_CHARACTER = '&';
 
-    private static final Map<Integer, String> RGB_TO_NAME = new HashMap<>();
-    private static final Map<Character, String> LEGACY_TO_TAG = new HashMap<>();
+    private static final Map<Integer, String> RGB_TO_NAME_MAP = new HashMap<>();
+    private static final Map<Character, String> LEGACY_TO_TAG_MAP = new HashMap<>();
 
     private final char code;
     private final Color color;
 
     static {
         for (final ChatColor chatColor : values()) {
-            RGB_TO_NAME.put(chatColor.getColor().getRGB(), chatColor.name());
-            LEGACY_TO_TAG.put(chatColor.getCode(), chatColor.name().toLowerCase());
+            RGB_TO_NAME_MAP.put(chatColor.getColor().getRGB(), chatColor.name());
+            LEGACY_TO_TAG_MAP.put(chatColor.getCode(), chatColor.name().toLowerCase());
         }
 
         for (final ChatFormat chatFormat : ChatFormat.values()) {
-            LEGACY_TO_TAG.put(chatFormat.getCode(), chatFormat.getTag());
+            LEGACY_TO_TAG_MAP.put(chatFormat.getCode(), chatFormat.getTag());
         }
     }
 
     public static String getNameByRgb(final int rgb) {
-        return RGB_TO_NAME.get(rgb);
+        return RGB_TO_NAME_MAP.get(rgb);
     }
 
     public static String translate(final String text) {
-        final StringBuilder builder = new StringBuilder(text.length());
+        final StringBuilder stringBuilder = new StringBuilder(text.length());
 
         for (int index = 0; index < text.length(); index++) {
             final char character = text.charAt(index);
+
             final char code = index + 1 < text.length() ? Character.toLowerCase(text.charAt(index + 1)) : 0;
-            final String tag = (character == AMPERSAND_CHARACTER || character == SECTION_CHARACTER) ? LEGACY_TO_TAG.get(code) : null;
+
+            final String tag = (character == AMPERSAND_CHARACTER || character == SECTION_CHARACTER) ? LEGACY_TO_TAG_MAP.get(code) : null;
 
             if (tag == null) {
-                builder.append(character);
+                stringBuilder.append(character);
                 continue;
             }
 
-            builder.append('<').append(tag).append('>');
+            stringBuilder.append('<').append(tag).append('>');
+
             index++;
         }
 
-        return builder.toString();
+        return stringBuilder.toString();
     }
 
     @AllArgsConstructor
@@ -84,7 +87,6 @@ public enum ChatColor {
         RESET('r', "reset");
 
         private final char code;
-
         private final String tag;
     }
 }

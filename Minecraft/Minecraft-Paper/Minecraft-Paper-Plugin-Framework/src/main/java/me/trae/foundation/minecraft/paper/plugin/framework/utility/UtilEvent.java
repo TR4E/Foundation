@@ -55,9 +55,10 @@ public class UtilEvent {
         UtilTask.executeSynchronously(paperPlugin, () -> {
             try {
                 Bukkit.getServer().getPluginManager().callEvent(event);
+
                 completableFuture.complete(event);
-            } catch (final Exception e) {
-                completableFuture.completeExceptionally(e);
+            } catch (final Exception exception) {
+                completableFuture.completeExceptionally(exception);
             }
         });
 
@@ -78,9 +79,10 @@ public class UtilEvent {
         UtilTask.executeAsynchronously(paperPlugin, () -> {
             try {
                 Bukkit.getServer().getPluginManager().callEvent(event);
+
                 completableFuture.complete(event);
-            } catch (final Exception e) {
-                completableFuture.completeExceptionally(e);
+            } catch (final Exception exception) {
+                completableFuture.completeExceptionally(exception);
             }
         });
 

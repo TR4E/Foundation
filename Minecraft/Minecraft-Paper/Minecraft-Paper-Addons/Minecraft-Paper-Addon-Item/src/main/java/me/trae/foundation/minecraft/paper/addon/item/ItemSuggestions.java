@@ -14,7 +14,7 @@ public class ItemSuggestions {
 
     public static List<String> items(final Predicate<CustomItem> predicate, final String arg) {
         return Suggestions.filter(
-                Injector.INSTANCE.get(ItemService.class).getItems(),
+                Injector.INSTANCE.get(ItemService.class).getItemList(),
                 predicate,
                 customItem -> UtilString.clean(customItem.getNamespace()).replace(" ", "_"),
                 arg

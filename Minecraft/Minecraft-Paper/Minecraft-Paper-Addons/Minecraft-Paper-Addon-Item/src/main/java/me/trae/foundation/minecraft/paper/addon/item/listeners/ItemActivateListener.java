@@ -168,8 +168,8 @@ public final class ItemActivateListener implements Listener {
 
     @Scheduler(period = 50, unit = TimeUnit.MILLISECONDS)
     public void onScheduler() {
-        for (final CustomItem item : this.itemService.getItems()) {
-            if (!(item instanceof final ChannelCustomItem channelCustomItem)) {
+        for (final CustomItem customItem : this.itemService.getItemList()) {
+            if (!(customItem instanceof final ChannelCustomItem channelCustomItem)) {
                 continue;
             }
 

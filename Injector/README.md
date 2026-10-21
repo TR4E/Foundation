@@ -1,8 +1,6 @@
 <h1 align="center">Injector</h1>
 
-A lightweight dependency injection framework for Java 25, built from scratch with no Spring or Guice underneath. Components are plain classes wired through their constructor, grouped into applications that start and stop as a unit, and extended through a small SPI that the Configuration, Scheduler and Commons modules are built on.
-
-Any Java application, service or tool can use it.
+<p align="center">Constructor-based dependency injection, application lifecycles, and optional extensions for Java 25.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -10,39 +8,43 @@ Any Java application, service or tool can use it.
   <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/reflect/Type.html"><img alt="Generic types" src="https://img.shields.io/badge/Java-Generic%20injection-4479A1?logo=java&logoColor=white"></a>
 </p>
 
+Injector wires plain Java components through their constructors and groups them into applications that start and stop together. It provides generic-aware dependency resolution, providers, live component collections, and an extension SPI for configuration, scheduling, and lifecycle annotations. It can be used in services, tools, desktop applications, and platform integrations.
 
+## Contents
 
 <details>
 <summary>On this page</summary>
 
 - [Modules](#modules)
-- [Installation and quick start](#installation)
+- [Installation](#installation)
+- [Quick start](#quick-start)
 - [Injector API](#injector-api)
 - [Core runtime](#injector-core)
-- [Commons, Scheduler, and Configuration extensions](#injector-commons-extension)
+- [Commons extension](#injector-commons-extension)
+- [Scheduler extension](#injector-scheduler-extension)
+- [Configuration extension](#injector-configuration-extension)
+- [Troubleshooting](#troubleshooting)
 - [Building and testing](#building-and-testing)
 </details>
-
-
 
 ## Modules
 
 | Module | Artifact | Purpose |
 |---|---|---|
-| [Injector-API](#injector-api) | `me.trae.foundation.injector:Injector-API` | Annotations, contracts, callbacks, the extension SPI and every exception. This is what your code compiles against. |
-| [Injector-Core](#injector-core) | `me.trae.foundation.injector:Injector-Core` | The implementation, found at runtime through `ServiceLoader`. |
-| [Injector-Commons-Extension](#injector-commons-extension) | `me.trae.foundation.injector.extensions:Injector-Commons-Extension` | `@PostConstruct`, `@ApplicationReady`, `@PreDestroy` and `@PostDestroy` hooks. |
-| [Injector-Scheduler-Extension](#injector-scheduler-extension) | `me.trae.foundation.injector.extensions:Injector-Scheduler-Extension` | `@Scheduler` repeating tasks with pluggable executors. |
-| [Injector-Configuration-Extension](#injector-configuration-extension) | `me.trae.foundation.injector.extensions:Injector-Configuration-Extension` | `@Configuration` classes loaded from JSON or YAML files, with comments, reloading and saving. |
+| [Injector-API](Injector-API/README.md) | `me.trae.foundation.injector:Injector-API` | Annotations, contracts, callbacks, the extension SPI and every exception. This is what your code compiles against. |
+| [Injector-Core](Injector-Core/README.md) | `me.trae.foundation.injector:Injector-Core` | The implementation, found at runtime through `ServiceLoader`. |
+| [Injector-Commons-Extension](Injector-Extensions/Injector-Commons-Extension/README.md) | `me.trae.foundation.injector.extensions:Injector-Commons-Extension` | `@PostConstruct`, `@ApplicationReady`, `@PreDestroy` and `@PostDestroy` hooks. |
+| [Injector-Scheduler-Extension](Injector-Extensions/Injector-Scheduler-Extension/README.md) | `me.trae.foundation.injector.extensions:Injector-Scheduler-Extension` | `@Scheduler` repeating tasks with pluggable executors. |
+| [Injector-Configuration-Extension](Injector-Extensions/Injector-Configuration-Extension/README.md) | `me.trae.foundation.injector.extensions:Injector-Configuration-Extension` | `@Configuration` classes loaded from JSON or YAML files, with comments, reloading and saving. |
 
-Extensions are optional. Add the ones you want to the classpath and Core picks them up on its own.
+Extensions are optional. Add the ones you want to the classpath and Core discovers them automatically. The [extensions overview](Injector-Extensions/README.md) explains selection, callbacks, and how to write an extension. `Injector` and `Injector-Extensions` are Maven aggregators; applications depend on their individual library artifacts.
 
 ## Installation
 
 Requires JDK 25 and Maven. Build and install Foundation from the repository root:
 
-```
-mvn clean install
+```shell
+mvn -pl Injector/Injector-Core,Injector/Injector-Extensions/Injector-Commons-Extension,Injector/Injector-Extensions/Injector-Scheduler-Extension,Injector/Injector-Extensions/Injector-Configuration-Extension -am install
 ```
 
 Then depend on the API, with Core at `runtime` scope so your code only ever touches the API:
@@ -78,18 +80,20 @@ Then depend on the API, with Core at `runtime` scope so your code only ever touc
 public final class ShopApplication {
 
     public static void main(final String[] args) {
-        final ShopApplication application = new ShopApplication();
+        final ShopApplication shopApplication = new ShopApplication();
+        Injector.INSTANCE.initialize(shopApplication);
 
-        Injector.INSTANCE.initialize(application);
-
-        Injector.INSTANCE.get(OrderService.class).placeOrder("alice");
-
-        Injector.INSTANCE.shutdown(application);
+        try {
+            Injector.INSTANCE.get(OrderService.class).placeOrder("alice");
+        } finally {
+            Injector.INSTANCE.shutdown(shopApplication);
+        }
     }
 }
 
 @Singleton
 public final class OrderRepository {
+
 }
 
 @AllArgsConstructor
@@ -103,7 +107,9 @@ public final class OrderService {
 }
 ```
 
-`initialize` scans the application's package, creates every `@Singleton` it finds in dependency order, and runs their lifecycle. `shutdown` tears them down in reverse.
+Place these public types in separate files under the same named package, with components in that package or its children. Examples omit imports and use Lombok for constructors and accessors. Consumer projects need Lombok annotation processing if they use those annotations.
+
+`initialize` scans the application's package, creates discovered components in dependency order, and runs their lifecycle. `shutdown` removes dependents before their dependencies. The [API guide](Injector-API/README.md) explains each annotation and operation.
 
 ## Injector-API
 
@@ -231,7 +237,7 @@ final List<Class<?>> componentList = Injector.INSTANCE.getComponents(ShopApplica
 ```
 
 - `get` returns the component registered under that exact class.
-- `getAll` returns every component assignable to a class or interface.
+- `getAll` returns a snapshot list of components assignable to a class or interface; injected live collections track future changes.
 - `getComponents` returns an application's component classes in creation order.
 
 ### Attaching and detaching
@@ -241,7 +247,7 @@ Injector.INSTANCE.attach(application, List.of(MetricsService.class, MetricsExpor
 Injector.INSTANCE.detach(application, List.of(MetricsService.class, MetricsExporter.class));
 ```
 
-`attach` builds extra components inside an application that is already running, with full injection, lifecycle, callbacks and extension hooks. `detach` shuts down only those components, in reverse order, and removes them. If an attach fails part way, whatever it created is detached again before the exception is rethrown.
+`attach` builds extra components inside an application that is already running, with full injection, lifecycle, callbacks and extension hooks. `detach` removes the selected components and affected dependents, including dependent components owned by another application, in dependency-aware order. If an attach fails part way, whatever it created is detached again before the exception is rethrown.
 
 ### Extensions
 
@@ -353,18 +359,18 @@ public final class ReportService {
 |---|---|---|
 | `period` | Required | Time between runs, must be positive |
 | `unit` | Required | `TimeUnit` for `period` and `initialDelay` |
-| `initialDelay` | One full period | Delay before the first run |
-| `clock` | `false` | Align runs to the wall clock, so an hourly task runs on the hour |
+| `initialDelay` | `0` | A positive value sets the delay; otherwise the first run waits one full period |
+| `clock` | `false` | Align the first run to an epoch-based period boundary; overrides `initialDelay` |
 | `asynchronous` | `false` | Run on the asynchronous executor instead of the synchronous one |
 
-Tasks start once their application has initialized, or when their component is attached, and are cancelled when the component shuts down. One daemon thread keeps time and hands each run to an executor from `SchedulerCallback`, which the application class can implement:
+Tasks start once their application has initialized, or when their component is attached, and are cancelled when the component shuts down. One daemon thread keeps time and hands each run to an executor from `SchedulerCallback`. Implement both `ApplicationCallback` and `SchedulerCallback` on the application class so Core passes the application callback object to the extension:
 
 | Method | Default |
 |---|---|
 | `getSynchronousExecutor()` | Runs inline on the scheduler thread |
 | `getAsynchronousExecutor()` | A new virtual thread per run |
 
-A desktop or game application, for example, can point the synchronous executor at its main thread. A run that throws is reported to the thread's uncaught exception handler and the task keeps running. Scheduled methods must take no parameters, otherwise `SchedulerException` is thrown at startup.
+A desktop or game application, for example, can point the synchronous executor at its main thread. A run that throws is reported to the thread's uncaught exception handler and the task keeps running. Scheduled methods must take no parameters, and the period must be positive after conversion to milliseconds. Invalid methods throw `SchedulerException` at startup. Asynchronous executions can overlap if they outlast the period. Cancellation stops future dispatches without interrupting an execution already running. See the [Scheduler guide](Injector-Extensions/Injector-Scheduler-Extension/README.md) for timing and executor details.
 
 ## Injector-Configuration-Extension
 
@@ -380,9 +386,9 @@ public final class GeneralConfig {
     @Comment("Greeting shown on the home page")
     private String greeting = "Welcome";
 
-    private int maxConnections = 100;
-
     private Limits limits = new Limits();
+
+    private int maxConnections = 100;
 
     @NoArgsConstructor
     @Getter
@@ -421,7 +427,7 @@ public final class GreetingService {
 - **Files:** `general.json` and `database.yml` are created in the data folder, named by `value()`, with `@Comment` lines written as `//` in JSON and `#` in YAML, including on nested sections.
 - **Defaults:** field initializers are the defaults. A missing file is created from them, and values missing from an existing file keep their defaults. The file is rewritten on every load, so new fields appear in old files.
 - **Shape:** a class needs a no args constructor. Every non static, non transient field is a value, including fields from superclasses, nested classes, enums, lists, maps and arrays.
-- **Reloading:** a reload reads the file into the existing instance, so every component holding the configuration sees the new values without being recreated.
+- **Reloading:** a reload copies fields into the existing top-level instance. Nested objects can be replaced, so retrieve current nested values through that instance. Files are rewritten after load and reload; manual formatting is not preserved as an editing contract. There is no automatic file watcher.
 
 `ConfigurationExtension` is injectable and controls the files at runtime:
 
@@ -435,7 +441,7 @@ configurationExtension.reloadConfiguration(GeneralConfig.class);
 configurationExtension.saveConfiguration(GeneralConfig.class);
 ```
 
-The application class can implement `ConfigurationCallback` to choose where files live and to hear about changes:
+The application class must implement both `ApplicationCallback` and `ConfigurationCallback` to choose where files live and receive change notifications. For example, declare `implements ApplicationCallback, ConfigurationCallback`. Without `ApplicationCallback`, Core passes a default callback to the extension.
 
 | Method | Default |
 |---|---|
@@ -443,13 +449,26 @@ The application class can implement `ConfigurationCallback` to choose where file
 | `onConfigurationReload(type)` | Nothing, called after each configuration is reloaded |
 | `onConfigurationSave(type)` | Nothing, called after each configuration is saved |
 
-Problems reading or writing a file throw `ConfigurationException`.
+Problems reading or writing a file throw `ConfigurationException`. Configuration operations are synchronized inside the resolver; coordinate application readers if a group of settings must be observed consistently. See the [Configuration guide](Injector-Extensions/Injector-Configuration-Extension/README.md) for file behavior and complete callback examples.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `Injector.INSTANCE` cannot initialize | Include runtime Core and preserve its `META-INF/services` descriptor |
+| An extension annotation has no effect | Include the corresponding extension JAR and preserve its service descriptor |
+| A component is missing | Put it under the application's package, annotate it appropriately, or supply it explicitly |
+| Constructor injection fails | Keep exactly one constructor and check for missing or ambiguous dependencies |
+| A custom data folder or executor is ignored | The application must implement `ApplicationCallback` as well as the extension callback interface |
+| Application startup is deferred | Initialize the application types listed in `@Application.dependencies` |
+
+When packaging a combined JAR, merge service descriptors so every selected extension remains discoverable. The [Core guide](Injector-Core/README.md) covers runtime behavior and failure diagnosis in more detail.
 
 ## Building and testing
 
 From the repository root:
 
-```
+```shell
 mvn -f Injector/pom.xml test
 ```
 

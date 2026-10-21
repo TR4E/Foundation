@@ -1,49 +1,50 @@
 <h1 align="center">Spring-Ratelimit</h1>
 
-Annotation driven rate limiting for Spring Boot controllers. Put `@RateLimit` on a method or `@RateLimitShared` on a controller, and the limit is enforced before the handler runs.
-
-Depends on Spring-Common only. It does not depend on Spring-Security, so the two can be used independently.
+<p align="center">Annotation-driven rate limiting for Spring Boot controllers with per-IP and per-account scoping.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
   <a href="https://spring.io/projects/spring-boot"><img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-Servlet%20web-6DB33F?logo=springboot&logoColor=white"></a>
-  <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet%20applications-0769AD?logo=jakartaee&logoColor=white"></a>
+  <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet-0769AD?logo=jakartaee&logoColor=white"></a>
 </p>
 
+Put `@RateLimit` on a method or `@RateLimitShared` on a controller, and the limit is enforced before the handler runs. The module uses a fixed-window algorithm keyed by client IP or account identity, with an in-memory default store that can be replaced with a shared store for multi-instance deployments. Depends on [Spring-Common](../Spring-Common/README.md) only.
 
+## Contents
 
 <details>
 <summary>On this page</summary>
 
-- [Contents](#contents)
-- [Annotations](#annotations)
-- [Scope](#scope)
-- [When the IP cannot be resolved](#when-the-ip-cannot-be-resolved)
-- [Response](#response)
-- [Storage](#storage)
+- [At a glance](#at-a-glance)
+- [Per-method limits](#per-method-limits)
+- [Per-controller limits](#per-controller-limits)
+- [Precedence](#precedence)
+- [Base controllers and inheritance](#base-controllers-and-inheritance)
+- [Scope and account resolution](#scope-and-account-resolution)
+- [Unresolvable IPs](#unresolvable-ips)
+- [Response format](#response-format)
+- [Storage and multi-instance deployments](#storage-and-multi-instance-deployments)
 - [What it does not cover](#what-it-does-not-cover)
-- [How to Wire into a Spring Boot Application](#how-to-wire-into-a-spring-boot-application)
+- [Auto-configuration](#auto-configuration)
+- [Installation and build](#installation-and-build)
+
 </details>
 
-
-
-## Contents
+## At a glance
 
 | Type | Purpose |
 | --- | --- |
-| `@RateLimit` | Per method limit, its own bucket |
-| `@RateLimitShared` | Controller wide limit, either one shared bucket or the same numbers per method |
-| `RateLimitTarget` | Which of those two a `@RateLimitShared` means |
-| `RateLimitScope` | Whether the bucket is keyed by IP or by account |
-| `RateLimitStore` | The storage contract, one atomic call |
-| `MemoryRateLimitStore` | In memory default, single instance |
-| `RateLimitAccountResolver` | How the module finds the current account, implemented by your application |
+| `@RateLimit` | Per-method limit with its own bucket |
+| `@RateLimitShared` | Controller-wide limit, either one shared bucket or the same numbers per method |
+| `RateLimitTarget` | Whether a `@RateLimitShared` creates one bucket for the whole controller or one per method |
+| `RateLimitScope` | Whether the bucket is keyed by IP address or by account identity |
+| `RateLimitStore` | The storage contract: one atomic `tryConsume` call |
+| `MemoryRateLimitStore` | In-memory default implementation for single-instance deployments |
+| `RateLimitAccountResolver` | How the module finds the current account, implemented by the application |
 | `RateLimitRegistry` | Built once at startup from the handler mappings |
-| `RateLimitInterceptor` | Enforces the limit in `preHandle` |
+| `RateLimitInterceptor` | Enforces the limit in `preHandle` before the controller method runs |
 
-## Annotations
-
-### Per method
+## Per-method limits
 
 Each endpoint gets its own bucket:
 
@@ -60,11 +61,13 @@ public final class InvoiceController {
 }
 ```
 
-### Per controller
+Five requests per minute per IP address for this endpoint. The bucket key includes the method signature, so two methods on the same controller each have independent counters.
+
+## Per-controller limits
 
 `@RateLimitShared` declares the limit once for the whole controller, and `target` decides what that means.
 
-`RateLimitTarget.TYPE` is one bucket for the lot:
+### `RateLimitTarget.TYPE`: one shared bucket
 
 ```java
 @RateLimitShared(target = RateLimitTarget.TYPE, scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
@@ -86,7 +89,7 @@ public final class OrderController {
 
 Thirty requests across both endpoints combined, not thirty each. Use this to cap what one client can do to a whole area of the application regardless of which endpoint they pick.
 
-`RateLimitTarget.METHOD` applies the same numbers to each method separately:
+### `RateLimitTarget.METHOD`: same numbers, separate buckets
 
 ```java
 @RateLimitShared(target = RateLimitTarget.METHOD, scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
@@ -96,13 +99,13 @@ public final class OrderController {
 }
 ```
 
-Thirty each. This is the one to reach for when every endpoint in a controller wants the same limit and you do not want them competing for one budget, since it saves repeating `@RateLimit` on every method.
+Thirty each. Use this when every endpoint in a controller wants the same limit without competing for one budget, and you do not want to repeat `@RateLimit` on every method.
 
-Only the key changes between the two. `TYPE` gives every method in the controller the same key so they share one window, `METHOD` gives each its own.
+The only difference between the two is the bucket key. `TYPE` gives every method the same key so they share one window; `METHOD` gives each its own.
 
-### Precedence
+## Precedence
 
-A method level `@RateLimit` replaces whatever the controller declared, for that method only. It does not stack, and the method no longer counts against the controller's bucket:
+A method-level `@RateLimit` replaces whatever the controller declared, for that method only. It does not stack, and the method no longer counts against the controller's bucket:
 
 ```java
 @RateLimitShared(target = RateLimitTarget.TYPE, scope = RateLimitScope.IP_ADDRESS, attempts = 30, duration = 1, unit = TimeUnit.MINUTES)
@@ -118,11 +121,11 @@ public final class OrderController {
 }
 ```
 
-Every attribute except `name` is required, so a limit can never be half declared.
+Every attribute except `name` is required, so a limit can never be half-declared.
 
-### Base controllers
+## Base controllers and inheritance
 
-`@RateLimitShared` is `@Inherited`, so a limit declared on an abstract base controller applies to everything extending it:
+`@RateLimitShared` is `@Inherited`, so a limit on an abstract base controller applies to everything extending it:
 
 ```java
 @RateLimitShared(target = RateLimitTarget.METHOD, scope = RateLimitScope.IP_ADDRESS, attempts = 60, duration = 1, unit = TimeUnit.MINUTES)
@@ -140,15 +143,15 @@ public final class OrderController extends AbstractApiController {
 }
 ```
 
-Every controller extending the base gets the floor, and writes its own annotation only when it wants something tighter. A subclass declaring `@RateLimitShared` itself replaces the inherited one rather than adding to it.
+Every controller extending the base gets the floor rate, and writes its own annotation only when it wants something tighter. A subclass declaring `@RateLimitShared` replaces the inherited one rather than adding to it.
 
-Two limits of Java's `@Inherited`, worth knowing before you lean on it. It follows class inheritance only, so a limit on an interface is not inherited by implementors. And it does nothing for `@RateLimit`, which is read straight off the method, so a method declared on a superclass or an interface needs its annotation on the declaration the handler mapping actually resolves to.
+Two limitations of Java's `@Inherited`: it follows class inheritance only, so a limit on an interface is not inherited by implementors. And it does nothing for `@RateLimit`, which is read from the method directly, so a method declared on a superclass or interface needs its annotation on the declaration the handler mapping actually resolves to.
 
-## Scope
+## Scope and account resolution
 
-`IP_ADDRESS` keys the bucket by the resolved client IP. `ACCOUNT` keys it by the current account, falling back to the IP when nobody is authenticated.
+`RateLimitScope.IP_ADDRESS` keys the bucket by the resolved client IP from [Spring-Common's `IpAddressResolver`](../Spring-Common/README.md#ip-address-resolution).
 
-Account scope is the only thing that stops an attacker rotating through addresses, but it needs the module to see your principal, which it cannot do on its own. Implement the resolver:
+`RateLimitScope.ACCOUNT` keys it by the current account identity, falling back to IP when nobody is authenticated. Account scope is the only thing that stops an attacker rotating through addresses, but it needs the module to see your principal. Implement the resolver:
 
 ```java
 @Component
@@ -162,37 +165,48 @@ public final class MyRateLimitAccountResolver implements RateLimitAccountResolve
 
     @Override
     public Optional<String> getAccountIdByRequest(final HttpServletRequest httpServletRequest) {
-        return this.accountManager.getAccountByRequest(httpServletRequest).map(Account::getId);
+        return this.accountManager.getAccountByRequest(httpServletRequest)
+                .map(Account::getId);
     }
 }
 ```
 
-Without one, `ACCOUNT` behaves exactly like `IP_ADDRESS`, since the default resolver always returns empty.
+Without one, the default `EmptyRateLimitAccountResolver` always returns empty, so `ACCOUNT` behaves exactly like `IP_ADDRESS`.
 
-## When the IP cannot be resolved
+## Unresolvable IPs
 
-The request is rejected. An unresolvable IP means the request did not arrive through the expected proxy, and allowing it through unlimited would be a free bypass of every IP keyed limit on the application.
+The request is rejected with `429`. An unresolvable IP means the request did not arrive through the expected proxy, and allowing it through unlimited would be a free bypass of every IP-keyed limit on the application.
 
-## Response
+## Response format
 
-A limited request never reaches the controller. It gets `429` with `Retry-After` in seconds, `Cache-Control: no-store`, and a UTF-8 JSON body:
+A limited request never reaches the controller. It gets:
+
+- **Status:** `429 Too Many Requests`
+- **Headers:** `Retry-After` (seconds), `Cache-Control: no-store`
+- **Body:** UTF-8 JSON
 
 ```json
 {
-  "message":" Too many requests.",
-  "retryAfter": 42
+    "message": "Too many requests.",
+    "retryAfter": 42
 }
 ```
 
 The bucket key never appears in the response. It exists only as a map key inside the store.
 
-A client already over its limit stops incrementing the counter, so hammering a limited endpoint cannot extend its own lockout.
+A client already over its limit does not increment the counter further, so hammering a limited endpoint cannot extend its own lockout.
 
-## Storage
+## Storage and multi-instance deployments
 
-The default is in memory with a fixed window per key, swept every sixty seconds by a daemon thread, shut down on context close.
+### Default: in-memory fixed window
 
-That is correct for a single instance. Run more than one and each gets its own counters, so the effective limit multiplies by the instance count. For a multi instance deployment, implement the interface against a shared store:
+`MemoryRateLimitStore` uses a `ConcurrentHashMap` of `RateLimitWindow` entries, swept every 60 seconds by a daemon thread that shuts down on context close. This is correct for a single instance.
+
+Run more than one instance and each gets its own counters, so the effective limit multiplies by the instance count.
+
+### Custom store for shared state
+
+For a multi-instance deployment, implement the interface against a shared store:
 
 ```java
 public interface RateLimitStore {
@@ -201,9 +215,9 @@ public interface RateLimitStore {
 }
 ```
 
-Returns `0` when the request is allowed, or the milliseconds remaining when it is limited.
+Returns `0` when the request is allowed, or the milliseconds remaining in the window when it is limited.
 
-It is a single atomic call rather than a read followed by a write on purpose. Anything else cannot be honoured across instances, since two requests landing at once would both read the same count and both be allowed. A Redis implementation belongs in a Lua script doing the check, the increment and the expiry in one round trip, checking the count before incrementing rather than after.
+It is a single atomic call rather than a read followed by a write on purpose. Anything else cannot be honored across instances, since two requests landing at once would both read the same count and both be allowed. A Redis implementation belongs in a Lua script that checks the count, increments, and sets the expiry in one round trip.
 
 Declare it as a bean and it replaces the default:
 
@@ -214,17 +228,29 @@ public RateLimitStore rateLimitStore(final StringRedisTemplate stringRedisTempla
 }
 ```
 
-Keys carry the declaring class and, for method scoped limits, the method signature. That is internal detail, so keep it out of anything user facing if you log rejections.
+### Why fixed windows
 
-Fixed windows are deliberate over sliding windows. A sliding window needs a sorted set per key and a trim on every call, which is far more traffic for a guarantee an API limiter does not need.
+Fixed windows are deliberate over sliding windows. A sliding window needs a sorted set per key and a trim on every call, which is far more storage traffic for a guarantee an API rate limiter does not need. The fixed window is simple, predictable, and cheap.
 
 ## What it does not cover
 
-The limit is enforced by an interceptor, which runs after the whole filter chain and only for requests that reach a mapped handler method. Requests rejected earlier in the chain, and requests to paths with no handler, are never counted. For endpoints you wrote, which all have handlers, that is not a gap.
+The limit is enforced by a `HandlerInterceptor`, which runs after the entire filter chain and only for requests that reach a mapped handler method. Requests rejected earlier in the chain and requests to paths with no handler are never counted. For endpoints the application defines, which all have handlers, that is not a gap.
 
-## How to Wire into a Spring Boot Application
+## Auto-configuration
 
-Add the dependency:
+`RateLimitAutoConfiguration` is conditional on a servlet web application and runs after `CommonAutoConfiguration`. It registers:
+
+- `RateLimitStore` (default: `MemoryRateLimitStore`, replaceable with `@ConditionalOnMissingBean`)
+- `RateLimitAccountResolver` (default: `EmptyRateLimitAccountResolver`, replaceable)
+- `RateLimitRegistry`
+- A `ContextRefreshedEvent` listener that scans `@RateLimit` and `@RateLimitShared` annotations from the handler mappings
+- A `WebMvcConfigurer` adding `RateLimitInterceptor`
+
+There is no `@Configuration` class, `@ComponentScan` entry, or `@Enable` annotation to add. Anything unannotated is not limited.
+
+Adding the JAR to a non-web or reactive application registers nothing.
+
+## Installation and build
 
 ```xml
 <dependency>
@@ -234,15 +260,10 @@ Add the dependency:
 </dependency>
 ```
 
-That is the whole wiring step. `RateLimitAutoConfiguration` registers the store, the account resolver, the registry and the interceptor on the classpath alone, so there is no `@Configuration` class, no `@ComponentScan` entry and no `@Enable` annotation to add in the consuming application. Spring-Common comes in transitively.
+Spring-Common comes in transitively. From the repository root with JDK 25 and Maven:
 
-Then annotate the endpoints you want limited. Anything unannotated is not limited.
+```shell
+mvn -pl Spring/Spring-Ratelimit -am install
+```
 
-Optional, in order of how often you will want them:
-
-* Implement `RateLimitAccountResolver` as a bean to make `ACCOUNT` scope work.
-* Implement `RateLimitStore` as a bean if you run more than one instance.
-
-The registry is populated on `ContextRefreshedEvent` rather than during bean wiring, so it cannot force the handler mapping to initialise early and end up with a half built map.
-
-The auto configuration is conditional on a servlet web application, so adding the jar to a non web or reactive application registers nothing rather than failing at startup.
+Return to the [Spring guide](../README.md) or [Foundation](../../README.md).

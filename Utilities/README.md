@@ -1,6 +1,6 @@
 <h1 align="center">Utilities</h1>
 
-<p align="center">Reusable Java helpers for Foundation projects and other applications.</p>
+<p align="center">Static Java helpers for strings, numbers, reflection, HTTP, files, encoding, and cryptography.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -8,53 +8,64 @@
   <a href="https://github.com/phxql/argon2-jvm"><img alt="Argon2id" src="https://img.shields.io/badge/Argon2id-Password%20hashing-4B5563?logo=lock&logoColor=white"></a>
 </p>
 
-Utilities is a collection of focused static helpers for strings, numbers, reflection, HTTP, files, encoding, and cryptography. It has no application-framework dependency. Password hashing uses the `argon2-jvm` library; most other helpers use the Java standard library.
+Utilities is a zero-framework dependency library of focused, thread-safe static helpers. Every class is a Lombok `@UtilityClass`: non-instantiable, all static methods. The module exists so that Foundation's other modules and consumer applications share one well-tested set of common operations rather than reimplementing string formatting, password hashing, HTTP calls, or reflection patterns in each project. Password hashing uses the `argon2-jvm` library; everything else uses the Java standard library.
 
 ## Contents
 
 <details>
 <summary>On this page</summary>
 
-- [At a glance](#at-a-glance)
+- [Modules and why they exist](#modules-and-why-they-exist)
 - [Strings and English articles](#strings-and-english-articles)
 - [Numbers, types, and input](#numbers-types-and-input)
+- [Secure random codes](#secure-random-codes)
 - [Hashing and password storage](#hashing-and-password-storage)
-- [Generic type lookup and Java helpers](#generic-type-lookup-and-java-helpers)
+- [Generic type resolution](#generic-type-resolution)
+- [Collection and map helpers](#collection-and-map-helpers)
+- [Reflection helpers](#reflection-helpers)
 - [HTTP requests](#http-requests)
 - [File reads and caching](#file-reads-and-caching)
-- [Other utilities](#other-utilities)
+- [Base64 encoding](#base64-encoding)
+- [Functional interfaces](#functional-interfaces)
 - [Installation and build](#installation-and-build)
 
 </details>
 
-## At a glance
+## Modules and why they exist
 
-| Area | Utilities | Main use |
+| Area | Classes | Why it exists |
 | --- | --- | --- |
-| Strings | [UtilString](src/main/java/me/trae/foundation/utilities/UtilString.java), [IndefiniteArticle](src/main/java/me/trae/foundation/utilities/IndefiniteArticle.java) | Normalizing names, formatting text, and choosing English indefinite articles |
-| Numbers and input | [UtilNumber](src/main/java/me/trae/foundation/utilities/UtilNumber.java), [UtilType](src/main/java/me/trae/foundation/utilities/UtilType.java), [UtilInput](src/main/java/me/trae/foundation/utilities/UtilInput.java), [UtilCode](src/main/java/me/trae/foundation/utilities/UtilCode.java) | Formatting, clamping, random values, validation, parsing, and secure random codes |
-| Hashing and encoding | [UtilHash](src/main/java/me/trae/foundation/utilities/UtilHash.java), [UtilArgon](src/main/java/me/trae/foundation/utilities/UtilArgon.java), [UtilBase64](src/main/java/me/trae/foundation/utilities/UtilBase64.java) | General digests and HMACs, Argon2id passwords, and Base64 |
-| Reflection and collections | [UtilGeneric](src/main/java/me/trae/foundation/utilities/UtilGeneric.java), [UtilJava](src/main/java/me/trae/foundation/utilities/UtilJava.java), [UtilClass](src/main/java/me/trae/foundation/utilities/UtilClass.java), [UtilField](src/main/java/me/trae/foundation/utilities/UtilField.java), [UtilMethod](src/main/java/me/trae/foundation/utilities/UtilMethod.java) | Generic parameter lookup, collection/map callbacks, construction, and reflective access |
-| HTTP and files | [UtilHttp](src/main/java/me/trae/foundation/utilities/UtilHttp.java), [UtilFile](src/main/java/me/trae/foundation/utilities/UtilFile.java) | Synchronous/asynchronous HTTP and cached text-file reads |
-| Functional interfaces | [TriConsumer](src/main/java/me/trae/foundation/utilities/functional/consumer/TriConsumer.java), [QuadConsumer](src/main/java/me/trae/foundation/utilities/functional/consumer/QuadConsumer.java), [TriFunction](src/main/java/me/trae/foundation/utilities/functional/function/TriFunction.java), [QuadFunction](src/main/java/me/trae/foundation/utilities/functional/function/QuadFunction.java) | Three- and four-argument consumers and functions |
+| Strings | [UtilString](src/main/java/me/trae/foundation/utilities/UtilString.java), [IndefiniteArticle](src/main/java/me/trae/foundation/utilities/IndefiniteArticle.java) | Consistent name formatting and English article selection across user-facing output |
+| Numbers and input | [UtilNumber](src/main/java/me/trae/foundation/utilities/UtilNumber.java), [UtilType](src/main/java/me/trae/foundation/utilities/UtilType.java), [UtilInput](src/main/java/me/trae/foundation/utilities/UtilInput.java) | Safe parsing, clamping, and validation without scattered `try/catch` blocks |
+| Codes | [UtilCode](src/main/java/me/trae/foundation/utilities/UtilCode.java) | Cryptographically secure random code generation using `SecureRandom` |
+| Hashing and encoding | [UtilHash](src/main/java/me/trae/foundation/utilities/UtilHash.java), [UtilArgon](src/main/java/me/trae/foundation/utilities/UtilArgon.java), [UtilBase64](src/main/java/me/trae/foundation/utilities/UtilBase64.java) | General digests, HMACs, Argon2id password storage, and Base64 conversions |
+| Reflection | [UtilGeneric](src/main/java/me/trae/foundation/utilities/UtilGeneric.java), [UtilClass](src/main/java/me/trae/foundation/utilities/UtilClass.java), [UtilField](src/main/java/me/trae/foundation/utilities/UtilField.java), [UtilMethod](src/main/java/me/trae/foundation/utilities/UtilMethod.java) | Generic type parameter resolution for frameworks like Injector, and reflective access wrappers |
+| Collections | [UtilJava](src/main/java/me/trae/foundation/utilities/UtilJava.java) | Inline collection and map construction, safe casting |
+| HTTP | [UtilHttp](src/main/java/me/trae/foundation/utilities/UtilHttp.java) | Synchronous and asynchronous HTTP with response classification, built on Java's `HttpClient` |
+| Files | [UtilFile](src/main/java/me/trae/foundation/utilities/UtilFile.java) | Cached file reads with size and timestamp freshness checks |
+| Functional | [TriConsumer](src/main/java/me/trae/foundation/utilities/functional/consumer/TriConsumer.java), [QuadConsumer](src/main/java/me/trae/foundation/utilities/functional/consumer/QuadConsumer.java), [TriFunction](src/main/java/me/trae/foundation/utilities/functional/function/TriFunction.java), [QuadFunction](src/main/java/me/trae/foundation/utilities/functional/function/QuadFunction.java) | Three- and four-argument functional interfaces that the standard library does not provide |
+
+All utility classes use `ConcurrentHashMap` or thread-safe structures where they cache results. None of them carry mutable instance state; all shared state is static and thread-safe.
 
 ## Strings and English articles
 
 ### `UtilString`
 
-`UtilString` offers small, deterministic formatting and name-conversion helpers. Null or blank input is considered empty by `isEmpty`; `clean`, `slice`, and `unSlice` return `null` for that input.
+String formatting helpers with deterministic output. Results for `clean`, `slice`, and `unSlice` are cached in bounded `ConcurrentHashMap` instances (up to 4,096 entries each) so repeated lookups for the same input do not recompute.
 
-| Method | Behavior |
-| --- | --- |
-| `clean(input)` | Lowercases with `Locale.ROOT`, changes underscores to word separators, collapses whitespace, and capitalizes each word. `"  HELLO_foundation "` becomes `"Hello Foundation"`. |
-| `slice(input)` | Removes spaces, underscores, and periods. `"Hello_World."` becomes `"HelloWorld"`. |
-| `unSlice(input)` | Changes underscores to spaces and separates camel-case boundaries. `"HTTPServer"` becomes `"HTTP Server"`. |
-| `isEmpty(input)` | Returns true for null or blank strings. |
-| `pair(key, value)` | Formats a pair as `"key: value"`. |
-| `formatToDollarByInteger(input)` | Formats an integer as a grouped dollar amount, such as `"$1,234"`. |
-| `formatToDollarByDouble(input)` | Formats a double with two decimal places, such as `"$1,234.50"`. |
-| `withIndefiniteArticle(input)` | Prefixes the input with `a` or `an` and a space. |
-| `getIndefiniteArticlePrefix(input)` | Returns the article prefix, including its trailing space. |
+| Method | What it does | Example input | Example output |
+| --- | --- | --- | --- |
+| `clean(input)` | Lowercases with `Locale.ROOT`, replaces underscores with spaces, collapses whitespace, capitalizes each word | `"  HELLO_foundation "` | `"Hello Foundation"` |
+| `slice(input)` | Removes spaces, underscores, and periods | `"Hello_World."` | `"HelloWorld"` |
+| `unSlice(input)` | Replaces underscores with spaces and inserts spaces at camel-case boundaries | `"HTTPServer"` | `"HTTP Server"` |
+| `isEmpty(input)` | Returns `true` for null or blank strings | `null` | `true` |
+| `pair(key, value)` | Formats as `"key: value"` | `"Status", "Active"` | `"Status: Active"` |
+| `formatToDollarByInteger(input)` | Grouped dollar format | `1234` | `"$1,234"` |
+| `formatToDollarByDouble(input)` | Two decimal places | `1234.5` | `"$1,234.50"` |
+| `withIndefiniteArticle(input)` | Prefixes with `a ` or `an ` | `"hour"` | `"an hour"` |
+| `getIndefiniteArticlePrefix(input)` | Returns only the article prefix | `"hour"` | `"an "` |
+
+Null or blank input returns `null` from `clean`, `slice`, and `unSlice`.
 
 ```java
 final String displayName = UtilString.clean("HELLO_foundation");
@@ -68,31 +79,48 @@ final String description = UtilString.withIndefiniteArticle("hour");
 
 ### `IndefiniteArticle`
 
-`IndefiniteArticle.get(input)` returns `"a "` or `"an "`; `format(input)` returns the article plus the original input. It uses word and prefix exceptions for common pronunciation cases, then applies a simple English-language fallback. For example, it distinguishes `"an hour"`, `"a university"`, and `"a European"`. It is a pronunciation heuristic, not a general-purpose language or phonetic engine. `format` preserves null and blank input; `get` returns an empty prefix for it. `UtilString` exposes the same behavior through `withIndefiniteArticle` and `getIndefiniteArticlePrefix`.
+`IndefiniteArticle.get(input)` returns `"a "` or `"an "`. `format(input)` returns the article plus the original input. The algorithm checks word and prefix exception sets for common pronunciation cases (`"an hour"`, `"a university"`, `"a European"`), then falls back to a vowel-initial heuristic. It is a pronunciation approximation, not a phonetic engine. `format` preserves null and blank input; `get` returns an empty string for it.
+
+`UtilString.withIndefiniteArticle` and `getIndefiniteArticlePrefix` delegate to this class.
 
 ## Numbers, types, and input
 
 ### `UtilNumber`
 
-- `format(pattern, number)` uses `DecimalFormat` with `Locale.ROOT` symbols and `HALF_UP` rounding.
-- `clamp(minimum, maximum, value)` returns the value bounded by the supplied endpoints.
-- `getRandomNumber(type, minimum, maximum)` supports `Integer`, `Long`, `Double`, and `Float`. The upper endpoint is exclusive unless the endpoints are equal, in which case that endpoint is returned. Other number classes throw `IllegalArgumentException`.
+| Method | Behavior |
+| --- | --- |
+| `format(pattern, number)` | `DecimalFormat` with `Locale.ROOT` symbols and `HALF_UP` rounding |
+| `clamp(minimum, maximum, value)` | Returns the value bounded by the endpoints, using `Comparable` |
+| `getRandomNumber(type, minimum, maximum)` | Random value for `Integer`, `Long`, `Double`, or `Float`. The upper bound is exclusive unless both endpoints are equal, in which case that value is returned |
 
 ```java
-final String amount = UtilNumber.format("#,##0.00", 1234.567); // 1,234.57
+final String amount = UtilNumber.format("#,##0.00", 1234.567); // "1,234.57"
 
 final int percentage = UtilNumber.clamp(0, 100, 125); // 100
 
 final Integer randomValue = UtilNumber.getRandomNumber(Integer.class, 1, 7); // 1 through 6
 ```
 
-### `UtilType` and `UtilInput`
+### `UtilType`
 
-`UtilType` checks whether text is alphabetic, numeric, an integer, a finite float/double, or a long. `isAllMatch` and `isAnyMatch` accept a `Predicate<Character>` for custom checks. Empty input does not count as an all-match.
+Character-level string validation. `isAllMatch` requires every character to satisfy the predicate; empty input returns `false`. `isAnyMatch` requires at least one.
 
-`UtilInput.getInput(type, input)` returns an `Optional<T>`. It parses through a compatible public static `valueOf(String)` method, or falls back to a public constructor that accepts a `String`. Invalid input, unsupported parsers, and non-finite float/double values produce an empty optional. Boolean parsing accepts `true` or `false`, case-insensitively.
+| Method | Checks for |
+| --- | --- |
+| `isAlphabetic(input)` | Every character is a letter |
+| `isNumeric(input)` | Every character is a digit |
+| `isInteger(input)` | Parseable as `Integer` |
+| `isDouble(input)` | Parseable as a finite `Double` |
+| `isFloat(input)` | Parseable as a finite `Float` |
+| `isLong(input)` | Parseable as `Long` |
 
-`getNumber` also checks inclusive minimum and maximum bounds:
+### `UtilInput`
+
+Safe parsing that returns `Optional` instead of throwing. `getInput(type, input)` finds a public static `valueOf(String)` method on the target type, or falls back to a public `String` constructor. Invalid input, unsupported types, and non-finite float/double values produce an empty optional. Boolean parsing accepts `"true"` or `"false"`, case-insensitively.
+
+The parser lookup uses a `ClassValue` cache, so the reflection cost is paid once per type.
+
+`getNumber` adds inclusive minimum and maximum bounds:
 
 ```java
 final Optional<Integer> port = UtilInput.getNumber(Integer.class, 1, 65535, "8080");
@@ -102,15 +130,27 @@ final Optional<Boolean> enabled = UtilInput.getInput(Boolean.class, "TRUE");
 final boolean validName = UtilType.isAlphabetic("Foundation");
 ```
 
-### `UtilCode`
+## Secure random codes
 
-`generate(length, characters)` creates a code using the supplied character array and `SecureRandom`. `generateUpperCase` uses uppercase letters and digits; `generateRandom` uses upper- and lowercase letters and digits.
+`UtilCode` generates codes using `SecureRandom` and a caller-supplied character set. This is the right generator for verification codes, invite tokens, and anything where predictability would be a security problem.
+
+| Method | Character set |
+| --- | --- |
+| `generate(length, characters)` | Any supplied `char[]` |
+| `generateUpperCase(length)` | `A-Z` and `0-9` |
+| `generateRandom(length)` | `A-Z`, `a-z`, and `0-9` |
+
+```java
+final String verificationCode = UtilCode.generateUpperCase(6); // e.g. "K4T9MX"
+
+final String sessionToken = UtilCode.generateRandom(32);
+```
 
 ## Hashing and password storage
 
 ### `UtilHash` for digests and HMACs
 
-`UtilHash` wraps Java's digest and MAC algorithms:
+Wraps Java's `MessageDigest` and `Mac` with cloned instances from a thread-safe cache, so the algorithm lookup cost is paid once.
 
 ```java
 final String digest = UtilHash.hashToString("SHA-256", "message");
@@ -120,13 +160,21 @@ final boolean matches = UtilHash.verify("SHA-256", "message", digest);
 final String signature = UtilHash.hmac("HmacSHA256", secretKey, "message");
 ```
 
-`hashToBytes` returns raw digest bytes; `hashToString` returns hexadecimal. `verify` accepts raw bytes or a hexadecimal digest and compares the computed digest with `MessageDigest.isEqual`. `hmac` returns Base64 text. `toHex` and `fromHex` convert byte arrays and hexadecimal strings.
+| Method | Returns |
+| --- | --- |
+| `hashToBytes(algorithm, input)` | Raw digest bytes |
+| `hashToString(algorithm, input)` | Lowercase hexadecimal digest |
+| `verify(algorithm, plain, stored)` | Constant-time comparison using `MessageDigest.isEqual` |
+| `hmac(algorithm, key, input)` | Base64-encoded MAC |
+| `toHex(bytes)` / `fromHex(hex)` | Byte array and hex string conversion |
 
-`UtilHash` is for general digests and message authentication. Its API does not accept a password salt, pepper, or work factor. Use `UtilArgon` for password storage; a fast digest such as SHA-256 alone is not a password-hashing substitute. See the [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
+Both `hashToBytes` and `hashToString` accept `byte[]` or `String` input.
+
+`UtilHash` is for general digests and message authentication. It does not accept a password salt, pepper, or work factor. Use `UtilArgon` for password storage; a fast digest such as SHA-256 alone is not a password-hashing substitute. See the [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
 
 ### `UtilArgon` for passwords
 
-`UtilArgon` uses Argon2id. Hash and verify with the same password, application pepper, and caller-provided salt:
+`UtilArgon` uses Argon2id, the recommended password-hashing algorithm from [RFC 9106](https://www.rfc-editor.org/rfc/rfc9106/). It combines the password, an application-wide pepper, and a per-account salt with length prefixes into one input before calling Argon2id. This design means the pepper adds a secret that never touches the database, and the salt ensures two accounts with the same password produce different hashes.
 
 ```java
 final String storedHash = UtilArgon.hash(password, pepper, accountSalt);
@@ -134,9 +182,9 @@ final String storedHash = UtilArgon.hash(password, pepper, accountSalt);
 final boolean verified = UtilArgon.verify(password, pepper, accountSalt, storedHash);
 ```
 
-The `password`, `pepper`, and `accountSalt` values above come from the application: `UtilArgon` does not create them. It combines their UTF-8 bytes with length prefixes before calling Argon2id. Generate a distinct random salt per password, store that salt with the account record, and keep the pepper in a secret store separate from the password database. The returned encoded hash is what the application stores as `storedHash`. See [RFC 9106](https://www.rfc-editor.org/rfc/rfc9106/) for the Argon2 specification and the OWASP password-storage guidance linked above.
+The `password`, `pepper`, and `accountSalt` values come from the application: `UtilArgon` does not create them. Generate a distinct random salt per password, store that salt with the account record, and keep the pepper in a secret store separate from the password database. The returned encoded hash is what the application stores.
 
-The current process-wide parameters are:
+**Process-wide parameters:**
 
 | Setting | Default | Accessors |
 | --- | ---: | --- |
@@ -145,7 +193,9 @@ The current process-wide parameters are:
 | Parallelism | `2` | `getParallelism()` / `setParallelism(int)` |
 | Concurrent Argon operations | At least `1`, initially about half the available processors | `getMaximumConcurrency()` / `setMaximumConcurrency(int)` |
 
-These settings are static and apply process-wide. Benchmark parameter changes on the deployment hardware and make sure verification and new hashes use the same pepper and caller-provided salt. The Argon2 encoded hash records the hash's own parameters; `tryReHash` checks it against the current iteration, memory, and parallelism settings. It returns `null` when the stored hash is already current, or a replacement hash when it needs updating:
+The concurrency semaphore prevents Argon2 from consuming all available memory when many requests hash simultaneously. Benchmark parameter changes on the deployment hardware.
+
+**Rehashing:** the Argon2 encoded hash records the parameters it was hashed with. `tryReHash` checks whether the stored hash matches the current process-wide settings and returns a replacement hash when they differ, or `null` when the hash is already current:
 
 ```java
 final String replacementHash = UtilArgon.tryReHash(password, pepper, accountSalt, storedHash);
@@ -155,9 +205,19 @@ if (replacementHash != null) {
 }
 ```
 
-Successful verifications are cached in-process by stored hash and a keyed digest of the supplied inputs. The default cache lifetime is 15 minutes and the default maximum is 4,096 entries; failed verifications are not cached. `setCacheTtlMs` and `setMaximumCacheEntries` configure those bounds. Call `invalidateVerifyCache(storedHash)` when an entry must be removed before expiry.
+Call this after a successful login to transparently upgrade stored hashes when you increase the work factor.
 
-Example salt generation using 16 random bytes:
+**Verification caching:** successful verifications are cached in-process by stored hash and a keyed HMAC digest of the inputs. This avoids repeating the expensive Argon2 computation for the same credentials within a short window, which matters for applications that verify on every request. The default cache lifetime is 15 minutes and the default maximum is 4,096 entries; failed verifications are never cached.
+
+| Setting | Default | Setter |
+| --- | --- | --- |
+| Cache TTL | 15 minutes | `setCacheTtlMs(long)` |
+| Maximum entries | 4,096 | `setMaximumCacheEntries(int)` |
+| Invalidate one entry | | `invalidateVerifyCache(storedHash)` |
+
+The cache is swept lazily during verification calls. External cache and invalidation functions can be supplied through `setVerifyGetter` and `setVerifySetter` for applications that need distributed caching.
+
+**Salt generation example** using 16 random bytes:
 
 ```java
 final byte[] saltBytes = new byte[16];
@@ -167,13 +227,15 @@ new SecureRandom().nextBytes(saltBytes);
 final String accountSalt = UtilBase64.encodeToString(saltBytes);
 ```
 
-The 16-byte value is an application input to `UtilArgon`; keep it per account and store it so the same value is available during verification. The method also returns a string representation produced by the Argon2 library.
+The 16-byte value is an application input to `UtilArgon`; store it with the account so the same value is available during verification.
 
-## Generic type lookup and Java helpers
+## Generic type resolution
 
 ### `UtilGeneric`
 
-`getGenericParameter(sourceClass, targetClass, typeIndex)` follows generic interfaces and superclass chains, substituting type variables along the way. `typeIndex` is zero-based. It returns the resolved argument as a `Class<?>` (for a parameterized argument, its raw class); it returns `null` when that argument cannot be resolved to a class.
+`getGenericParameter(sourceClass, targetClass, typeIndex)` resolves a concrete class's generic type argument for a target interface or superclass. It walks the inheritance chain, substituting type variables along the way. The `typeIndex` is zero-based. Results are cached in a `ConcurrentHashMap`.
+
+This is the mechanism that lets Foundation's Injector resolve parameterized types at runtime, and it is useful for any framework that needs to know the concrete type argument a class provides.
 
 ```java
 interface Repository<T> {
@@ -185,62 +247,73 @@ abstract class RepositoryBase<T> implements Repository<T> {
 final class StringRepository extends RepositoryBase<String> {
 }
 
-final class Example {
-
-    void inspectRepositoryType() {
-        final Class<?> entityType = UtilGeneric.getGenericParameter(StringRepository.class, Repository.class, 0);
-    }
-}
+// Resolves String.class by walking StringRepository -> RepositoryBase<String> -> Repository<T>
+final Class<?> entityType = UtilGeneric.getGenericParameter(StringRepository.class, Repository.class, 0);
 ```
 
-The lookup follows `StringRepository` through `RepositoryBase<String>` to `Repository<T>`, then substitutes `T` with `String`. The type index is zero-based. The result is `String.class`; unresolved arguments return `null`. For a parameterized argument such as `List<String>`, the result is its raw class (`List.class`), not a complete reflective `Type` tree.
+The result is the raw `Class<?>`. For a parameterized argument such as `List<String>`, the result is its raw class (`List.class`). Unresolvable arguments return `null`.
 
-### `UtilJava` collection and map helpers
+## Collection and map helpers
 
-`createCollection` and `createMap` run a `Consumer` against a supplied collection or map and return that same instance. `updateCollection` and `updateMap` run the consumer against an existing value and return nothing. They do not allocate or copy the collection/map.
+### `UtilJava`
+
+Inline construction helpers that avoid the `var x = new ArrayList<>(); x.add(...); return x;` pattern:
 
 ```java
 final List<String> nameList = UtilJava.createCollection(new ArrayList<>(), names -> names.add("Foundation"));
 
 UtilJava.updateCollection(nameList, names -> names.add("Utilities"));
 
-
 final Map<String, Integer> countMap = UtilJava.createMap(new HashMap<>(), counts -> counts.put("modules", 5));
 
 UtilJava.updateMap(countMap, counts -> counts.put("utilities", 1));
 ```
 
-`UtilJava.cast(type, value)` returns the value when it is an instance of the requested class and `null` for a null or incompatible value.
+| Method | Purpose |
+| --- | --- |
+| `createCollection(collection, consumer)` | Run the consumer against a new collection and return it |
+| `createMap(map, consumer)` | Run the consumer against a new map and return it |
+| `updateCollection(collection, consumer)` | Run the consumer against an existing collection |
+| `updateMap(map, consumer)` | Run the consumer against an existing map |
+| `cast(type, value)` | Returns the value when it is an instance of the type, `null` otherwise |
 
-### Reflection helpers
+`createCollection` and `createMap` do not allocate or copy; they return the same instance that was passed in.
 
-- `UtilClass.create` constructs an instance through a matching constructor; reflection failures are declared by the method.
-- `UtilClass.formatName` formats a class name relative to a package when possible.
-- `UtilField.get` and `set` read and write a supplied `Field` on an instance.
-- `UtilMethod.invoke` invokes a supplied `Method`, with or without arguments.
+## Reflection helpers
 
-These methods take reflection objects explicitly; they do not search for fields, constructors, or methods by themselves.
+| Class | Methods | Purpose |
+| --- | --- | --- |
+| `UtilClass` | `create(type, args...)`, `create(type)` | Construct an instance through a matching constructor; declared reflection exceptions propagate |
+| `UtilClass` | `formatName(basePackage, type)`, `formatName(type)` | Format a class name relative to a package when possible |
+| `UtilField` | `get(type, instance, field)`, `set(instance, field, value)` | Read and write a `Field` on an instance with reflective access |
+| `UtilMethod` | `invoke(instance, method, args...)`, `invoke(instance, method)` | Invoke a `Method` with reflective access |
+
+These methods take reflection objects explicitly. They do not search for fields, constructors, or methods by name; the caller supplies the `Field`, `Method`, or `Class` directly.
 
 ## HTTP requests
 
-`UtilHttp` uses Java's `HttpClient`. `supply` performs a synchronous request and returns the typed `HttpResponse<T>`; `supplyAsynchronous` returns a `CompletableFuture<HttpResponse<T>>`. Both accept an `HttpResponse.BodyHandler<T>`. Convenience overloads omit the request body, content type, and headers.
+### `UtilHttp`
+
+A static HTTP client built on Java's `HttpClient`. The default client follows normal redirects with a 10-second request timeout. Both are configurable process-wide through `setHttpClient` and `setDefaultRequestTimeout`.
+
+**Synchronous requests:**
 
 ```java
-final HttpResponse<String> httpResponse = UtilHttp.supply(
+final HttpResponse<String> response = UtilHttp.supply(
         HttpMethod.GET,
         "https://example.com/status",
         HttpResponse.BodyHandlers.ofString()
 );
 
 if (UtilHttp.isSuccess(response)) {
-    final String responseBody = httpResponse.body();
+    final String body = response.body();
 }
 ```
 
-Use the full overload to provide a body, content type, and headers:
+**With body, content type, and headers:**
 
 ```java
-final HttpResponse<String> httpResponse = UtilHttp.supply(
+final HttpResponse<String> response = UtilHttp.supply(
         HttpMethod.POST,
         endpoint,
         requestBody,
@@ -250,38 +323,107 @@ final HttpResponse<String> httpResponse = UtilHttp.supply(
 );
 ```
 
-The supported methods are `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, and `OPTIONS`. `isInformational`, `isSuccess`, `isRedirect`, `isClientError`, `isServerError`, `isError`, `isStatus`, `isStatusBetween`, and `isStatusClass` classify responses. A non-2xx response is still an `HttpResponse`; it is not automatically an exception.
+**Asynchronous requests:**
 
-For callbacks, `dispatch` calls a success consumer or an error consumer. `dispatchAsynchronous` does the same for an asynchronous request. `supply` wraps request failures in `HttpException`; `supplyAsynchronous` reports asynchronous failures through its future. The default request timeout is 10 seconds and the default client follows normal redirects. Configure these process-wide with `setDefaultRequestTimeout` and `setHttpClient`.
+```java
+final CompletableFuture<HttpResponse<String>> future = UtilHttp.supplyAsynchronous(
+        HttpMethod.POST,
+        endpoint,
+        requestBody,
+        "application/json",
+        Map.of("Authorization", authorizationHeader),
+        HttpResponse.BodyHandlers.ofString()
+);
+```
+
+**Callback-based dispatch:**
+
+```java
+UtilHttp.dispatch(
+        HttpMethod.GET,
+        "https://example.com/status",
+        HttpResponse.BodyHandlers.ofString(),
+        response -> handleSuccess(response),
+        error -> handleError(error)
+);
+
+UtilHttp.dispatchAsynchronous(
+        HttpMethod.GET,
+        "https://example.com/status",
+        HttpResponse.BodyHandlers.ofString(),
+        response -> handleSuccess(response),
+        error -> handleError(error)
+);
+```
+
+**Response classification:**
+
+| Method | Status range |
+| --- | --- |
+| `isInformational(response)` | 100–199 |
+| `isSuccess(response)` | 200–299 |
+| `isRedirect(response)` | 300–399 |
+| `isClientError(response)` | 400–499 |
+| `isServerError(response)` | 500–599 |
+| `isError(response)` | 400–599 |
+| `isStatus(response, code)` | Exact match |
+| `isStatusBetween(response, min, max)` | Inclusive range |
+| `isStatusClass(response, class)` | Hundreds digit, for example `2` for 2xx |
+
+Supported methods are `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, and `OPTIONS`. A non-2xx response is still an `HttpResponse`; it is not automatically an exception. `supply` wraps request failures in `HttpException`; `supplyAsynchronous` reports failures through the future.
 
 ## File reads and caching
 
-`UtilFile.read` accepts a `Path`, `File`, or path string and returns the file's lines as a `List<String>`:
+### `UtilFile`
+
+Reads a file's lines into a `List<String>` with automatic in-process caching. The cache is keyed by normalized absolute path, and a cached entry is reused only while both the file size and last-modified timestamp match. A change to either causes the file to be read again.
 
 ```java
 final List<String> lineList = UtilFile.read(Path.of("config", "settings.yml"));
 ```
 
-Paths are normalized to absolute paths for the cache. For cacheable files, a cached value is reused only while both the file size and last-modified timestamp match. A change to either metadata value causes the file to be read again. Read failures are thrown as `UncheckedIOException`; a null `Path` throws `IllegalArgumentException`.
+Accepts `Path`, `File`, or a path `String`. Read failures throw `UncheckedIOException`; null paths throw `IllegalArgumentException`.
 
-The default per-file caching threshold is 512 MiB. Files above it are read without being retained in the cache. Change the threshold in mebibytes with `UtilFile.setMaxCacheableInMegaBytes`; for example, `1024L` permits caching files up to 1 GiB. This is a per-file cutoff, not a total cache-memory limit: cached entries are kept by normalized path in a static map, and the module has no public clear-all or eviction method. Applications that read many distinct files should account for that retained memory. Since freshness uses size and last-modified metadata, rewriting a file while preserving both values cannot be detected by this cache check.
+| Setting | Default | Setter |
+| --- | --- | --- |
+| Maximum cacheable file size | 512 MiB | `setMaxCacheableInMegaBytes(long)` |
 
-## Other utilities
+Files above the threshold are read without being retained. This is a per-file cutoff, not a total memory limit: cached entries are kept by path in a static map with no automatic eviction. Applications that read many distinct files should account for that retained memory. Since freshness uses size and last-modified metadata, rewriting a file while preserving both values cannot be detected by this cache.
+
+## Base64 encoding
 
 ### `UtilBase64`
 
-`encodeToBytes` and `encodeToString` accept UTF-8 strings or byte arrays. `decodeToBytes` and `decodeToString` provide the inverse operations. Invalid Base64 input throws `IllegalArgumentException`.
+Wraps Java's standard Base64 encoder and decoder. Every method accepts and returns both `byte[]` and `String`:
 
-### HTTP types and functional interfaces
+| Method | Input | Output |
+| --- | --- | --- |
+| `encodeToBytes(input)` | `byte[]` or `String` | `byte[]` |
+| `encodeToString(input)` | `byte[]` or `String` | `String` |
+| `decodeToBytes(input)` | `byte[]` or `String` | `byte[]` |
+| `decodeToString(input)` | `byte[]` or `String` | `String` |
 
-`HttpMethod` lists the HTTP verbs supported by `UtilHttp`; `HttpException` is its unchecked exception for synchronous request failures. `TriConsumer`, `QuadConsumer`, `TriFunction`, and `QuadFunction` provide standard functional interface shapes for three or four arguments.
+Invalid Base64 input throws `IllegalArgumentException`.
+
+## Functional interfaces
+
+Java provides `Consumer`, `BiConsumer`, `Function`, and `BiFunction`. Utilities adds the three- and four-argument versions:
+
+| Interface | Shape |
+| --- | --- |
+| `TriConsumer<A, B, C>` | `void accept(A, B, C)` |
+| `QuadConsumer<A, B, C, D>` | `void accept(A, B, C, D)` |
+| `TriFunction<A, B, C, R>` | `R apply(A, B, C)` |
+| `QuadFunction<A, B, C, D, R>` | `R apply(A, B, C, D)` |
+
+All four are `@FunctionalInterface` annotated.
 
 ## Installation and build
 
-Requires JDK 25 and Maven. Build and install Foundation from the repository root:
+Requires JDK 25 and Maven. Build and install from the repository root:
 
 ```shell
-mvn clean install
+mvn -pl Utilities -am install
 ```
 
 Then add Utilities to a Maven project:
@@ -294,10 +436,10 @@ Then add Utilities to a Maven project:
 </dependency>
 ```
 
-The Utilities artifact brings in `de.mkammerer:argon2-jvm` for `UtilArgon`. To run its tests with reactor dependencies from the Foundation root:
+The artifact brings in `de.mkammerer:argon2-jvm` transitively for `UtilArgon`. To run the tests:
 
 ```shell
 mvn -pl Utilities -am test
 ```
 
-See the [Foundation README](../README.md) for the other module families.
+No external services are needed. Return to the [Foundation README](../README.md).

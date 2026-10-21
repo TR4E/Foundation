@@ -21,18 +21,6 @@ public class UtilItemStack {
 
     public static final NamespacedKey IDENTIFIER_KEY = new NamespacedKey("custom", "item_identifier");
 
-    public static <P, C> void setPersistentDataType(final ItemMeta itemMeta, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType, final C value) {
-        itemMeta.getPersistentDataContainer().set(namespacedKey, persistentDataType, value);
-    }
-
-    public static void removePersistentDataType(final ItemMeta itemMeta, final NamespacedKey namespacedKey) {
-        itemMeta.getPersistentDataContainer().remove(namespacedKey);
-    }
-
-    public static <P, C> Optional<C> getPersistentData(final ItemStack itemStack, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType) {
-        return Optional.ofNullable(itemStack).map(ItemStack::getItemMeta).map(itemMeta -> itemMeta.getPersistentDataContainer().get(namespacedKey, persistentDataType));
-    }
-
     public static <P, C> void setPersistentDataType(final PersistentDataContainer persistentDataContainer, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType, final C value) {
         persistentDataContainer.set(namespacedKey, persistentDataType, value);
     }
@@ -41,14 +29,30 @@ public class UtilItemStack {
         persistentDataContainer.remove(namespacedKey);
     }
 
+    public static <P, C> void setPersistentDataType(final ItemMeta itemMeta, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType, final C value) {
+        setPersistentDataType(itemMeta.getPersistentDataContainer(), namespacedKey, persistentDataType, value);
+    }
+
+    public static void removePersistentDataType(final ItemMeta itemMeta, final NamespacedKey namespacedKey) {
+        removePersistentDataType(itemMeta.getPersistentDataContainer(), namespacedKey);
+    }
+
     public static <P, C> Optional<C> getPersistentData(final PersistentDataContainer persistentDataContainer, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType) {
         return Optional.ofNullable(persistentDataContainer.get(namespacedKey, persistentDataType));
+    }
+
+    public static <P, C> Optional<C> getPersistentData(final ItemStack itemStack, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType) {
+        return Optional.ofNullable(itemStack).map(ItemStack::getItemMeta).map(ItemMeta::getPersistentDataContainer).flatMap(persistentDataContainer -> getPersistentData(persistentDataContainer, namespacedKey, persistentDataType));
     }
 
     public static PersistentDataContainer getOrCreatePersistentDataContainer(final ItemMeta itemMeta, final NamespacedKey namespacedKey) {
         final PersistentDataContainer persistentDataContainer = itemMeta.getPersistentDataContainer();
 
         return getPersistentData(persistentDataContainer, namespacedKey, PersistentDataType.TAG_CONTAINER).orElseGet(persistentDataContainer.getAdapterContext()::newPersistentDataContainer);
+    }
+
+    public static Optional<String> getIdentifierByItemStack(final ItemStack itemStack) {
+        return getPersistentData(itemStack, IDENTIFIER_KEY, PersistentDataType.STRING);
     }
 
     public static void insert(final Player player, final ItemStack itemStack) {

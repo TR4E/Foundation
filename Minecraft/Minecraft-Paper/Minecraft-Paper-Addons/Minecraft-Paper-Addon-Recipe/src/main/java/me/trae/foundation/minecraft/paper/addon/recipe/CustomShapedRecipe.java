@@ -14,7 +14,7 @@ public abstract class CustomShapedRecipe extends AbstractCustomRecipe {
 
     @Override
     public final Recipe build() {
-        final ShapedRecipe shapedRecipe = new ShapedRecipe(this.getKey(), this.getResult());
+        final ShapedRecipe shapedRecipe = new ShapedRecipe(this.getKey(), this.buildResult());
 
         shapedRecipe.shape(this.getShape());
 

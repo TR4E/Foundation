@@ -34,6 +34,14 @@ public abstract class AbstractCustomRecipe {
         return new RecipeChoice.MaterialChoice(itemStack.getType());
     }
 
+    protected final ItemStack buildResult() {
+        final ItemStack itemStack = this.getResult();
+
+        itemStack.setAmount(Math.min(itemStack.getAmount(), itemStack.getMaxStackSize()));
+
+        return itemStack;
+    }
+
     public final boolean isIngredientByItemStack(final ItemStack itemStack) {
         return this.getIngredients().values().stream().anyMatch(ingredient -> UtilItemStack.isSimilar(ingredient, itemStack));
     }

@@ -25,14 +25,14 @@ public final class ItemService implements Lifecycle {
     private final Map<Material, CustomItem> obtainableItemMap = new EnumMap<>(Material.class);
     private final Map<Material, DefaultItem> defaultItemMap = new EnumMap<>(Material.class);
 
-    private final List<CustomItem> items;
+    private final List<CustomItem> itemList;
 
     @Override
     public void onLiveDependencyUpdate() {
         this.identifierItemMap.clear();
         this.obtainableItemMap.clear();
 
-        for (final CustomItem customItem : this.items) {
+        for (final CustomItem customItem : this.itemList) {
             this.identifierItemMap.put(customItem.getIdentifier(), customItem);
 
             if (customItem.naturallyObtainable()) {
@@ -41,8 +41,8 @@ public final class ItemService implements Lifecycle {
         }
     }
 
-    public List<CustomItem> getItems() {
-        return List.copyOf(this.items);
+    public List<CustomItem> getItemList() {
+        return List.copyOf(this.itemList);
     }
 
     public Optional<CustomItem> getItemByIdentifier(final String identifier) {
@@ -79,9 +79,9 @@ public final class ItemService implements Lifecycle {
             // Default Item Check
             final DefaultItem defaultItem = this.defaultItemMap.computeIfAbsent(itemStack.getType(), DefaultItem::new);
 
-            final boolean isOldCustomItem = UtilItemStack.getPersistentData(itemStack, UtilItemStack.IDENTIFIER_KEY, PersistentDataType.STRING).isPresent() || UtilItemStack.getPersistentData(itemStack, CustomItem.VERSION_KEY, PersistentDataType.STRING).isPresent();
+            final boolean wasCustomItem = UtilItemStack.getPersistentData(itemStack, UtilItemStack.IDENTIFIER_KEY, PersistentDataType.STRING).isPresent() || UtilItemStack.getPersistentData(itemStack, CustomItem.VERSION_KEY, PersistentDataType.STRING).isPresent();
 
-            return isOldCustomItem ? defaultItem.create(itemStack) : defaultItem.refresh(itemStack);
+            return wasCustomItem ? defaultItem.create(itemStack) : defaultItem.refresh(itemStack);
         }
 
         return itemStack;

@@ -8,6 +8,7 @@ import me.trae.foundation.minecraft.paper.addon.item.events.ItemStackUpdateEvent
 import me.trae.foundation.minecraft.paper.addon.item.styles.ItemStyle;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilColor;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMessage;
 import me.trae.foundation.utilities.UtilJava;
 import net.kyori.adventure.text.Component;
@@ -20,14 +21,26 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.MatchResult;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @AllArgsConstructor
 @Getter
 public abstract class Item {
+
+    private static final NamespacedKey DYNAMIC_LORE_KEY = new NamespacedKey("custom", "item_dynamic_lore");
+
+    private static final Pattern DYNAMIC_LORE_PATTERN = Pattern.compile("<dynamic:([a-z0-9._/-]+)>");
 
     private final Material material;
 
@@ -159,6 +172,79 @@ public abstract class Item {
         return itemStack;
     }
 
+    public final Optional<String> getDynamicLoreValue(final ItemStack itemStack, final String key) {
+        return UtilItemStack.getPersistentData(itemStack, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER).flatMap((final PersistentDataContainer persistentDataContainer) -> UtilItemStack.getPersistentData(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING));
+    }
+
+    public final void setDynamicLoreValue(final ItemStack itemStack, final String key, final String value) {
+        itemStack.editMeta((final ItemMeta itemMeta) -> this.setDynamicLoreValue(itemMeta, key, value));
+    }
+
+    public final void setDynamicLoreValue(final ItemMeta itemMeta, final String key, final String value) {
+        if (this.getLore().stream().flatMap((final String line) -> DYNAMIC_LORE_PATTERN.matcher(line).results()).noneMatch((final MatchResult matchResult) -> matchResult.group(1).equals(key))) {
+            throw new IllegalArgumentException("Unknown dynamic lore key: %s".formatted(key));
+        }
+
+        final PersistentDataContainer persistentDataContainer = UtilItemStack.getOrCreatePersistentDataContainer(
+                itemMeta,
+                DYNAMIC_LORE_KEY
+        );
+        UtilItemStack.setPersistentDataType(
+                persistentDataContainer,
+                new NamespacedKey("dynamic", key),
+                PersistentDataType.STRING,
+                value
+        );
+        UtilItemStack.setPersistentDataType(itemMeta, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER, persistentDataContainer);
+
+        this.applyLore(itemMeta);
+    }
+
+    protected final void applyLore(final ItemMeta itemMeta) {
+        final List<String> loreList = UtilJava.createCollection(new ArrayList<>(this.resolveDynamicLore(itemMeta)), list -> {
+            final ItemStyle itemStyle = this.getStyle();
+
+            if (itemStyle != null && itemStyle.getTag() != null) {
+                if (!list.isEmpty()) {
+                    list.add("");
+                }
+
+                list.add("<font:custom:tags>%s</font>".formatted(itemStyle.getTag()));
+            }
+        });
+
+        itemMeta.lore(loreList.stream()
+                .map((final String line) -> UtilMessage.deserialize(line).applyFallbackStyle(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false))
+                .toList());
+    }
+
+    private List<String> resolveDynamicLore(final ItemMeta itemMeta) {
+        final PersistentDataContainer persistentDataContainer = UtilItemStack.getOrCreatePersistentDataContainer(itemMeta, DYNAMIC_LORE_KEY);
+
+        final Set<NamespacedKey> unusedNamespacedKeySet = new HashSet<>(persistentDataContainer.getKeys());
+
+        final List<String> loreList = this.getLore().stream().map((final String line) -> {
+            return DYNAMIC_LORE_PATTERN.matcher(line).replaceAll((final MatchResult matchResult) -> {
+                final NamespacedKey namespacedKey = new NamespacedKey("dynamic", matchResult.group(1));
+                unusedNamespacedKeySet.remove(namespacedKey);
+
+                return UtilItemStack.getPersistentData(persistentDataContainer, namespacedKey, PersistentDataType.STRING)
+                        .map(Matcher::quoteReplacement)
+                        .orElse("");
+            });
+        }).toList();
+
+        unusedNamespacedKeySet.forEach((final NamespacedKey namespacedKey) -> UtilItemStack.removePersistentDataType(persistentDataContainer, namespacedKey));
+
+        if (persistentDataContainer.isEmpty()) {
+            UtilItemStack.removePersistentDataType(itemMeta, DYNAMIC_LORE_KEY);
+        } else {
+            UtilItemStack.setPersistentDataType(itemMeta, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER, persistentDataContainer);
+        }
+
+        return loreList;
+    }
+
     private void applyItemMeta(final ItemMeta itemMeta, final boolean stamp) {
         // Stamp
         if (stamp) {
@@ -169,17 +255,7 @@ public abstract class Item {
         itemMeta.displayName(this.getDisplayName());
 
         // Lore
-        final List<String> lore = UtilJava.createCollection(new ArrayList<>(this.getLore()), list -> {
-            if (this.getStyle() != null && this.getStyle().getTag() != null) {
-                if (!list.isEmpty()) {
-                    list.add("");
-                }
-
-                list.add("<font:custom:tags>%s</font>".formatted(this.getStyle().getTag()));
-            }
-        });
-
-        itemMeta.lore(lore.stream().map(line -> UtilMessage.deserialize(line).applyFallbackStyle(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)).toList());
+        this.applyLore(itemMeta);
 
         // Model
         itemMeta.setItemModel(this.getModel());

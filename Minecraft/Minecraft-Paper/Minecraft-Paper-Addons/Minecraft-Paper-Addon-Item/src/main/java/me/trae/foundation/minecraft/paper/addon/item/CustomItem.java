@@ -72,12 +72,14 @@ public abstract class CustomItem extends Item {
     }
 
     protected List<String> generateVersionEntries() {
+        final List<TextDecoration> textDecorationList = this.getDecorations();
+
         return List.of(
                 UtilString.pair("Material", this.getMaterial().name()),
                 UtilString.pair("Name", this.getName()),
                 UtilString.pair("Lore", String.join("\u0001", this.getLore())),
                 UtilString.pair("Color", Integer.toString(this.getColor().getRGB())),
-                UtilString.pair("Decorations", this.getDecorations() != null ? this.getDecorations().stream().map(TextDecoration::name).collect(Collectors.joining("\u0001")) : ""),
+                UtilString.pair("Decorations", textDecorationList != null ? textDecorationList.stream().map(TextDecoration::name).collect(Collectors.joining("\u0001")) : ""),
                 UtilString.pair("Model", this.getModel() != null ? this.getModel().asString() : ""),
                 UtilString.pair("Tooltip-Style", this.getTooltipStyle() != null ? this.getTooltipStyle().asString() : ""),
                 UtilString.pair("Hide-Attributes", Boolean.toString(this.hideAttributes())),

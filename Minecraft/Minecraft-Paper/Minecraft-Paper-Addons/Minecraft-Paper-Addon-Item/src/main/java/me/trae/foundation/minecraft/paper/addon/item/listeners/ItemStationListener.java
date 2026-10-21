@@ -3,15 +3,11 @@ package me.trae.foundation.minecraft.paper.addon.item.listeners;
 import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.item.services.ItemService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
-import org.bukkit.block.Crafter;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockCookEvent;
-import org.bukkit.event.block.CrafterCraftEvent;
 import org.bukkit.event.inventory.BrewEvent;
-import org.bukkit.event.inventory.CraftItemEvent;
-import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.SmithingInventory;
@@ -20,7 +16,7 @@ import java.util.stream.Stream;
 
 @AllArgsConstructor
 @AddonSingleton
-public final class ItemRecipeListener implements Listener {
+public final class ItemStationListener implements Listener {
 
     private final ItemService itemService;
 
@@ -29,46 +25,7 @@ public final class ItemRecipeListener implements Listener {
             return false;
         }
 
-        return this.itemService.getItemByItemStack(itemStack).map(customItem -> !customItem.usableInRecipes()).orElse(false);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onPrepareItemCraft(final PrepareItemCraftEvent event) {
-        if (Stream.of(event.getInventory().getMatrix()).noneMatch(this::isRefused)) {
-            return;
-        }
-
-        event.getInventory().setResult(null);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onCraftItem(final CraftItemEvent event) {
-        if (event.isCancelled()) {
-            return;
-        }
-
-        if (Stream.of(event.getInventory().getMatrix()).noneMatch(this::isRefused)) {
-            return;
-        }
-
-        event.setCancelled(true);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onCrafterCraft(final CrafterCraftEvent event) {
-        if (event.isCancelled()) {
-            return;
-        }
-
-        if (!(event.getBlock().getState(false) instanceof final Crafter crafter)) {
-            return;
-        }
-
-        if (Stream.of(crafter.getInventory().getContents()).noneMatch(this::isRefused)) {
-            return;
-        }
-
-        event.setCancelled(true);
+        return this.itemService.getItemByItemStack(itemStack).isPresent();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

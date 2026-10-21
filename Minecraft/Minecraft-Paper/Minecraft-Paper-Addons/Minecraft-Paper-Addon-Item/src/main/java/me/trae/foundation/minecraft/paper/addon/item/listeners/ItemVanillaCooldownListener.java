@@ -9,7 +9,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.inventory.ItemStack;
 
 @AddonSingleton
-public final class ItemCooldownListener implements Listener {
+public final class ItemVanillaCooldownListener implements Listener {
 
     @SuppressWarnings("UnstableApiUsage")
     @EventHandler
@@ -20,7 +20,7 @@ public final class ItemCooldownListener implements Listener {
 
         final ItemStack itemStack = event.getItemStack();
 
-        if (customItem.removeUseCooldown()) {
+        if (customItem.removeVanillaUseCooldown()) {
             if (itemStack.hasData(DataComponentTypes.USE_COOLDOWN)) {
                 itemStack.unsetData(DataComponentTypes.USE_COOLDOWN);
             }

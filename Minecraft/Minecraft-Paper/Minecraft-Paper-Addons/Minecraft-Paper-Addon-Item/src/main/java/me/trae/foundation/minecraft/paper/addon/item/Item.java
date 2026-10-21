@@ -30,7 +30,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -173,15 +172,15 @@ public abstract class Item {
     }
 
     public final Optional<String> getDynamicLoreValue(final ItemStack itemStack, final String key) {
-        return UtilItemStack.getPersistentData(itemStack, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER).flatMap((final PersistentDataContainer persistentDataContainer) -> UtilItemStack.getPersistentData(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING));
+        return UtilItemStack.getPersistentData(itemStack, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER).flatMap(persistentDataContainer -> UtilItemStack.getPersistentData(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING));
     }
 
     public final void setDynamicLoreValue(final ItemStack itemStack, final String key, final String value) {
-        itemStack.editMeta((final ItemMeta itemMeta) -> this.setDynamicLoreValue(itemMeta, key, value));
+        itemStack.editMeta(itemMeta -> this.setDynamicLoreValue(itemMeta, key, value));
     }
 
     public final void setDynamicLoreValue(final ItemMeta itemMeta, final String key, final String value) {
-        if (this.getLore().stream().flatMap((final String line) -> DYNAMIC_LORE_PATTERN.matcher(line).results()).noneMatch((final MatchResult matchResult) -> matchResult.group(1).equals(key))) {
+        if (this.getLore().stream().flatMap(line -> DYNAMIC_LORE_PATTERN.matcher(line).results()).noneMatch(matchResult -> matchResult.group(1).equals(key))) {
             throw new IllegalArgumentException("Unknown dynamic lore key: %s".formatted(key));
         }
 
@@ -213,9 +212,7 @@ public abstract class Item {
             }
         });
 
-        itemMeta.lore(loreList.stream()
-                .map((final String line) -> UtilMessage.deserialize(line).applyFallbackStyle(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false))
-                .toList());
+        itemMeta.lore(loreList.stream().map(line -> UtilMessage.deserialize(line).applyFallbackStyle(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false)).toList());
     }
 
     private List<String> resolveDynamicLore(final ItemMeta itemMeta) {
@@ -223,18 +220,17 @@ public abstract class Item {
 
         final Set<NamespacedKey> unusedNamespacedKeySet = new HashSet<>(persistentDataContainer.getKeys());
 
-        final List<String> loreList = this.getLore().stream().map((final String line) -> {
-            return DYNAMIC_LORE_PATTERN.matcher(line).replaceAll((final MatchResult matchResult) -> {
+        final List<String> loreList = this.getLore().stream().map(line -> {
+            return DYNAMIC_LORE_PATTERN.matcher(line).replaceAll(matchResult -> {
                 final NamespacedKey namespacedKey = new NamespacedKey("dynamic", matchResult.group(1));
+
                 unusedNamespacedKeySet.remove(namespacedKey);
 
-                return UtilItemStack.getPersistentData(persistentDataContainer, namespacedKey, PersistentDataType.STRING)
-                        .map(Matcher::quoteReplacement)
-                        .orElse("");
+                return UtilItemStack.getPersistentData(persistentDataContainer, namespacedKey, PersistentDataType.STRING).map(Matcher::quoteReplacement).orElse("");
             });
         }).toList();
 
-        unusedNamespacedKeySet.forEach((final NamespacedKey namespacedKey) -> UtilItemStack.removePersistentDataType(persistentDataContainer, namespacedKey));
+        unusedNamespacedKeySet.forEach(namespacedKey -> UtilItemStack.removePersistentDataType(persistentDataContainer, namespacedKey));
 
         if (persistentDataContainer.isEmpty()) {
             UtilItemStack.removePersistentDataType(itemMeta, DYNAMIC_LORE_KEY);

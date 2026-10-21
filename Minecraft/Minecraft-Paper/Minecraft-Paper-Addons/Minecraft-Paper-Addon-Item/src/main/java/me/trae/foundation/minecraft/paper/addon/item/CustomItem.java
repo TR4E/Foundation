@@ -55,12 +55,12 @@ public abstract class CustomItem extends Item {
         return true;
     }
 
-    public boolean removeUseCooldown() {
-        return true;
+    public boolean isInvincible() {
+        return false;
     }
 
-    public boolean usableInRecipes() {
-        return false;
+    public boolean removeVanillaUseCooldown() {
+        return true;
     }
 
     public boolean naturallyObtainable() {
@@ -85,9 +85,6 @@ public abstract class CustomItem extends Item {
                 UtilString.pair("Hide-Attributes", Boolean.toString(this.hideAttributes())),
                 UtilString.pair("Max-Stack-Size", Integer.toString(this.getMaxStackSize())),
                 UtilString.pair("Add-Glow", this.addGlow() != null ? Boolean.toString(this.addGlow()) : ""),
-                UtilString.pair("Remove-Use-Cooldown", Boolean.toString(this.removeUseCooldown())),
-                UtilString.pair("Usable-In-Recipes", Boolean.toString(this.usableInRecipes())),
-                UtilString.pair("Naturally-Obtainable", Boolean.toString(this.naturallyObtainable())),
                 UtilString.pair("Delete-If-Removed", Boolean.toString(this.deleteIfRemoved())),
                 UtilString.pair("Style-Name", this.getStyle() != null ? this.getStyle().getName() : ""),
                 UtilString.pair("Style-Tag", this.getStyle() != null ? this.getStyle().getTag() : "")

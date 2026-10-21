@@ -15,7 +15,7 @@ public abstract class BaseUtilMessage {
     }
 
     public static String serializeWithReset(final Component component) {
-        return Message.getMiniMessage().serialize(component) + "<reset>";
+        return serialize(component) + "<reset>";
     }
 
     public static Component deserialize(final String string) {

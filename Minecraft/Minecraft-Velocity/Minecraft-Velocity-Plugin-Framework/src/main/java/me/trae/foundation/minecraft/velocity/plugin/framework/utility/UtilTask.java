@@ -1,6 +1,5 @@
 package me.trae.foundation.minecraft.velocity.plugin.framework.utility;
 
-import com.velocitypowered.api.scheduler.ScheduledTask;
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.velocity.plugin.framework.VelocityPlugin;
 import me.trae.foundation.minecraft.velocity.plugin.framework.utility.registry.PluginRegistry;
@@ -25,9 +24,7 @@ public class UtilTask {
     }
 
     public static void executeLaterAsynchronous(final VelocityPlugin velocityPlugin, final int delay, final ChronoUnit chronoUnit, final Runnable runnable) {
-        final Duration delayDuration = Duration.of(delay, chronoUnit);
-
-        velocityPlugin.getProxyServer().getScheduler().buildTask(velocityPlugin, runnable).delay(delayDuration).schedule();
+        velocityPlugin.getProxyServer().getScheduler().buildTask(velocityPlugin, runnable).delay(Duration.of(delay, chronoUnit)).schedule();
     }
 
     public static void executeLaterAsynchronous(final int delay, final ChronoUnit chronoUnit, final Runnable runnable) {
@@ -35,17 +32,14 @@ public class UtilTask {
     }
 
     public static void scheduleAsynchronous(final VelocityPlugin velocityPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable, final Supplier<Boolean> cancelSupplier) {
-        final Duration initialDelayDuration = Duration.of(initialDelay, chronoUnit);
-        final Duration periodDuration = Duration.of(period, chronoUnit);
-
-        velocityPlugin.getProxyServer().getScheduler().buildTask(velocityPlugin, (final ScheduledTask scheduledTask) -> {
+        velocityPlugin.getProxyServer().getScheduler().buildTask(velocityPlugin, scheduledTask -> {
             if (cancelSupplier != null && cancelSupplier.get()) {
                 scheduledTask.cancel();
                 return;
             }
 
             runnable.run();
-        }).delay(initialDelayDuration).repeat(periodDuration).schedule();
+        }).delay(Duration.of(initialDelay, chronoUnit)).repeat(Duration.of(period, chronoUnit)).schedule();
     }
 
     public static void scheduleAsynchronous(final VelocityPlugin velocityPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable) {

@@ -38,9 +38,7 @@ public class UtilTask {
     }
 
     public static void executeLaterSynchronously(final PaperPlugin paperPlugin, final int delay, final ChronoUnit chronoUnit, final Runnable runnable) {
-        final long delayTicks = Duration.of(delay, chronoUnit).toMillis() / 50L;
-
-        Bukkit.getServer().getScheduler().runTaskLater(paperPlugin, runnable, delayTicks);
+        Bukkit.getServer().getScheduler().runTaskLater(paperPlugin, runnable, Duration.of(delay, chronoUnit).toMillis() / 50L);
     }
 
     public static void executeLaterSynchronously(final int delay, final ChronoUnit chronoUnit, final Runnable runnable) {
@@ -48,9 +46,11 @@ public class UtilTask {
     }
 
     public static void executeLaterAsynchronously(final PaperPlugin paperPlugin, final int delay, final ChronoUnit chronoUnit, final Runnable runnable) {
-        final long delayTicks = Duration.of(delay, chronoUnit).toMillis() / 50L;
-
-        Bukkit.getServer().getScheduler().runTaskLaterAsynchronously(paperPlugin, runnable, delayTicks);
+        Bukkit.getServer().getScheduler().runTaskLaterAsynchronously(
+                paperPlugin,
+                runnable,
+                Duration.of(delay, chronoUnit).toMillis() / 50L
+        );
     }
 
     public static void executeLaterAsynchronously(final int delay, final ChronoUnit chronoUnit, final Runnable runnable) {
@@ -58,17 +58,19 @@ public class UtilTask {
     }
 
     public static void schedule(final PaperPlugin paperPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable, final Supplier<Boolean> cancelSupplier) {
-        final long initialDelayTicks = Duration.of(initialDelay, chronoUnit).toMillis() / 50L;
-        final long periodTicks = Duration.of(period, chronoUnit).toMillis() / 50L;
+        Bukkit.getServer().getScheduler().runTaskTimer(
+                paperPlugin,
+                bukkitTask -> {
+                    if (cancelSupplier != null && cancelSupplier.get()) {
+                        bukkitTask.cancel();
+                        return;
+                    }
 
-        Bukkit.getServer().getScheduler().runTaskTimer(paperPlugin, bukkitTask -> {
-            if (cancelSupplier != null && cancelSupplier.get()) {
-                bukkitTask.cancel();
-                return;
-            }
-
-            runnable.run();
-        }, initialDelayTicks, periodTicks);
+                    runnable.run();
+                },
+                Duration.of(initialDelay, chronoUnit).toMillis() / 50L,
+                Duration.of(period, chronoUnit).toMillis() / 50L
+        );
     }
 
     public static void schedule(final PaperPlugin paperPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable) {
@@ -84,17 +86,19 @@ public class UtilTask {
     }
 
     public static void scheduleAsynchronous(final PaperPlugin paperPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable, final Supplier<Boolean> cancelSupplier) {
-        final long initialDelayTicks = Duration.of(initialDelay, chronoUnit).toMillis() / 50L;
-        final long periodTicks = Duration.of(period, chronoUnit).toMillis() / 50L;
+        Bukkit.getServer().getScheduler().runTaskTimerAsynchronously(
+                paperPlugin,
+                bukkitTask -> {
+                    if (cancelSupplier != null && cancelSupplier.get()) {
+                        bukkitTask.cancel();
+                        return;
+                    }
 
-        Bukkit.getServer().getScheduler().runTaskTimerAsynchronously(paperPlugin, bukkitTask -> {
-            if (cancelSupplier != null && cancelSupplier.get()) {
-                bukkitTask.cancel();
-                return;
-            }
-
-            runnable.run();
-        }, initialDelayTicks, periodTicks);
+                    runnable.run();
+                },
+                Duration.of(initialDelay, chronoUnit).toMillis() / 50L,
+                Duration.of(period, chronoUnit).toMillis() / 50L
+        );
     }
 
     public static void scheduleAsynchronous(final PaperPlugin paperPlugin, final int initialDelay, final int period, final ChronoUnit chronoUnit, final Runnable runnable) {

@@ -51,7 +51,6 @@ Items form an inheritance chain from simple definitions to fully interactive too
 `Item` is the abstract base for all items. It defines the material, display name, lore, and visual properties.
 
 ```java
-@Singleton
 public class InfoBook extends Item {
 
     public InfoBook() {

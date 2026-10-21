@@ -29,16 +29,16 @@ public final class ItemRecipeListener implements Listener {
             return false;
         }
 
-        return this.itemService.getItemByItemStack(itemStack)
-                .map(customItem -> !customItem.usableInRecipes())
-                .orElse(false);
+        return this.itemService.getItemByItemStack(itemStack).map(customItem -> !customItem.usableInRecipes()).orElse(false);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPrepareItemCraft(final PrepareItemCraftEvent event) {
-        if (Stream.of(event.getInventory().getMatrix()).anyMatch(this::isRefused)) {
-            event.getInventory().setResult(null);
+        if (Stream.of(event.getInventory().getMatrix()).noneMatch(this::isRefused)) {
+            return;
         }
+
+        event.getInventory().setResult(null);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -47,9 +47,11 @@ public final class ItemRecipeListener implements Listener {
             return;
         }
 
-        if (Stream.of(event.getInventory().getMatrix()).anyMatch(this::isRefused)) {
-            event.setCancelled(true);
+        if (Stream.of(event.getInventory().getMatrix()).noneMatch(this::isRefused)) {
+            return;
         }
+
+        event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -58,9 +60,15 @@ public final class ItemRecipeListener implements Listener {
             return;
         }
 
-        if (event.getBlock().getState(false) instanceof final Crafter crafter && Stream.of(crafter.getInventory().getContents()).anyMatch(this::isRefused)) {
-            event.setCancelled(true);
+        if (!(event.getBlock().getState(false) instanceof final Crafter crafter)) {
+            return;
         }
+
+        if (Stream.of(crafter.getInventory().getContents()).noneMatch(this::isRefused)) {
+            return;
+        }
+
+        event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -69,18 +77,22 @@ public final class ItemRecipeListener implements Listener {
             return;
         }
 
-        if (this.isRefused(event.getSource())) {
-            event.setCancelled(true);
+        if (!this.isRefused(event.getSource())) {
+            return;
         }
+
+        event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPrepareSmithing(final PrepareSmithingEvent event) {
         final SmithingInventory smithingInventory = event.getInventory();
 
-        if (Stream.of(smithingInventory.getInputTemplate(), smithingInventory.getInputEquipment(), smithingInventory.getInputMineral()).anyMatch(this::isRefused)) {
-            event.setResult(null);
+        if (Stream.of(smithingInventory.getInputTemplate(), smithingInventory.getInputEquipment(), smithingInventory.getInputMineral()).noneMatch(this::isRefused)) {
+            return;
         }
+
+        event.setResult(null);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -89,8 +101,10 @@ public final class ItemRecipeListener implements Listener {
             return;
         }
 
-        if (this.isRefused(event.getContents().getIngredient())) {
-            event.setCancelled(true);
+        if (!this.isRefused(event.getContents().getIngredient())) {
+            return;
         }
+
+        event.setCancelled(true);
     }
 }

@@ -41,22 +41,34 @@ public final class ItemRecipeListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onCraftItem(final CraftItemEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
+
         if (Stream.of(event.getInventory().getMatrix()).anyMatch(this::isRefused)) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onCrafterCraft(final CrafterCraftEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
+
         if (event.getBlock().getState(false) instanceof final Crafter crafter && Stream.of(crafter.getInventory().getContents()).anyMatch(this::isRefused)) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onBlockCook(final BlockCookEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
+
         if (this.isRefused(event.getSource())) {
             event.setCancelled(true);
         }
@@ -71,8 +83,12 @@ public final class ItemRecipeListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onBrew(final BrewEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
+
         if (this.isRefused(event.getContents().getIngredient())) {
             event.setCancelled(true);
         }

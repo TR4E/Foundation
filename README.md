@@ -69,7 +69,8 @@ Shared Minecraft support plus platform-specific plugin frameworks. Paper addons 
 | [Minecraft-Paper-Addon-Billboard](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Billboard) | Billboard displays and image/video support |
 | [Minecraft-Paper-Addon-Death](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Death) | Death events and custom death messages |
 | [Minecraft-Paper-Addon-Hologram](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Hologram) | Holograms and their lifecycle events |
-| [Minecraft-Paper-Addon-Item](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item) | Custom items, activation, recipes, and cooldowns |
+| [Minecraft-Paper-Addon-Item](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item) | Custom items, activation, and cooldowns |
+| [Minecraft-Paper-Addon-Recipe](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe) | Custom shaped and shapeless crafting recipes |
 | [Minecraft-Paper-Addon-Sidebar](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Sidebar) | Player sidebar displays |
 | [Minecraft-Paper-Addon-Tablist](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Tablist) | Player tab list management |
 | [Minecraft-Paper-Addon-Team](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Team) | Team management and related events |

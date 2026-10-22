@@ -7,11 +7,12 @@ import me.trae.foundation.injector.core.container.ComponentContainer;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.AbstractMap;
-import java.util.LinkedHashSet;
+import java.util.AbstractSet;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @AllArgsConstructor
 public final class LiveMap<T> extends AbstractMap<Class<? extends T>, T> {
@@ -36,9 +37,23 @@ public final class LiveMap<T> extends AbstractMap<Class<? extends T>, T> {
 
     @Override
     public @NonNull Set<Entry<Class<? extends T>, T>> entrySet() {
-        return this.getMap().entrySet().stream()
-                .map(entry -> Map.<Class<? extends T>, T>entry(entry.getKey().asSubclass(this.rawType()), this.rawType().cast(entry.getValue())))
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return Collections.unmodifiableSet(new AbstractSet<>() {
+
+            @Override
+            public @NonNull Iterator<Entry<Class<? extends T>, T>> iterator() {
+                return LiveMap.this.getMap().entrySet().stream()
+                        .map((final Entry<Class<?>, Object> mapEntry) -> Map.<Class<? extends T>, T>entry(
+                                mapEntry.getKey().asSubclass(LiveMap.this.rawType()),
+                                LiveMap.this.rawType().cast(mapEntry.getValue())
+                        ))
+                        .iterator();
+            }
+
+            @Override
+            public int size() {
+                return LiveMap.this.size();
+            }
+        });
     }
 
     private Map<Class<?>, Object> getMap() {

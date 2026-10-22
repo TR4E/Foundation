@@ -16,6 +16,7 @@ import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -125,9 +126,9 @@ public final class DependencyResolver extends AbstractResolver {
     private Object resolve(final Dependency dependency, final Collection<Type> dependencyTypeSet) {
         return switch (dependency.getKind()) {
             case SINGLE -> this.resolveSingle(dependency.getType(), dependencyTypeSet);
-            case LIST -> new LiveList<>(this.getComponentContainer(), dependency.getType());
-            case SET -> new LiveSet<>(this.getComponentContainer(), dependency.getType());
-            case MAP -> new LiveMap<>(this.getComponentContainer(), dependency.getType());
+            case LIST -> Collections.unmodifiableList(new LiveList<>(this.getComponentContainer(), dependency.getType()));
+            case SET -> Collections.unmodifiableSet(new LiveSet<>(this.getComponentContainer(), dependency.getType()));
+            case MAP -> Collections.unmodifiableMap(new LiveMap<>(this.getComponentContainer(), dependency.getType()));
         };
     }
 

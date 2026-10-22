@@ -1,6 +1,7 @@
 package me.trae.foundation.minecraft.paper.addon.item.services;
 
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.DefaultItem;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @AllArgsConstructor
+@Getter
 @AddonSingleton
 public final class ItemService implements Lifecycle {
 
@@ -41,19 +43,27 @@ public final class ItemService implements Lifecycle {
         }
     }
 
-    public List<CustomItem> getItemList() {
-        return List.copyOf(this.itemList);
-    }
-
     public Optional<CustomItem> getItemByIdentifier(final String identifier) {
+        if (identifier == null) {
+            return Optional.empty();
+        }
+
         return Optional.ofNullable(this.identifierItemMap.get(identifier));
     }
 
     public Optional<CustomItem> getObtainableItemByMaterial(final Material material) {
+        if (material == null) {
+            return Optional.empty();
+        }
+
         return Optional.ofNullable(this.obtainableItemMap.get(material));
     }
 
     public Optional<CustomItem> getItemByItemStack(final ItemStack itemStack) {
+        if (itemStack == null) {
+            return Optional.empty();
+        }
+
         return UtilItemStack.getPersistentData(itemStack, UtilItemStack.IDENTIFIER_KEY, PersistentDataType.STRING).flatMap(this::getItemByIdentifier);
     }
 

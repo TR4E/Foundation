@@ -100,7 +100,7 @@ public final class CompactGoldRecipe extends CustomShapelessRecipe {
 
 The item stack amount is expanded into individual slots via `Collections.nCopies`. In this example, 9 gold nuggets fill the crafting grid. A stack of 9 nuggets in one slot does not replace the nine required slots.
 
-The result stack size is capped at the material's maximum stack size.
+The registered result amount is capped at the result item's maximum stack size, including a custom stack-size component when present.
 
 ## AbstractCustomRecipe
 
@@ -169,7 +169,9 @@ Cancel the event to suppress automated output; provide a non-null item stack whe
 
 `RecipePostCraftListener` observes Paper's `ItemCraftedEvent` and `CrafterCraftEvent` at `MONITOR` priority and dispatches the corresponding post-craft notification. The player path skips an empty result; the crafter path skips cancelled events.
 
-Player notifications carry the crafted stack reported by Paper for each pickup, including repeated pickups during shift-crafting. Add the result amounts across notifications to count total output. Crafter notifications carry the result of the uncancelled `CrafterCraftEvent`. These notifications run during the underlying server events, rather than after the entire inventory transaction finishes.
+Player notifications carry the crafted stack reported by Paper for each pickup, including repeated pickups during shift-crafting. For complete pickups, sum the result amounts across notifications to count output. Crafter notifications carry the result of the uncancelled `CrafterCraftEvent`. These notifications run during the underlying server events, rather than after the entire inventory transaction finishes.
+
+On Paper 1.21.11, the player pickup hooks fire before the crafting matrix is decremented. The listener resolves the recipe from the player's open crafting inventory while the ingredients are still present, including the final ingredient set. A shift-click can produce multiple notifications, each carrying a recipe execution's output stack; it is not a single notification with the whole batch amount. For example, with enough inventory space, 64 oak logs crafted into planks produce 64 pickups of 4 planks each. The result is Paper's reported crafted stack, rather than an independently measured inventory increase.
 
 ## Disabled recipe placeholders
 
@@ -187,7 +189,7 @@ public final class RecipeAvailabilityListener implements Listener {
         }
 
         final ItemStack placeholderItemStack = new ItemStack(Material.BARRIER);
-        placeholderItemStack.editMeta((final ItemMeta itemMeta) -> {
+        placeholderItemStack.editMeta(itemMeta -> {
             itemMeta.displayName(Component.text("Recipe unavailable", NamedTextColor.RED));
             UtilItemStack.setPersistentDataType(
                     itemMeta,
@@ -205,7 +207,7 @@ public final class RecipeAvailabilityListener implements Listener {
 
 The marker is a `PersistentDataType.BOOLEAN` value at `custom:disabled_recipe`. Both placeholder retention and click prevention check whether the value is present. Use `true` when setting it.
 
-`RecipeDisabledPlaceholderListener` cancels inventory clicks on marked items at `LOW` priority, preventing players from taking the placeholder. This display behavior applies to custom player recipe previews; rejected automated crafts are cancelled instead.
+`RecipeDisabledPlaceholderListener` cancels inventory clicks involving marked slot, cursor, hotbar-swap, or offhand-swap items at `LOW` priority. It also blocks marked items in drag operations, inventory transfers, and crafter output. This display behavior applies to custom player recipe previews; rejected automated crafts are cancelled instead.
 
 ## Recipe service
 
@@ -213,11 +215,13 @@ Inject `RecipeService` into plugin components to inspect registered recipes:
 
 | Method or constant | Purpose |
 | --- | --- |
-| `getRecipeList()` | The injected live list of recipe definitions |
+| `getRecipeList()` | The injected read-only live list of recipe definitions |
 | `getRegisteredNamespacedKeySet()` | Keys of custom recipes successfully registered during the latest rebuild |
-| `getRecipeByKey(namespacedKey)` | Resolve a custom recipe as an `Optional<AbstractCustomRecipe>` |
+| `getRecipeByKey(namespacedKey)` | Resolve a custom recipe through the key map; empty for null or an unknown key |
 | `isIngredient(namespacedKey, itemStack)` | Check whether the item is an ingredient of that registered recipe |
 | `DISABLED_RECIPE_KEY` | Persistent-data key for disabled preview items |
+
+On live dependency updates, the service rebuilds its recipe lookup map and publishes an unmodifiable snapshot through a volatile field. Key lookup and ingredient checks use that map instead of scanning the recipe list. Shutdown removes registered recipes and clears the lookup snapshot. Use unique recipe keys; when definitions share a key, lookup retains the first definition in the live list.
 
 ## Conflict resolution
 
@@ -228,6 +232,8 @@ Inject `RecipeService` into plugin components to inspect registered recipes:
 When the [Item addon](../Minecraft-Paper-Addon-Item/README.md) is present, `RecipeIngredientListener` listens for `ItemIngredientEvent`. The Item addon fires this event when it encounters a custom item in a crafting context and would normally block it. The Recipe addon checks whether the custom item is a valid ingredient for the recipe being crafted and sets the event to allowed if it is.
 
 This means custom items are blocked from all crafting contexts by default (by the Item addon), but allowed in recipes that explicitly list them as ingredients (by the Recipe addon).
+
+For player previews, `ItemApplyListener` formats the result at `NORMAL` priority before recipe checks run at `HIGHEST`. A disabled placeholder supplied by the recipe checks remains intact because Item formatting has already completed.
 
 The Item addon dependency is optional in the Maven POM. Add it explicitly to your consuming plugin when using this integration, and declare both addons through the Plugin Framework.
 

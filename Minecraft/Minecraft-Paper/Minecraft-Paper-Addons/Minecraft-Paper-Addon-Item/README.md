@@ -1,6 +1,6 @@
 <h1 align="center">Minecraft-Paper-Addon-Item</h1>
 
-<p align="center">Custom items with activation mechanics, cooldowns, versioned updates, and crafting prevention.</p>
+<p align="center">Custom items with activation mechanics, cooldowns, versioned updates, optional instance tracking, and crafting prevention.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -23,9 +23,11 @@ The Item addon provides a framework for defining custom items that are identifie
 - [Channel custom item](#channel-custom-item)
 - [Styling](#styling)
 - [Persistent data stamping](#persistent-data-stamping)
+- [Item tracking](#item-tracking)
 - [Dynamic lore](#dynamic-lore)
 - [Crafting prevention](#crafting-prevention)
 - [Inventory synchronization](#inventory-synchronization)
+- [Item service](#item-service)
 - [Events](#events)
 - [Installation](#installation)
 
@@ -38,13 +40,13 @@ Items form an inheritance chain from simple definitions to fully interactive too
 | Class | Adds |
 | --- | --- |
 | `Item` | Base: material, name, lore, color, style, display name formatting |
-| `CustomItem` | Persistent data identifier, namespace, version tracking, update/refresh lifecycle |
+| `CustomItem` | Definition identifier, namespace, version tracking, optional instance tracking, update/refresh lifecycle |
 | `ActivatableCustomItem` | Multiple activation types (left click, right click, drop, swap hand) |
 | `SingleActivatableCustomItem` | Single activation type with simplified API and cooldown |
 | `ChannelCustomItem` | Sustained right-click activation with start/channel/stop lifecycle |
 | `DefaultItem` | Wraps vanilla items with styling only, no identifier |
 
-`ItemService` is the central registry and Injector application. It discovers all `Item` components and manages the apply/update/refresh lifecycle.
+`ItemService` discovers registered `CustomItem` components through an injected live list and manages the apply/update/refresh lifecycle. Vanilla materials use cached `DefaultItem` definitions.
 
 ## Base item
 
@@ -93,12 +95,12 @@ public class InfoBook extends Item {
 | `hideAttributes()` | `boolean` | `false` | Hide all item flags |
 | `getMaxStackSize()` | `int` | Material default | Custom max stack size |
 | `addGlow()` | `Boolean` | `null` | Enchantment glint override (`true` = always, `false` = never, `null` = default) |
-| `stamp(ItemMeta)` | `void` | no-op | Write custom persistent data during creation |
+| `stamp(ItemMeta)` | `void` | no-op | Write custom persistent data during creation and updates; skipped by `createView()` |
 | `editMeta(ItemMeta)` | `void` | no-op | Final item meta adjustments after all other properties are applied |
 
 ## Custom item
 
-`CustomItem` extends `Item` with a persistent data identifier for tracking and version management. The identifier is a random UUIDv4 stored in the item's `PersistentDataContainer`. The namespace is an uppercase key used for configuration and commands.
+`CustomItem` extends `Item` with a persistent definition identifier for lookup and version management. Supply this identifier in the constructor; all stacks of the same definition share it. The examples use UUID strings, but the addon does not generate this identifier or require a UUID format. The separate namespace string can provide a readable name for consuming plugins.
 
 ```java
 @Singleton
@@ -144,6 +146,7 @@ public class HealingWand extends CustomItem {
 | --- | --- | --- | --- |
 | `hideAttributes()` | `boolean` | `true` | Custom items hide attributes by default |
 | `isInvincible()` | `boolean` | `false` | Prevent the item from being destroyed |
+| `isTrackable()` | `boolean` | `false` | Enable an instance tracking ID when `getMaxStackSize()` is `1` |
 | `removeVanillaUseCooldown()` | `boolean` | `true` | Remove the vanilla use cooldown animation |
 | `naturallyObtainable()` | `boolean` | `false` | Whether the item can appear in natural loot |
 | `deleteIfRemoved()` | `boolean` | `false` | Delete the item on next inventory sync if the definition is removed |
@@ -342,7 +345,7 @@ Utility methods: `isChanneling(player)` checks if a player is currently channeli
 
 ## Styling
 
-Items define their appearance through color, decorations, and an optional `ItemStyle` record for mass configuration:
+Items define their appearance through color, decorations, and an optional `ItemStyle` object for mass configuration:
 
 ```java
 @Singleton
@@ -388,7 +391,7 @@ public class LegendaryBlade extends SingleActivatableCustomItem {
 
 When `getStyle()` is set, it provides `getColor()`, `getDecorations()`, and `getTooltipStyle()` through the style object. The style's `tag` field renders a resource pack font tag below the lore. You can also use `ItemStyle.of(name, color, tooltipStyle, tag)` without decorations.
 
-Individual overrides of `getColor()` or `getDecorations()` on the item class take precedence over the style when `getStyle()` returns `null`.
+The base `getColor()`, `getDecorations()`, and `getTooltipStyle()` methods read from the style when present. Override an individual method to provide a different value.
 
 ## Persistent data stamping
 
@@ -396,12 +399,60 @@ Custom items are identified through Bukkit's `PersistentDataContainer` on the it
 
 | Key | Type | Purpose |
 | --- | --- | --- |
-| `custom:item_identifier` | `String` | The UUIDv4 identifier matching the `CustomItem` |
+| `custom:item_identifier` | `String` | Shared definition identifier supplied to `CustomItem` |
 | `custom:item_version` | `String` | SHA-256 hash of the item's current configuration for update detection |
-| `custom:item_deletable` | `Boolean` | When `true`, the item is removed on next inventory sync |
+| `custom:item_deletable` | `Boolean` | Allows removal during synchronization when the custom definition no longer resolves |
+| `custom:item_tracking_id` | `String` | UUID for an individually tracked item; enabled only for trackable definitions with a stack limit of `1` |
 | `custom:item_dynamic_lore` | Container | Nested container for dynamic lore key-value pairs |
 
-When a player's inventory is synchronized, each item is checked: if it carries an identifier, its version is compared against the current definition. Outdated items are updated in place, preserving durability. Items marked deletable are removed.
+During synchronization, registered custom items are checked against their definition's version. Outdated items are updated, preserving durability. If a definition no longer resolves and no naturally obtainable replacement applies, a deletable item is removed; otherwise, its material receives default styling.
+
+### Creation and updates
+
+| Method | Behaviour |
+| --- | --- |
+| `create()` | Build a new, stamped item with an amount of `1` |
+| `create(amount)` / `create(amount, durability)` | Build a new, stamped stack with the supplied amount and damage |
+| `create(itemStack)` | Build a new stack using the supplied stack's amount and damage; does not copy its other metadata |
+| `createView()` | Build a display stack without calling `stamp`, so custom identifiers, versions, and tracking IDs are not added by that hook |
+| `update(itemStack)` | Apply the current definition and stamp metadata, changing material when needed; use the returned stack |
+| `refresh(itemStack)` | Dispatch `ItemStackUpdateEvent` and return the existing stack without restamping its metadata |
+
+## Item tracking
+
+Enable tracking on a custom item by overriding both methods:
+
+```java
+@Override
+public boolean isTrackable() {
+    return true;
+}
+
+@Override
+protected int getMaxStackSize() {
+    return 1;
+}
+```
+
+When stamped, the item receives a random UUID at `CustomItem.TRACKING_ID_KEY` if it does not already have one. Stamped updates preserve an existing ID. When tracking is disabled or the definition's stack limit is greater than `1`, stamping removes the tracking key. The tracking setting is included in the definition's version hash.
+
+The definition identifier and tracking ID serve different purposes:
+
+| Value | Shared by |
+| --- | --- |
+| `custom:item_identifier` | Every stack belonging to the same `CustomItem` definition |
+| `custom:item_tracking_id` | One individually tracked item |
+
+Ordinary stackable items do not receive tracking IDs from `CustomItem.stamp`. For tracked items, call `create()` separately for each item you issue. `create(amount)` does not enforce the stack limit. Cloning an existing stack or reusing a serialized recipe result also copies its tracking ID, so those operations do not issue a new identity. Use `createView()` for display-only stacks; it skips definition stamping as well as tracking.
+
+Inject `ItemTrackingService` to inspect existing stacks:
+
+| Method | Returns | Behaviour |
+| --- | --- | --- |
+| `getTrackingIdByItemStack(itemStack)` | `Optional<String>` | Read the stored ID when the stack resolves to a currently registered, trackable definition |
+| `findDuplicateTrackingIdSet(contents)` | `Set<String>` | Return an unmodifiable set of IDs repeated across slots or carried by a stack whose amount exceeds `1` |
+
+The scan skips null, empty, and untracked stacks. It only compares the supplied array: scanning two inventories separately does not detect an ID shared between them. It returns findings for the consuming plugin to handle; it does not automatically scan inventories, maintain a persistent registry, or remove duplicates.
 
 ## Dynamic lore
 
@@ -440,21 +491,37 @@ Item definitions are applied to player inventories at these points:
 
 | Trigger | Scope |
 | --- | --- |
-| Player join | Full inventory |
+| Player join | Player inventory and ender chest |
 | Chest open | Block inventory contents |
 | Item pickup | Single item |
 | Crafting result | Result slot |
 | Smelting result | Result slot |
 
-The `apply` method on `ItemService` identifies each item by its persistent data, updates outdated items, refreshes styling on current items, wraps vanilla items in `DefaultItem` for consistent styling, and removes items marked as deletable.
+The `apply` method on `ItemService` resolves registered custom definitions, updates outdated items, and dispatches refresh events for current items. It can also convert a material into a naturally obtainable custom item, remove an unresolved deletable item, or apply a cached `DefaultItem` definition.
+
+Crafting preview formatting runs at `NORMAL` priority. The Recipe addon's checks run later at `HIGHEST`, so a disabled placeholder supplied by those checks is not passed through Item formatting afterward. Inventory synchronization also handles stored items in block-state containers and bundles.
 
 Durability is preserved during updates. When the material changes between versions, durability is scaled proportionally (upgrade) or capped (downgrade).
+
+## Item service
+
+Inject `ItemService` to access registered definitions:
+
+| Method | Returns | Behaviour |
+| --- | --- | --- |
+| `getItemList()` | `List<CustomItem>` | Injected read-only live list of custom definitions |
+| `getItemByIdentifier(identifier)` | `Optional<CustomItem>` | Resolve a definition by its exact identifier; empty for null or unknown input |
+| `getObtainableItemByMaterial(material)` | `Optional<CustomItem>` | Resolve a naturally obtainable definition; empty for null or unknown input |
+| `getItemByItemStack(itemStack)` | `Optional<CustomItem>` | Resolve the definition from the stack's identifier; empty for null or an unknown identifier |
+| `apply(itemStack)` | `ItemStack` | Apply the item lifecycle; may return a replacement stack or null |
+
+`getItemList()` follows registrations as dependencies initialize and shut down. Callers cannot add, remove, or replace entries through the injected list. The item definitions themselves retain their own behaviour and state.
 
 ## Events
 
 | Event | Type | Purpose |
 | --- | --- | --- |
-| `ItemMetaUpdateEvent` | Informational | Fired when item meta is updated during create or refresh |
+| `ItemMetaUpdateEvent` | Informational | Fired during creation, view creation, and definition updates |
 | `ItemStackUpdateEvent` | Informational | Fired when an item stack is updated |
 | `ItemPreActivateEvent` | Cancellable | Fired before item activation |
 | `ItemPostActivateEvent` | Informational | Fired after item activation |

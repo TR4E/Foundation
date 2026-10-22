@@ -34,15 +34,15 @@ The Chat addon routes player messages through channels that define their recipie
 1. Ignore an already cancelled Paper chat event; otherwise, cancel normal delivery.
 2. Dispatch `ChatSelectChannelEvent` with the sender and the current default channel.
 3. If a channel is selected, dispatch `ChatSendEvent`. If none is selected, skip the message and log the player's name.
-4. Evaluate static placeholders into their positions in a component array.
-5. Dispatch `ChatReceiveEvent` for each player returned by the channel, giving each event its own copy of the array.
+4. Snapshot the channel's placeholder list once and evaluate static placeholders into their positions in a component array.
+5. Dispatch `ChatReceiveEvent` for each player returned by the channel, sharing the immutable placeholder snapshot and giving each event its own copy of the component array.
 6. Fill dynamic placeholder positions for that recipient, join the components with spaces, and send the result.
 
 Cancelling `ChatSendEvent` prevents delivery to all recipients. Cancelling `ChatReceiveEvent` prevents delivery to that recipient only.
 
 ## Placeholders
 
-`ChatPlaceholder` is the shared marker interface. Implement one of its two subinterfaces to define when a component is evaluated:
+`ChatPlaceholder` is a sealed marker interface permitting `StaticChatPlaceholder` and `DynamicChatPlaceholder`. Implement one of those subinterfaces to define when a component is evaluated; both remain open to implementations in consuming plugins:
 
 | Interface | Method | Evaluated |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ public final class MessageChatPlaceholder implements StaticChatPlaceholder {
 }
 ```
 
-Return `Component.empty()` to omit an optional part. The join helper skips `null` results and `Component.empty()`, adding spaces between the remaining parts. Include punctuation within a component or provide a separate placeholder for it.
+Return `Component.empty()` to omit an optional part. The join helper skips `null` results and `Component.empty()`, adding spaces between the remaining parts. The placeholder list itself must contain non-null entries. Include punctuation within a component or provide a separate placeholder for it.
 
 Placeholders can receive plugin services through constructor injection. Each channel chooses the implementations it needs.
 
@@ -198,6 +198,8 @@ Your plugin can also store a player's selected channel and apply it through this
 Run send and receive cancellation or component-editing handlers before the addon's `HIGHEST` handlers, such as at the default `NORMAL` priority.
 
 `ChatReceiveEvent.getComponents()` exposes the recipient's own array. Static positions are already populated when the event is dispatched; dynamic positions are filled by `ChatListener`. Earlier listeners can change static entries for that recipient. Values assigned to dynamic positions before rendering are replaced by the corresponding dynamic placeholder.
+
+`ChatReceiveEvent.getPlaceholderList()` exposes the unmodifiable snapshot used to index that array. Every recipient of the same sent message shares this snapshot. The listener does not call `channel.getPlaceholders()` again during delivery, so changes to the channel's list affect later messages.
 
 The sender, recipient, message, and channel on send and receive events are read-only references. `ChatSelectChannelEvent` provides the channel setter.
 

@@ -1,6 +1,6 @@
 <h1 align="center">Minecraft-Paper-Addons</h1>
 
-<p align="center">Optional Paper plugin features: items, recipes, holograms, sidebars, billboards, death messages, tab lists, and teams.</p>
+<p align="center">Optional Paper plugin features: chat channels, items, recipes, holograms, sidebars, billboards, death messages, tab lists, and teams.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -8,13 +8,14 @@
   <a href="https://papermc.io/"><img alt="Paper" src="https://img.shields.io/badge/Paper-1.21.11-44cc11?logo=minecraft&logoColor=white"></a>
 </p>
 
-Minecraft-Paper-Addons is a Maven aggregator for the eight optional feature addons. Each addon is a standalone library that integrates with the [Plugin Framework](../Minecraft-Paper-Plugin-Framework/README.md) through the addon system. Add only the addons your plugin needs.
+Minecraft-Paper-Addons is a Maven aggregator for the nine optional feature addons. Each addon is a standalone library that integrates with the [Plugin Framework](../Minecraft-Paper-Plugin-Framework/README.md) through the addon system. Add only the addons your plugin needs.
 
 ## Addons
 
 | Addon | Purpose | NMS |
 | --- | --- | --- |
 | [Billboard](Minecraft-Paper-Addon-Billboard/README.md) | Image and video rendering on maps via item frames | Yes |
+| [Chat](Minecraft-Paper-Addon-Chat/README.md) | Chat channels with static and per-recipient placeholders | No |
 | [Death](Minecraft-Paper-Addon-Death/README.md) | Custom death events and per-player death messages | No |
 | [Hologram](Minecraft-Paper-Addon-Hologram/README.md) | Floating text holograms with per-player content | Yes |
 | [Item](Minecraft-Paper-Addon-Item/README.md) | Custom items with activation, cooldowns, and inventory management | No |

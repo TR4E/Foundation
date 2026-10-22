@@ -47,7 +47,7 @@ public final class ItemApplyListener implements Listener {
         item.setItemStack(itemStack);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.NORMAL)
     public void onPrepareItemCraft(final PrepareItemCraftEvent event) {
         final CraftingInventory craftingInventory = event.getInventory();
 

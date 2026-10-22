@@ -167,9 +167,9 @@ Cancel the event to suppress automated output; provide a non-null item stack whe
 
 ### Post-craft events
 
-`RecipePostCraftListener` observes `CraftItemEvent` and `CrafterCraftEvent` at `MONITOR` priority, skips cancelled events, and dispatches the corresponding post-craft notification. The player path also skips a missing or empty result.
+`RecipePostCraftListener` observes Paper's `ItemCraftedEvent` and `CrafterCraftEvent` at `MONITOR` priority and dispatches the corresponding post-craft notification. The player path skips an empty result; the crafter path skips cancelled events.
 
-These notifications run during the underlying Bukkit event. They are observations rather than a separate callback after the inventory transaction finishes. They carry the current result stack, not a calculated total for a shift-click batch, and fire once per handled Bukkit event rather than once per produced item.
+Player notifications carry the crafted stack reported by Paper for each pickup, including repeated pickups during shift-crafting. Add the result amounts across notifications to count total output. Crafter notifications carry the result of the uncancelled `CrafterCraftEvent`. These notifications run during the underlying server events, rather than after the entire inventory transaction finishes.
 
 ## Disabled recipe placeholders
 

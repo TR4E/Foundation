@@ -8,8 +8,8 @@ import java.util.Map;
 
 public abstract class CustomShapedRecipe extends AbstractCustomRecipe {
 
-    public CustomShapedRecipe(final String namespace) {
-        super(namespace);
+    public CustomShapedRecipe(final String key) {
+        super(key);
     }
 
     @Override

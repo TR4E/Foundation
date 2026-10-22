@@ -21,6 +21,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 @CustomLog
 @AllArgsConstructor
@@ -58,20 +59,18 @@ public final class ChatListener implements Listener {
         final ChatChannel chatChannel = event.getChannel();
         final Component message = event.getMessage();
 
-        final List<ChatPlaceholder> placeholders = chatChannel.getPlaceholders();
+        final List<ChatPlaceholder> placeholderList = List.copyOf(chatChannel.getPlaceholders());
 
-        final Component[] components = new Component[placeholders.size()];
+        final Component[] components = new Component[placeholderList.size()];
 
-        for (int index = 0; index < components.length; index++) {
-            if (!(placeholders.get(index) instanceof final StaticChatPlaceholder staticChatPlaceholder)) {
-                continue;
+        IntStream.range(0, components.length).forEach(index -> {
+            if (placeholderList.get(index) instanceof final StaticChatPlaceholder staticChatPlaceholder) {
+                components[index] = staticChatPlaceholder.apply(sender, message);
             }
-
-            components[index] = staticChatPlaceholder.apply(sender, message);
-        }
+        });
 
         for (final Player recipient : chatChannel.getRecipients(sender)) {
-            UtilEvent.dispatch(new ChatReceiveEvent(event, recipient, components.clone()));
+            UtilEvent.dispatch(new ChatReceiveEvent(event, recipient, placeholderList, components.clone()));
         }
     }
 
@@ -83,20 +82,17 @@ public final class ChatListener implements Listener {
 
         final Player sender = event.getSender();
         final Player recipient = event.getRecipient();
-        final ChatChannel chatChannel = event.getChannel();
         final Component message = event.getMessage();
 
-        final List<ChatPlaceholder> placeholders = chatChannel.getPlaceholders();
+        final List<ChatPlaceholder> placeholderList = event.getPlaceholderList();
 
         final Component[] components = event.getComponents();
 
-        for (int index = 0; index < components.length; index++) {
-            if (!(placeholders.get(index) instanceof final DynamicChatPlaceholder dynamicChatPlaceholder)) {
-                continue;
+        IntStream.range(0, components.length).forEach(index -> {
+            if (placeholderList.get(index) instanceof final DynamicChatPlaceholder dynamicChatPlaceholder) {
+                components[index] = dynamicChatPlaceholder.apply(sender, recipient, message);
             }
-
-            components[index] = dynamicChatPlaceholder.apply(sender, recipient, message);
-        }
+        });
 
         UtilMessage.message(recipient, UtilAdventure.joinWithSpace(components));
     }

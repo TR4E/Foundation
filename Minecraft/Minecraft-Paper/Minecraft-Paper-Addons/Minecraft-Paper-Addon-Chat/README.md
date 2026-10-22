@@ -130,7 +130,7 @@ Global:   USERNAME MESSAGE
 Prefixed: PREFIX USERNAME MESSAGE
 ```
 
-Keep the placeholder list's contents and ordering stable throughout message delivery. Static results are stored by position, and the listener reads the channel's placeholder list again when resolving each recipient's dynamic parts.
+The listener takes an immutable snapshot of the placeholder list once per message. Static and dynamic results use that same ordering for every recipient. Implement either `StaticChatPlaceholder` or `DynamicChatPlaceholder`; the base `ChatPlaceholder` interface is sealed to those two subtypes.
 
 ## Per-recipient placeholders
 
@@ -192,7 +192,7 @@ Your plugin can also store a player's selected channel and apply it through this
 | --- | --- | --- | --- |
 | `ChatSelectChannelEvent` | Asynchronous | Sender, selected channel | Replace or clear the channel |
 | `ChatSendEvent` | Asynchronous | Sender, channel, message | Cancel delivery to all recipients |
-| `ChatReceiveEvent` | Asynchronous | Sender, recipient, channel, message, component array | Cancel delivery to one recipient or edit that recipient's component array |
+| `ChatReceiveEvent` | Asynchronous | Sender, recipient, channel, message, placeholder snapshot, component array | Cancel delivery to one recipient or edit that recipient's component array |
 | `ChatSwitchChannelEvent` | Synchronous | Player, previous channel, new channel | Notification type for plugin-managed channel changes |
 
 Run send and receive cancellation or component-editing handlers before the addon's `HIGHEST` handlers, such as at the default `NORMAL` priority.

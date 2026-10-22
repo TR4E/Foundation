@@ -1,5 +1,6 @@
 package me.trae.foundation.minecraft.paper.addon.recipe.listeners;
 
+import io.papermc.paper.event.inventory.ItemCraftedEvent;
 import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.recipe.AbstractCustomRecipe;
 import me.trae.foundation.minecraft.paper.addon.recipe.events.CustomRecipePostCraftEvent;
@@ -15,7 +16,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.CrafterCraftEvent;
-import org.bukkit.event.inventory.CraftItemEvent;
+import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.ItemStack;
 
 @AllArgsConstructor
@@ -25,21 +26,18 @@ public final class RecipePostCraftListener implements Listener {
     private final RecipeService recipeService;
 
     @EventHandler(priority = EventPriority.MONITOR)
-    public void onCraftItem(final CraftItemEvent event) {
-        if (event.isCancelled()) {
+    public void onItemCrafted(final ItemCraftedEvent event) {
+        final Player player = event.getPlayer();
+        if (!(player.getOpenInventory().getTopInventory() instanceof final CraftingInventory craftingInventory)) {
             return;
         }
 
-        if (!(event.getRecipe() instanceof final Keyed keyed)) {
+        if (!(craftingInventory.getRecipe() instanceof final Keyed keyed)) {
             return;
         }
 
-        if (!(event.getWhoClicked() instanceof final Player player)) {
-            return;
-        }
-
-        final ItemStack result = event.getCurrentItem();
-        if (result == null || result.isEmpty()) {
+        final ItemStack result = event.getCraftedItem();
+        if (result.isEmpty()) {
             return;
         }
 

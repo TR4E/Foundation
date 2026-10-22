@@ -30,8 +30,8 @@ final class LiveCollectionTest {
         final List<Feature> featureList = featureLookup.getFeatureList();
         assertThrows(UnsupportedOperationException.class, featureList::clear);
         assertThrows(UnsupportedOperationException.class, () -> featureList.addAll(List.of()));
-        assertThrows(UnsupportedOperationException.class, () -> featureList.removeIf((final Feature _) -> false));
-        assertThrows(UnsupportedOperationException.class, () -> featureList.replaceAll((final Feature feature) -> feature));
+        assertThrows(UnsupportedOperationException.class, () -> featureList.removeIf(_ -> false));
+        assertThrows(UnsupportedOperationException.class, () -> featureList.replaceAll(feature -> feature));
         assertThrows(UnsupportedOperationException.class, () -> featureList.subList(0, 0).clear());
         assertThrows(UnsupportedOperationException.class, () -> featureList.reversed().clear());
 
@@ -69,7 +69,7 @@ final class LiveCollectionTest {
         final Set<Feature> featureSet = featureLookup.getFeatureSet();
         assertThrows(UnsupportedOperationException.class, () -> featureSet.add(firstFeature));
         assertThrows(UnsupportedOperationException.class, () -> featureSet.remove(firstFeature));
-        assertThrows(UnsupportedOperationException.class, () -> featureSet.removeIf((final Feature _) -> true));
+        assertThrows(UnsupportedOperationException.class, () -> featureSet.removeIf(_ -> true));
 
         final Map<Class<? extends Feature>, Feature> featureMap = featureLookup.getFeatureMap();
         assertThrows(UnsupportedOperationException.class, () -> featureMap.put(FirstFeature.class, firstFeature));
@@ -77,10 +77,10 @@ final class LiveCollectionTest {
         assertThrows(UnsupportedOperationException.class, () -> featureMap.replace(FirstFeature.class, firstFeature));
         assertThrows(UnsupportedOperationException.class, () -> featureMap.computeIfAbsent(
                 FirstFeature.class,
-                (final Class<? extends Feature> _) -> firstFeature
+                _ -> firstFeature
         ));
         assertThrows(UnsupportedOperationException.class, () -> featureMap.replaceAll(
-                (final Class<? extends Feature> _, final Feature _) -> firstFeature
+                (_, _) -> firstFeature
         ));
         assertThrows(UnsupportedOperationException.class, () -> featureMap.keySet().remove(FirstFeature.class));
         assertThrows(UnsupportedOperationException.class, () -> featureMap.values().remove(firstFeature));

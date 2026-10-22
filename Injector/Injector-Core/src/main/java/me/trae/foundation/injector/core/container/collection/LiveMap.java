@@ -42,7 +42,7 @@ public final class LiveMap<T> extends AbstractMap<Class<? extends T>, T> {
             @Override
             public @NonNull Iterator<Entry<Class<? extends T>, T>> iterator() {
                 return LiveMap.this.getMap().entrySet().stream()
-                        .map((final Entry<Class<?>, Object> mapEntry) -> Map.<Class<? extends T>, T>entry(
+                        .map(mapEntry -> Map.<Class<? extends T>, T>entry(
                                 mapEntry.getKey().asSubclass(LiveMap.this.rawType()),
                                 LiveMap.this.rawType().cast(mapEntry.getValue())
                         ))

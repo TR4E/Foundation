@@ -21,6 +21,8 @@ import java.util.Set;
 @AddonSingleton
 public final class RecipeService implements Lifecycle {
 
+    public static final NamespacedKey DISABLED_RECIPE_KEY = new NamespacedKey("custom", "disabled_recipe");
+
     private final Set<NamespacedKey> registeredNamespacedKeySet = new HashSet<>();
 
     private final List<AbstractCustomRecipe> recipeList;
@@ -41,7 +43,7 @@ public final class RecipeService implements Lifecycle {
 
         this.recipeList.forEach(abstractCustomRecipe -> {
             if (Bukkit.getServer().addRecipe(abstractCustomRecipe.build(), true)) {
-                this.registeredNamespacedKeySet.add(abstractCustomRecipe.getKey());
+                this.registeredNamespacedKeySet.add(abstractCustomRecipe.getNamespacedKey());
             }
         });
     }
@@ -52,7 +54,7 @@ public final class RecipeService implements Lifecycle {
     }
 
     public Optional<AbstractCustomRecipe> getRecipeByKey(final NamespacedKey namespacedKey) {
-        return this.recipeList.stream().filter(abstractCustomRecipe -> abstractCustomRecipe.getKey().equals(namespacedKey)).findFirst();
+        return this.recipeList.stream().filter(abstractCustomRecipe -> abstractCustomRecipe.getNamespacedKey().equals(namespacedKey)).findFirst();
     }
 
     public boolean isIngredient(final NamespacedKey namespacedKey, final ItemStack itemStack) {

@@ -21,7 +21,7 @@ public abstract class CustomShapelessRecipe extends AbstractCustomRecipe {
 
     @Override
     public final Recipe build() {
-        final ShapelessRecipe shapelessRecipe = new ShapelessRecipe(this.getKey(), this.buildResult());
+        final ShapelessRecipe shapelessRecipe = new ShapelessRecipe(this.getNamespacedKey(), this.buildResult());
 
         this.collectIngredients().forEach(ingredient -> shapelessRecipe.addIngredient(this.toChoice(ingredient)));
 

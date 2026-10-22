@@ -41,6 +41,10 @@ public class UtilItemStack {
         return Optional.ofNullable(persistentDataContainer.get(namespacedKey, persistentDataType));
     }
 
+    public static <P, C> Optional<C> getPersistentData(final ItemMeta itemMeta, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType) {
+        return getPersistentData(itemMeta.getPersistentDataContainer(), namespacedKey, persistentDataType);
+    }
+
     public static <P, C> Optional<C> getPersistentData(final ItemStack itemStack, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType) {
         return Optional.ofNullable(itemStack).map(ItemStack::getItemMeta).map(ItemMeta::getPersistentDataContainer).flatMap(persistentDataContainer -> getPersistentData(persistentDataContainer, namespacedKey, persistentDataType));
     }

@@ -15,12 +15,14 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public abstract class CustomItem extends Item {
 
     public static final NamespacedKey VERSION_KEY = new NamespacedKey("custom", "item_version");
     public static final NamespacedKey DELETABLE_KEY = new NamespacedKey("custom", "item_deletable");
+    public static final NamespacedKey TRACKING_ID_KEY = new NamespacedKey("custom", "item_tracking_id");
 
     @Getter
     private final String identifier, namespace;
@@ -48,6 +50,14 @@ public abstract class CustomItem extends Item {
         UtilItemStack.setPersistentDataType(itemMeta, VERSION_KEY, PersistentDataType.STRING, this.getVersion());
 
         UtilItemStack.setPersistentDataType(itemMeta, DELETABLE_KEY, PersistentDataType.BOOLEAN, this.deleteIfRemoved());
+
+        if (this.isTrackable() && this.getMaxStackSize() == 1) {
+            if (UtilItemStack.getPersistentData(itemMeta, TRACKING_ID_KEY, PersistentDataType.STRING).isEmpty()) {
+                UtilItemStack.setPersistentDataType(itemMeta, TRACKING_ID_KEY, PersistentDataType.STRING, UUID.randomUUID().toString());
+            }
+        } else {
+            UtilItemStack.removePersistentDataType(itemMeta, TRACKING_ID_KEY);
+        }
     }
 
     @Override
@@ -56,6 +66,10 @@ public abstract class CustomItem extends Item {
     }
 
     public boolean isInvincible() {
+        return false;
+    }
+
+    public boolean isTrackable() {
         return false;
     }
 
@@ -75,19 +89,23 @@ public abstract class CustomItem extends Item {
         final List<TextDecoration> textDecorationList = this.getDecorations();
 
         return List.of(
+                // Item
                 UtilString.pair("Material", this.getMaterial().name()),
-                UtilString.pair("Name", this.getName()),
-                UtilString.pair("Lore", String.join("\u0001", this.getLore())),
-                UtilString.pair("Color", Integer.toString(this.getColor().getRGB())),
-                UtilString.pair("Decorations", textDecorationList != null ? textDecorationList.stream().map(TextDecoration::name).collect(Collectors.joining("\u0001")) : ""),
-                UtilString.pair("Model", this.getModel() != null ? this.getModel().asString() : ""),
-                UtilString.pair("Tooltip-Style", this.getTooltipStyle() != null ? this.getTooltipStyle().asString() : ""),
                 UtilString.pair("Hide-Attributes", Boolean.toString(this.hideAttributes())),
                 UtilString.pair("Max-Stack-Size", Integer.toString(this.getMaxStackSize())),
                 UtilString.pair("Add-Glow", this.addGlow() != null ? Boolean.toString(this.addGlow()) : ""),
-                UtilString.pair("Delete-If-Removed", Boolean.toString(this.deleteIfRemoved())),
                 UtilString.pair("Style-Name", this.getStyle() != null ? this.getStyle().getName() : ""),
-                UtilString.pair("Style-Tag", this.getStyle() != null ? this.getStyle().getTag() : "")
+                UtilString.pair("Style-Tag", this.getStyle() != null ? this.getStyle().getTag() : ""),
+                UtilString.pair("Model", this.getModel() != null ? this.getModel().asString() : ""),
+                UtilString.pair("Tooltip-Style", this.getTooltipStyle() != null ? this.getTooltipStyle().asString() : ""),
+                UtilString.pair("Color", Integer.toString(this.getColor().getRGB())),
+                UtilString.pair("Decorations", textDecorationList != null ? textDecorationList.stream().map(TextDecoration::name).collect(Collectors.joining("\u0001")) : ""),
+                UtilString.pair("Name", this.getName()),
+                UtilString.pair("Lore", String.join("\u0001", this.getLore())),
+
+                // Custom Item
+                UtilString.pair("Trackable", Boolean.toString(this.isTrackable())),
+                UtilString.pair("Delete-If-Removed", Boolean.toString(this.deleteIfRemoved()))
         );
     }
 

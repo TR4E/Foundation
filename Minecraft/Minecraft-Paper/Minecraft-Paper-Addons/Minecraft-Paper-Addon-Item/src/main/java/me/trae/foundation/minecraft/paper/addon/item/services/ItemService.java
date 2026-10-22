@@ -8,7 +8,6 @@ import me.trae.foundation.minecraft.paper.addon.item.DefaultItem;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import org.bukkit.Material;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -95,18 +94,5 @@ public final class ItemService implements Lifecycle {
         }
 
         return itemStack;
-    }
-
-    public void updateInventory(final Inventory inventory) {
-        final ItemStack[] contents = inventory.getContents();
-
-        for (int i = 0; i < contents.length; i++) {
-            final ItemStack existingItemStack = contents[i];
-            final ItemStack updatedItemStack = this.apply(existingItemStack);
-
-            if (updatedItemStack != existingItemStack) {
-                inventory.setItem(i, updatedItemStack);
-            }
-        }
     }
 }

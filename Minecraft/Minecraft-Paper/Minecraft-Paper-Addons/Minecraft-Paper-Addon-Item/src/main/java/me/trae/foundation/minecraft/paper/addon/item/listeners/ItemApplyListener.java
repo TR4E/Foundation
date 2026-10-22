@@ -3,6 +3,8 @@ package me.trae.foundation.minecraft.paper.addon.item.listeners;
 import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.item.services.ItemService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.Container;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.entity.Item;
 import org.bukkit.event.EventHandler;
@@ -17,6 +19,8 @@ import org.bukkit.inventory.BlockInventoryHolder;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.BundleMeta;
 
 @AllArgsConstructor
 @AddonSingleton
@@ -32,7 +36,7 @@ public final class ItemApplyListener implements Listener {
 
         final Item item = event.getItem();
 
-        final ItemStack itemStack = this.itemService.apply(item.getItemStack());
+        final ItemStack itemStack = this.apply(item.getItemStack());
 
         if (itemStack == null) {
             event.setCancelled(true);
@@ -47,7 +51,7 @@ public final class ItemApplyListener implements Listener {
     public void onPrepareItemCraft(final PrepareItemCraftEvent event) {
         final CraftingInventory craftingInventory = event.getInventory();
 
-        craftingInventory.setResult(this.itemService.apply(craftingInventory.getResult()));
+        craftingInventory.setResult(this.apply(craftingInventory.getResult()));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -56,7 +60,7 @@ public final class ItemApplyListener implements Listener {
             return;
         }
 
-        final ItemStack itemStack = this.itemService.apply(event.getResult());
+        final ItemStack itemStack = this.apply(event.getResult());
 
         if (itemStack == null) {
             event.setCancelled(true);
@@ -68,7 +72,8 @@ public final class ItemApplyListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(final PlayerJoinEvent event) {
-        this.itemService.updateInventory(event.getPlayer().getInventory());
+        this.updateInventory(event.getPlayer().getInventory());
+        this.updateInventory(event.getPlayer().getEnderChest());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -83,6 +88,78 @@ public final class ItemApplyListener implements Listener {
             return;
         }
 
-        this.itemService.updateInventory(topInventory);
+        this.updateInventory(topInventory);
+    }
+
+    private void updateInventory(final Inventory inventory) {
+        final ItemStack[] contents = inventory.getContents();
+
+        for (int i = 0; i < contents.length; i++) {
+            final ItemStack existingItemStack = contents[i];
+            final ItemStack updatedItemStack = this.apply(existingItemStack);
+
+            if (updatedItemStack != existingItemStack) {
+                inventory.setItem(i, updatedItemStack);
+            }
+        }
+    }
+
+    private ItemStack apply(final ItemStack itemStack) {
+        final ItemStack updatedItemStack = this.itemService.apply(itemStack);
+
+        this.applyContents(updatedItemStack);
+
+        return updatedItemStack;
+    }
+
+    private void applyContents(final ItemStack itemStack) {
+        if (itemStack == null || itemStack.isEmpty()) {
+            return;
+        }
+
+        itemStack.editMeta(itemMeta -> {
+            if (itemMeta instanceof final BlockStateMeta blockStateMeta) {
+                this.applyBlockState(blockStateMeta);
+                return;
+            }
+
+            if (itemMeta instanceof final BundleMeta bundleMeta) {
+                this.applyBundle(bundleMeta);
+            }
+        });
+    }
+
+    private void applyBlockState(final BlockStateMeta blockStateMeta) {
+        if (!blockStateMeta.hasBlockState()) {
+            return;
+        }
+
+        final BlockState blockState = blockStateMeta.getBlockState();
+
+        if (!(blockState instanceof final Container container)) {
+            return;
+        }
+
+        final Inventory inventory = container.getInventory();
+
+        final ItemStack[] contents = inventory.getContents();
+
+        for (int i = 0; i < contents.length; i++) {
+            inventory.setItem(i, this.itemService.apply(contents[i]));
+        }
+
+        blockStateMeta.setBlockState(blockState);
+    }
+
+    private void applyBundle(final BundleMeta bundleMeta) {
+        if (!bundleMeta.hasItems()) {
+            return;
+        }
+
+        bundleMeta.setItems(bundleMeta.getItems().stream()
+                .map(this.itemService::apply)
+                .filter(itemStack -> itemStack != null && !itemStack.isEmpty())
+                .toList()
+        );
     }
 }

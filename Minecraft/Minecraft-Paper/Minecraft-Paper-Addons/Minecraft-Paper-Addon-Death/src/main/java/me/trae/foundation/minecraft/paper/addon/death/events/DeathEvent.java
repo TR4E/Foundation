@@ -1,7 +1,9 @@
 package me.trae.foundation.minecraft.paper.addon.death.events;
 
 import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
+import me.trae.foundation.utilities.UtilString;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
@@ -29,7 +31,9 @@ public interface DeathEvent {
 
     void setSoundStash(final SoundStash soundStash);
 
-    Component getCauseName();
+    default Component getCauseName() {
+        return Component.text(UtilString.clean(this.getCause().name()), NamedTextColor.YELLOW);
+    }
 
     Component getReasonName();
 

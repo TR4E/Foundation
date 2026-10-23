@@ -11,7 +11,7 @@ import me.trae.foundation.minecraft.paper.addon.billboard.types.BillboardImage;
 import me.trae.foundation.minecraft.paper.addon.billboard.types.BillboardVideo;
 import me.trae.foundation.minecraft.paper.addon.billboard.utility.UtilMap;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
-import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilNms;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
 import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
 import net.minecraft.world.level.saveddata.maps.MapId;
@@ -148,7 +148,7 @@ public final class BillboardService implements Lifecycle, Listener {
             }
 
             for (final Player player : viewerList) {
-                packetList.forEach(packet -> UtilNms.sendPacket(player, packet));
+                packetList.forEach(packet -> UtilPacket.send(player, packet));
             }
 
             video.setFrameIndex(frameIndex);
@@ -199,24 +199,24 @@ public final class BillboardService implements Lifecycle, Listener {
             case final BillboardImage image -> {
                 if (image.getSentSet().add(uuid)) {
                     for (int tile = 0; tile < image.getTileCount(); tile++) {
-                        UtilNms.sendPacket(player, this.createPacket(image.getMapIds()[tile], 0, 0, UtilMap.MAP_SIZE, UtilMap.MAP_SIZE, image.getTiles()[tile]));
+                        UtilPacket.send(player, this.createPacket(image.getMapIds()[tile], 0, 0, UtilMap.MAP_SIZE, UtilMap.MAP_SIZE, image.getTiles()[tile]));
                     }
                 }
             }
             case final BillboardVideo video -> {
                 for (int tile = 0; tile < video.getTileCount(); tile++) {
-                    UtilNms.sendPacket(player, this.createPacket(video.getMapIds()[tile], 0, 0, UtilMap.MAP_SIZE, UtilMap.MAP_SIZE, video.getCanvas()[tile].clone()));
+                    UtilPacket.send(player, this.createPacket(video.getMapIds()[tile], 0, 0, UtilMap.MAP_SIZE, UtilMap.MAP_SIZE, video.getCanvas()[tile].clone()));
                 }
             }
         }
 
-        billboard.getSpawnPacketList().forEach(packet -> UtilNms.sendPacket(player, packet));
+        billboard.getSpawnPacketList().forEach(packet -> UtilPacket.send(player, packet));
 
         billboard.getViewerSet().add(uuid);
     }
 
     private void hide(final Billboard billboard, final Player player) {
-        UtilNms.sendPacket(player, billboard.getRemovePacket());
+        UtilPacket.send(player, billboard.getRemovePacket());
 
         billboard.getViewerSet().remove(player.getUniqueId());
     }

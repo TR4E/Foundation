@@ -7,7 +7,6 @@ import lombok.Setter;
 import me.trae.foundation.minecraft.paper.plugin.framework.event.CustomEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
-import me.trae.foundation.utilities.UtilString;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Entity;
@@ -47,11 +46,6 @@ public final class VanillaDeathEvent extends CustomEvent implements DeathEvent {
                 entityDeathEvent.getDroppedExp(),
                 SoundStash.of(entityDeathEvent.getDeathSound(), entityDeathEvent.getDeathSoundCategory(), entityDeathEvent.getDeathSoundVolume(), entityDeathEvent.getDeathSoundPitch())
         );
-    }
-
-    @Override
-    public Component getCauseName() {
-        return Component.text(UtilString.clean(this.cause.name()), NamedTextColor.YELLOW);
     }
 
     @Override

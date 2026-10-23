@@ -30,11 +30,12 @@ public final class DeathListener implements Listener {
             return;
         }
 
-        final Event supplied = UtilEvent.supply(Event.class.cast(this.deathCreatorList.isEmpty() ? new VanillaDeathEvent(entityDeathEvent) : this.deathCreatorList.getFirst().createDeathEvent(entityDeathEvent)));
-
-        if (!(supplied instanceof final DeathEvent deathEvent)) {
+        final Event event = Event.class.cast(this.deathCreatorList.isEmpty() ? new VanillaDeathEvent(entityDeathEvent) : this.deathCreatorList.getFirst().createDeathEvent(entityDeathEvent));
+        if (event == null) {
             return;
         }
+
+        final DeathEvent deathEvent = DeathEvent.class.cast(UtilEvent.supply(event));
 
         entityDeathEvent.getDrops().clear();
         entityDeathEvent.getDrops().addAll(deathEvent.getDrops());

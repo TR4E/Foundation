@@ -13,6 +13,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -164,6 +165,16 @@ public class UtilItemStack {
                 .map(LivingEntity::getEquipment)
                 .map(EntityEquipment::getItemInMainHand)
                 .filter(itemStack -> !itemStack.isEmpty());
+    }
+
+    public static ItemStack[] getArmourContents(final Entity entity) {
+        return Optional.ofNullable(entity)
+                .filter(LivingEntity.class::isInstance)
+                .map(LivingEntity.class::cast)
+                .map(LivingEntity::getEquipment)
+                .map(EntityEquipment::getArmorContents)
+                .filter(itemStacks -> Arrays.stream(itemStacks).anyMatch(itemStack -> itemStack != null && !itemStack.isEmpty()))
+                .orElse(null);
     }
 
     public static Component getDisplayName(final ItemStack itemStack, final boolean hoverable) {

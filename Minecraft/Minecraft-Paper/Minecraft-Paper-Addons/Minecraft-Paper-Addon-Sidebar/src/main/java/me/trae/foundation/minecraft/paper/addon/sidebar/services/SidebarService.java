@@ -8,6 +8,7 @@ import me.trae.foundation.minecraft.paper.addon.sidebar.events.SidebarUpdateEven
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilNms;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
 import net.kyori.adventure.text.Component;
 import net.minecraft.network.protocol.game.ClientboundResetScorePacket;
 import net.minecraft.network.protocol.game.ClientboundSetDisplayObjectivePacket;
@@ -62,8 +63,8 @@ public final class SidebarService {
 
         final Objective objective = this.buildObjective(identifier, title);
 
-        UtilNms.sendPacket(player, new ClientboundSetObjectivePacket(objective, ClientboundSetObjectivePacket.METHOD_ADD));
-        UtilNms.sendPacket(player, new ClientboundSetDisplayObjectivePacket(DisplaySlot.SIDEBAR, objective));
+        UtilPacket.send(player, new ClientboundSetObjectivePacket(objective, ClientboundSetObjectivePacket.METHOD_ADD));
+        UtilPacket.send(player, new ClientboundSetDisplayObjectivePacket(DisplaySlot.SIDEBAR, objective));
 
         final int size = lines.size();
 
@@ -83,7 +84,7 @@ public final class SidebarService {
             return;
         }
 
-        UtilNms.sendPacket(player, new ClientboundSetObjectivePacket(
+        UtilPacket.send(player, new ClientboundSetObjectivePacket(
                 this.buildObjective(sidebar.getIdentifier(), newTitle),
                 ClientboundSetObjectivePacket.METHOD_CHANGE
         ));
@@ -124,7 +125,7 @@ public final class SidebarService {
             return;
         }
 
-        UtilNms.sendPacket(player, new ClientboundSetObjectivePacket(
+        UtilPacket.send(player, new ClientboundSetObjectivePacket(
                 this.buildObjective(activeSidebar.getIdentifier(), activeSidebar.getTitle(player)),
                 ClientboundSetObjectivePacket.METHOD_REMOVE
         ));
@@ -144,17 +145,17 @@ public final class SidebarService {
     }
 
     private void sendLine(final Player player, final String identifier, final int index, final Component line, final int score) {
-        UtilNms.sendPacket(player, new ClientboundSetScorePacket(
+        UtilPacket.send(player, new ClientboundSetScorePacket(
                 this.getScoreOwner(player, index),
                 identifier,
                 score,
-                Optional.of(UtilNms.toNms(line)),
+                Optional.of(UtilNms.toComponent(line)),
                 Optional.empty()
         ));
     }
 
     private void removeLine(final Player player, final String identifier, final int index) {
-        UtilNms.sendPacket(player, new ClientboundResetScorePacket(this.getScoreOwner(player, index), identifier));
+        UtilPacket.send(player, new ClientboundResetScorePacket(this.getScoreOwner(player, index), identifier));
     }
 
     private Objective buildObjective(final String identifier, final Component title) {
@@ -162,7 +163,7 @@ public final class SidebarService {
                 new Scoreboard(),
                 identifier,
                 ObjectiveCriteria.DUMMY,
-                UtilNms.toNms(title),
+                UtilNms.toComponent(title),
                 ObjectiveCriteria.RenderType.INTEGER,
                 false,
                 null

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.team.Team;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilNms;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
@@ -27,8 +28,8 @@ public final class TeamService {
 
         final PlayerTeam playerTeam = this.buildPlayerTeam(teamName, player, viewer, team);
 
-        UtilNms.sendPacket(viewer, ClientboundSetPlayerTeamPacket.createAddOrModifyPacket(playerTeam, true));
-        UtilNms.sendPacket(viewer, ClientboundSetPlayerTeamPacket.createPlayerPacket(playerTeam, player.getName(), ClientboundSetPlayerTeamPacket.Action.ADD));
+        UtilPacket.send(viewer, ClientboundSetPlayerTeamPacket.createAddOrModifyPacket(playerTeam, true));
+        UtilPacket.send(viewer, ClientboundSetPlayerTeamPacket.createPlayerPacket(playerTeam, player.getName(), ClientboundSetPlayerTeamPacket.Action.ADD));
 
         this.activeTeamSet.add(teamName);
     }
@@ -42,8 +43,8 @@ public final class TeamService {
 
         final PlayerTeam playerTeam = new PlayerTeam(new Scoreboard(), teamName);
 
-        UtilNms.sendPacket(viewer, ClientboundSetPlayerTeamPacket.createPlayerPacket(playerTeam, player.getName(), ClientboundSetPlayerTeamPacket.Action.REMOVE));
-        UtilNms.sendPacket(viewer, ClientboundSetPlayerTeamPacket.createRemovePacket(playerTeam));
+        UtilPacket.send(viewer, ClientboundSetPlayerTeamPacket.createPlayerPacket(playerTeam, player.getName(), ClientboundSetPlayerTeamPacket.Action.REMOVE));
+        UtilPacket.send(viewer, ClientboundSetPlayerTeamPacket.createRemovePacket(playerTeam));
     }
 
     public void refresh(final Player player, final Player viewer) {
@@ -58,11 +59,11 @@ public final class TeamService {
         final PlayerTeam playerTeam = new PlayerTeam(new Scoreboard(), teamName);
 
         // Display Name
-        Optional.ofNullable(team.getDisplayName(player, viewer)).ifPresent(component -> playerTeam.setDisplayName(UtilNms.toNms(component)));
+        Optional.ofNullable(team.getDisplayName(player, viewer)).ifPresent(component -> playerTeam.setDisplayName(UtilNms.toComponent(component)));
 
         // Prefix & Suffix
-        Optional.ofNullable(team.getPrefix(player, viewer)).ifPresent(component -> playerTeam.setPlayerPrefix(UtilNms.toNms(component)));
-        Optional.ofNullable(team.getSuffix(player, viewer)).ifPresent(component -> playerTeam.setPlayerSuffix(UtilNms.toNms(component)));
+        Optional.ofNullable(team.getPrefix(player, viewer)).ifPresent(component -> playerTeam.setPlayerPrefix(UtilNms.toComponent(component)));
+        Optional.ofNullable(team.getSuffix(player, viewer)).ifPresent(component -> playerTeam.setPlayerSuffix(UtilNms.toComponent(component)));
 
         // Allow Friendly Fire & See Friendly Invisibles
         Optional.ofNullable(team.allowFriendlyFire(player, viewer)).ifPresent(playerTeam::setAllowFriendlyFire);

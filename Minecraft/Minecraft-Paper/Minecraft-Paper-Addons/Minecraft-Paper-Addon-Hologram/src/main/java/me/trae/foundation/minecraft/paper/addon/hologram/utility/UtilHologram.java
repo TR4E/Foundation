@@ -6,7 +6,7 @@ import me.trae.foundation.minecraft.paper.addon.hologram.events.HologramDespawnE
 import me.trae.foundation.minecraft.paper.addon.hologram.events.HologramSpawnEvent;
 import me.trae.foundation.minecraft.paper.addon.hologram.events.HologramUpdateEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
-import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilNms;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
@@ -28,7 +28,7 @@ public class UtilHologram {
 
         final Location location = hologram.getLocation();
 
-        UtilNms.sendPacket(player, new ClientboundAddEntityPacket(
+        UtilPacket.send(player, new ClientboundAddEntityPacket(
                 hologram.getEntityId(),
                 hologram.getEntityUuid(),
                 location.getX(),
@@ -48,7 +48,7 @@ public class UtilHologram {
     }
 
     public static void despawn(final Player player, final Hologram hologram) {
-        UtilNms.sendPacket(player, new ClientboundRemoveEntitiesPacket(hologram.getEntityId()));
+        UtilPacket.send(player, new ClientboundRemoveEntitiesPacket(hologram.getEntityId()));
 
         hologram.getViewerSet().remove(player.getUniqueId());
 
@@ -63,7 +63,7 @@ public class UtilHologram {
             return;
         }
 
-        UtilNms.sendPacket(player, new ClientboundSetEntityDataPacket(hologram.getEntityId(), dataValueList));
+        UtilPacket.send(player, new ClientboundSetEntityDataPacket(hologram.getEntityId(), dataValueList));
 
         UtilEvent.dispatch(new HologramUpdateEvent(hologram, player));
     }

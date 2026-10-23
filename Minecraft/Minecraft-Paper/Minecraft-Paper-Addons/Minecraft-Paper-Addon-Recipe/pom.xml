@@ -13,6 +13,7 @@
     <artifactId>Minecraft-Paper-Addon-Recipe</artifactId>
 
     <dependencies>
+        <!-- Item Addon -->
         <dependency>
             <groupId>me.trae.foundation.minecraft.paper.addons</groupId>
             <artifactId>Minecraft-Paper-Addon-Item</artifactId>

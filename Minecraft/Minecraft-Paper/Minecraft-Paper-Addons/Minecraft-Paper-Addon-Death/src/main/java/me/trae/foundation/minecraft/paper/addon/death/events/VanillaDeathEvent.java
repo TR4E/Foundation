@@ -50,7 +50,12 @@ public final class VanillaDeathEvent extends CustomEvent implements DeathEvent {
 
     @Override
     public Component getReasonName() {
-        return UtilItemStack.getDisplayName(this.itemStack, true).colorIfAbsent(NamedTextColor.GREEN);
+        final ItemStack itemStack = this.getItemStack();
+        if (itemStack == null || itemStack.isEmpty()) {
+            return null;
+        }
+
+        return UtilItemStack.getDisplayName(itemStack, true).colorIfAbsent(NamedTextColor.GREEN);
     }
 
     @Override

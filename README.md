@@ -71,6 +71,7 @@ Shared Minecraft support plus platform-specific plugin frameworks. Paper addons 
 | [Minecraft-Paper-Addons](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/README.md) | Optional Paper features |
 | [Minecraft-Paper-Addon-Billboard](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Billboard/README.md) | Billboard displays and image/video support |
 | [Minecraft-Paper-Addon-Chat](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Chat/README.md) | Chat channels with static and per-recipient placeholders |
+| [Minecraft-Paper-Addon-Damage](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Damage/README.md) | Staged damage processing, hit delays, and combat events |
 | [Minecraft-Paper-Addon-Death](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Death/README.md) | Death events and custom death messages |
 | [Minecraft-Paper-Addon-Hologram](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Hologram/README.md) | Holograms and their lifecycle events |
 | [Minecraft-Paper-Addon-Item](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md) | Custom items, activation, and cooldowns |

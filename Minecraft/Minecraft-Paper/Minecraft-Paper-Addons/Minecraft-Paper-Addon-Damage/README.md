@@ -114,10 +114,10 @@ public final class CustomDamageService {
 
     private final DamageService damageService;
 
-    public void applyDamage(final LivingEntity target) {
-        final DamageSource source = DamageSource.builder(DamageType.GENERIC).build();
+    public void applyDamage(final LivingEntity livingEntity) {
+        final DamageSource damageSource = DamageSource.builder(DamageType.GENERIC).build();
 
-        this.damageService.process(new CustomDamageEvent(target, source, DamageCause.CUSTOM, 6.0D));
+        this.damageService.process(new CustomDamageEvent(livingEntity, damageSource, DamageCause.CUSTOM, 6.0D));
     }
 }
 ```
@@ -133,6 +133,8 @@ The last-damage map is updated only when the event's `applied` flag is set. `Dam
 ```java
 DamageSettings.setDelayMode(DelayMode.LEGACY);
 ```
+
+Configure the mode through `DamageSettings.getDelayMode()` and `DamageSettings.setDelayMode(...)`. The setting is static and shared by the listeners using that loaded settings class. Set it during plugin initialization so the same mode is used throughout a hit's processing.
 
 | Mode | Behaviour |
 | --- | --- |
@@ -186,6 +188,7 @@ The target-side stages provide individual events for modifying or skipping damag
 | `HardHatDamageEvent` | `HARD_HAT` | Multiplier, default `0.75` when a helmet is present |
 | `BlockingDamageEvent` | `BLOCKING` | Amount of damage blocked, clamped to the current nonnegative damage |
 | `ArmourReductionEvent` | `ARMOUR` | Armour points and toughness contribution for each equipped armour slot |
+| `ArmourDurabilityEvent` | `ARMOUR`, before armour reduction | Durability cost for each eligible equipped player armour item |
 | `ResistanceReductionEvent` | `RESISTANCE` | Damage remaining after the Resistance effect |
 | `ProtectionReductionEvent` | `PROTECTION` | Enchantment protection value used by the damage formula |
 | `AbsorptionReductionEvent` | `ABSORPTION` | Amount absorbed, bounded by current absorption hearts and damage |
@@ -195,6 +198,8 @@ These events extend `CustomCancellableEvent`. Cancellation skips the correspondi
 The armour stage starts with the entity's NMS armour and toughness attributes, then dispatches `ArmourReductionEvent` separately for the `BOOTS`, `LEGGINGS`, `CHESTPLATE`, and `HELMET` slots. It applies Minecraft's armour formula using the resulting totals. Resistance and protection respect relevant damage-type bypass tags.
 
 Absorption is calculated during `ABSORPTION` but applied to the entity on `DamageAppliedEvent`; the health stage subtracts the remaining damage separately. This allows an absorption-only hit to mark the event as applied.
+
+`ArmourDurabilityListener` runs at `LOWEST` priority during `ARMOUR` for eligible player targets. The default durability cost is `Math.max(1, (int) (damage / 4.0D))` for each damageable equipped armour item that accepts the source. `ArmourDurabilityEvent` exposes the `armourSlot`, `itemStack`, and editable `amount`; cancelling it or setting a nonpositive amount skips durability loss for that item. Durability is consumed at this stage, before health processing.
 
 ## Attacker mechanics
 
@@ -239,7 +244,7 @@ public final class QuietHurtSoundListener implements Listener {
 }
 ```
 
-The example suppresses a player’s hurt sound before the default-priority `HurtSoundListener` executes. Populate the stash before `DamageAppliedEvent` is dispatched for the sound to play; merely adding the `soundStash` field or the playback listener does not generate a default hurt sound. Partial hits that are not marked `fullDamage` do not play it through this listener.
+The example suppresses a player's hurt sound before the default-priority `HurtSoundListener` executes. The damage-event constructors capture the hurt sound, category, volume, and pitch for supported CraftBukkit living entities; other targets start with a null stash. Listeners can replace or clear that captured stash. Partial hits that are not marked `fullDamage` do not play it through this listener.
 
 ## Knockback
 
@@ -292,6 +297,7 @@ All events are dispatched synchronously by the addon and its listeners.
 | `HardHatDamageEvent` | Cancellable, mutable | Modify helmet damage multiplier |
 | `BlockingDamageEvent` | Cancellable, mutable | Modify blocked damage |
 | `ArmourReductionEvent` | Cancellable, mutable | Customize armour points and toughness per slot |
+| `ArmourDurabilityEvent` | Cancellable, mutable | Customize durability loss for each eligible player armour item |
 | `ResistanceReductionEvent` | Cancellable, mutable | Customize resistance reduction |
 | `ProtectionReductionEvent` | Cancellable, mutable | Customize enchantment protection |
 | `AbsorptionReductionEvent` | Cancellable, mutable | Customize absorption consumption |
@@ -332,27 +338,27 @@ To modify damage at a particular processing step, listen for `DamageSetupEvent` 
 @Singleton
 public final class HealthDamageListener implements Listener {
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onDamageSetup(final DamageSetupEvent event) {
         if (event.getStage() != Stage.HEALTH) {
             return;
         }
 
-        final CustomDamageEvent damageEvent = event.getDamageEvent();
+        final CustomDamageEvent customDamageEvent = event.getDamageEvent();
 
-        if (damageEvent.getDamagee() instanceof Player) {
-            damageEvent.multiplyDamage(0.9D);
+        if (customDamageEvent.getDamagee() instanceof Player) {
+            customDamageEvent.multiplyDamage(0.9D);
         }
     }
 }
 ```
 
-The `HEALTH` stage runs after armour, Resistance, protection enchantments, and absorption calculations. Changes at this stage affect the amount removed from health, not the absorption already calculated. Use an earlier stage to change the amount entering those reductions.
+The `HEALTH` stage runs after armour, Resistance, protection enchantments, and absorption calculations. This listener uses `LOWEST` priority to change the amount before `HealthApplicationListener` runs at the default priority. Changes at this stage affect the amount removed from health, not the absorption already calculated. Use an earlier stage to change the amount entering those reductions.
 
 ## Implementation notes
 
 - `DamageAppliedEvent` means the pipeline reached its post-health notification point; it is **not proof of nonzero damage**. Check `damageEvent.isApplied()` to determine whether the built-in health or absorption handler reduced a value.
-- `HurtSoundListener` requires a populated `CustomDamageEvent.soundStash`; it does not determine a default hurt sound itself. Its playback is limited to applied, full-damage hits.
+- `CustomDamageEvent` captures a default hurt-sound stash for supported CraftBukkit living entities. `HurtSoundListener` plays the current stash only for applied, full-damage hits.
 - `isFullDamage()` describes the delay system's classification and controls subsequent mechanics such as knockback and sweeping. It is not the same as `getFinalDamage()` or `isApplied()`.
 - The addon recreates the combat mechanics implemented by its listeners. It does **not** automatically restore every side effect of the vanilla damage path, which was cancelled by `PreDamageListener`.
 - The implementation uses CraftBukkit and NMS classes, damage-type tags, and reflective access to internal methods. It is tied to the compatible Paper server version and requires corresponding NMS mappings at runtime.
@@ -368,6 +374,15 @@ The `HEALTH` stage runs after armour, Resistance, protection enchantments, and a
 </dependency>
 ```
 
-Declare `DamageAddon` on your `PaperPlugin` with `@Addons({DamageAddon.class})`. The framework discovers the addon's `@AddonSingleton` services and listeners. Add and declare the Death addon as well if using the linked custom death event integration.
+Declare `DamageAddon` on your `PaperPlugin`. For damage processing and death-message integration together:
 
-**Requires Paper NMS.** Return to the [Addons README](../README.md).
+```java
+@Addons({DamageAddon.class, DeathAddon.class})
+public final class CombatPlugin extends PaperPlugin {
+
+}
+```
+
+The Damage dependency includes the [Death addon](../Minecraft-Paper-Addon-Death/README.md) transitively. Listing both addons enables both sets of components at runtime. Your combat listeners belong under the plugin's package and use Injector's `@Singleton`; the framework discovers the addon's internal `@AddonSingleton` services and listeners automatically. See the [Plugin Framework guide](../../Minecraft-Paper-Plugin-Framework/README.md#addon-system) for addon discovery and hosting.
+
+Requires Paper NMS. Return to the [Addons README](../README.md).

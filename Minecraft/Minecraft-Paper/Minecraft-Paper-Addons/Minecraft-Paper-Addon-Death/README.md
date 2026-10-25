@@ -20,13 +20,14 @@ The Death addon replaces Minecraft's default death messages with a customizable,
 - [Death message formatting](#death-message-formatting)
 - [Per-player display names](#per-player-display-names)
 - [Custom death creators](#custom-death-creators)
+- [Damage addon integration](#damage-addon-integration)
 - [Installation](#installation)
 
 </details>
 
 ## How it works
 
-`DeathListener` intercepts Bukkit's `PlayerDeathEvent`, suppresses the vanilla death message, and delegates to `DeathMessageListener`. For each online player, a `CustomDeathMessageEvent` is fired with the formatted death message. Listeners can modify the message or cancel it for that player.
+`DeathListener` handles Bukkit's `EntityDeathEvent` and resolves a `DeathEvent` through the first registered `DeathCreator`, or `VanillaDeathEvent` when no creators are registered. It dispatches the resolved event, applies its drops, experience, and sound settings, and fires a `CustomDeathMessageEvent` for each online player. The message listener formats the per-player message; listeners can customize the names or cancel delivery for that player.
 
 Display names for the victim and killer are resolved by dispatching `DisplayNameEvent` from the plugin framework. This means rank prefixes, team colors, and other per-viewer customizations are reflected in death messages.
 
@@ -101,6 +102,14 @@ public class BossDeathCreator implements DeathCreator {
     }
 }
 ```
+
+## Damage addon integration
+
+The [Damage addon](../Minecraft-Paper-Addon-Damage/README.md) supplies `CustomDeathCreator`, which resolves the victim's most recent applied `CustomDamageEvent` into a `CustomDeathEvent`. The death event carries the captured attacker, cause, and weapon into this addon's death-message system, along with copies of the Bukkit drops, experience, and sound settings.
+
+Declare both `DamageAddon.class` and `DeathAddon.class` in your plugin's `@Addons` annotation to enable this integration. The Damage addon includes the Death addon as a Maven dependency; the annotation enables its components at runtime.
+
+If no matching damage history exists, `CustomDeathCreator` logs the missing history and returns `null`. `DeathListener` stops processing when its selected creator returns `null`; it does not try another creator or fall back to `VanillaDeathEvent` for that death.
 
 ## Installation
 

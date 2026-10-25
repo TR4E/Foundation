@@ -1,5 +1,6 @@
 package me.trae.foundation.database.core;
 
+import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
@@ -25,7 +26,12 @@ final class ContainerFailureRecoveryTest {
         final String postgresContainer = System.getProperty("audit.postgres.container");
 
         final String redisContainer = System.getProperty("audit.redis.container");
-        Assumptions.assumeTrue(postgresContainer != null && redisContainer != null, "Set the exact audit PostgreSQL and Redis container names");
+        Assumptions.assumeTrue(
+                postgresContainer != null && !postgresContainer.isBlank() && redisContainer != null && !redisContainer.isBlank(),
+                "Set the exact audit PostgreSQL and Redis container names"
+        );
+        DatabaseTestEnvironment.requireRunningDockerContainers(postgresContainer, redisContainer);
+        DatabaseTestEnvironment.requirePostgresAndRedis();
 
         final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(
                 System.getProperty("postgres.host", "localhost"),
@@ -42,6 +48,16 @@ final class ContainerFailureRecoveryTest {
                 Integer.getInteger("redis.database", 0),
                 Duration.ofSeconds(2)
         ));
+
+        try {
+            postgresDriver.connect();
+            redisDriver.connect();
+        } catch (final ConnectionException exception) {
+            postgresDriver.disconnect();
+            redisDriver.disconnect();
+            Assumptions.abort("PostgreSQL or Redis is not reachable: %s".formatted(exception.getMessage()));
+        }
+
         final String table = "container_recovery_%s".formatted(UUID.randomUUID().toString().replace("-", ""));
 
         final CoreDatabase coreDatabase = new CoreDatabase(postgresDriver, redisDriver, null, Duration.ofHours(1), 100, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
@@ -49,8 +65,6 @@ final class ContainerFailureRecoveryTest {
         boolean redisStopped = false;
 
         try {
-            postgresDriver.connect();
-            redisDriver.connect();
             final WorkerRepository repository = new WorkerRepository(coreDatabase, table);
 
             final WorkerHolder holder = new WorkerHolder(repository);

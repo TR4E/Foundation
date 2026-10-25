@@ -14,6 +14,8 @@ final class PostgresDriverTest {
 
     @Test
     void createsDatabaseWhenMissing() {
+        DatabaseTestEnvironment.requirePostgres();
+
         final PostgresSettings settings = new PostgresSettings(System.getProperty("postgres.host", "localhost"), Integer.getInteger("postgres.port", 5432), System.getProperty("postgres.database", "foundation_test"), System.getProperty("postgres.username", "postgres"), System.getProperty("postgres.password", "postgres"), 2);
         final PostgresDriver existingDatabaseDriver = new PostgresDriver(settings);
 

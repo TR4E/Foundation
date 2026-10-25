@@ -20,7 +20,10 @@ import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -514,7 +517,22 @@ final class StorageTest {
     }
 
     private static RedisDriver connect() {
-        final RedisDriver redisDriver = new RedisDriver(new RedisSettings(System.getProperty("redis.host", "localhost"), Integer.getInteger("redis.port", 6379), System.getProperty("redis.password"), Integer.getInteger("redis.database", 15), Duration.ofSeconds(2)));
+        final String host = System.getProperty("redis.host", "localhost");
+        final int port = Integer.getInteger("redis.port", 6379);
+
+        try (final Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), 500);
+        } catch (final IOException exception) {
+            Assumptions.abort("Redis is unavailable at %s:%d (%s)".formatted(host, port, exception.getClass().getSimpleName()));
+        }
+
+        final RedisDriver redisDriver = new RedisDriver(new RedisSettings(
+                host,
+                port,
+                System.getProperty("redis.password"),
+                Integer.getInteger("redis.database", 15),
+                Duration.ofSeconds(2)
+        ));
 
         try {
             redisDriver.connect();

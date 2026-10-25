@@ -1,5 +1,6 @@
 package me.trae.foundation.database.core;
 
+import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
@@ -22,6 +23,8 @@ final class DatabasePipelineBenchmarkTest {
 
     @Test
     void measuresDatabaseReadWriteAndCodecPipelines() {
+        DatabaseTestEnvironment.requirePostgresAndRedis();
+
         final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(
                 System.getProperty("postgres.host", "localhost"),
                 Integer.getInteger("postgres.port", 5432),
@@ -46,7 +49,7 @@ final class DatabasePipelineBenchmarkTest {
         try {
             postgresDriver.connect();
             redisDriver.connect();
-        } catch (final RuntimeException exception) {
+        } catch (final ConnectionException exception) {
             postgresDriver.disconnect();
             redisDriver.disconnect();
             Assumptions.abort("PostgreSQL or Redis is not reachable: %s".formatted(exception.getMessage()));

@@ -1359,6 +1359,8 @@ final class DatabaseTest {
 
     private void connect() {
         if (this.postgresDriver == null) {
+            DatabaseTestEnvironment.requirePostgresAndRedis();
+
             this.postgresDriver = new PostgresDriver(new PostgresSettings(System.getProperty("postgres.host", "localhost"), Integer.getInteger("postgres.port", 5432), System.getProperty("postgres.database", "foundation_test"), System.getProperty("postgres.username", "postgres"), System.getProperty("postgres.password", "postgres"), 4));
             this.redisDriver = new RedisDriver(new RedisSettings(System.getProperty("redis.host", "localhost"), Integer.getInteger("redis.port", 6379), System.getProperty("redis.password"), Integer.getInteger("redis.database", 15), Duration.ofSeconds(2)));
 

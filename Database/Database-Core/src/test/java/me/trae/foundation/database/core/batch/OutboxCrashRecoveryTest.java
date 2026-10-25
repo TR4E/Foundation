@@ -1,5 +1,7 @@
 package me.trae.foundation.database.core.batch;
 
+import me.trae.foundation.database.api.exception.ConnectionException;
+import me.trae.foundation.database.core.DatabaseTestEnvironment;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.driver.PostgresSettings;
 import me.trae.foundation.database.storage.driver.RedisDriver;
@@ -41,6 +43,8 @@ final class OutboxCrashRecoveryTest {
 
     @Test
     void processCrashAfterRedisDeliveryLeavesOutboxEventForRedelivery() throws Exception {
+        DatabaseTestEnvironment.requirePostgresAndRedis();
+
         final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(
                 System.getProperty("postgres.host", "localhost"),
                 Integer.getInteger("postgres.port", 5432),
@@ -77,7 +81,7 @@ final class OutboxCrashRecoveryTest {
         try {
             postgresDriver.connect();
             redisDriver.connect();
-        } catch (final RuntimeException exception) {
+        } catch (final ConnectionException exception) {
             postgresDriver.disconnect();
             redisDriver.disconnect();
             Assumptions.abort("PostgreSQL or Redis is not reachable: %s".formatted(exception.getMessage()));

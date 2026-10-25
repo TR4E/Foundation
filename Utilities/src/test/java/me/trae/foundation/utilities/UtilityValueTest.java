@@ -143,7 +143,7 @@ final class UtilityValueTest {
         assertEquals(List.of("one", "two"), UtilFile.read(file.toString()));
         Files.writeString(file, "changed content\n");
         assertEquals(List.of("changed content"), UtilFile.read(file));
-        assertThrows(IllegalArgumentException.class, () -> UtilFile.read((Path) null));
+        assertThrows(NullPointerException.class, () -> UtilFile.read((Path) null));
         assertThrows(java.io.UncheckedIOException.class, () -> UtilFile.read(directory.resolve("missing")));
     }
 

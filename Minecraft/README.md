@@ -37,6 +37,7 @@ Minecraft provides a common library for Adventure text components, color handlin
 | [Minecraft-Paper-Addon-Death](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Death/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Death` | Death events and custom death messages |
 | [Minecraft-Paper-Addon-Hologram](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Hologram/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Hologram` | Holograms and their lifecycle events |
 | [Minecraft-Paper-Addon-Item](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Item` | Custom items, activation, and cooldowns |
+| [Minecraft-Paper-Addon-Npc](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Npc/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Npc` | NPC definitions, capabilities, state restoration, and respawns |
 | [Minecraft-Paper-Addon-Recipe](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Recipe` | Custom shaped and shapeless crafting recipes |
 | [Minecraft-Paper-Addon-Sidebar](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Sidebar/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Sidebar` | Player sidebar displays |
 | [Minecraft-Paper-Addon-Tablist](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Tablist/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Tablist` | Player tab list management |
@@ -56,6 +57,7 @@ Foundation's search engines share a `find(receiver, input, inform, predicate)` A
 | Paper framework | `CommandSender` receiver; online players, offline-player records, worlds, materials, and Foundation plugins | [Paper engines and implementation example](Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md#search-engines) |
 | Velocity framework | `CommandSource` receiver; online players and Foundation plugins | [Velocity engines and implementation example](Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md#search-engines) |
 | Item addon | Custom item definitions searched by typable identifier | [CustomItemSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#item-search) |
+| NPC addon | NPC definitions searched by identifier | [NpcSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Npc/README.md#npc-search) |
 | Recipe addon | Custom recipe definitions searched by key | [CustomRecipeSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md#recipe-search) |
 
 The platform guides use the existing classes in `search.types` as references for creating new engines.

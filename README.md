@@ -77,6 +77,7 @@ Both frameworks include [search engines](Minecraft/README.md#search-engines) wit
 | [Minecraft-Paper-Addon-Death](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Death/README.md) | Death events and custom death messages |
 | [Minecraft-Paper-Addon-Hologram](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Hologram/README.md) | Holograms and their lifecycle events |
 | [Minecraft-Paper-Addon-Item](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md) | Custom items, activation, and cooldowns |
+| [Minecraft-Paper-Addon-Npc](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Npc/README.md) | NPC definitions, capabilities, state restoration, and respawns |
 | [Minecraft-Paper-Addon-Recipe](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md) | Custom shaped and shapeless crafting recipes |
 | [Minecraft-Paper-Addon-Sidebar](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Sidebar/README.md) | Player sidebar displays |
 | [Minecraft-Paper-Addon-Tablist](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Tablist/README.md) | Player tab list management |

@@ -10,6 +10,7 @@ import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilColor;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMessage;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPdc;
 import me.trae.foundation.utilities.UtilJava;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -172,7 +173,7 @@ public abstract class Item {
     }
 
     public final Optional<String> getDynamicLoreValue(final ItemStack itemStack, final String key) {
-        return UtilItemStack.getPersistentData(itemStack, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER).flatMap(persistentDataContainer -> UtilItemStack.getPersistentData(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING));
+        return UtilItemStack.getPersistentData(itemStack, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER).flatMap(persistentDataContainer -> UtilPdc.getPersistentData(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING));
     }
 
     public final void setDynamicLoreValue(final ItemStack itemStack, final String key, final String value) {
@@ -184,17 +185,11 @@ public abstract class Item {
             throw new IllegalArgumentException("Unknown dynamic lore key: %s".formatted(key));
         }
 
-        final PersistentDataContainer persistentDataContainer = UtilItemStack.getOrCreatePersistentDataContainer(
-                itemMeta,
-                DYNAMIC_LORE_KEY
-        );
-        UtilItemStack.setPersistentDataType(
-                persistentDataContainer,
-                new NamespacedKey("dynamic", key),
-                PersistentDataType.STRING,
-                value
-        );
-        UtilItemStack.setPersistentDataType(itemMeta, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER, persistentDataContainer);
+        final PersistentDataContainer persistentDataContainer = UtilPdc.getOrCreatePersistentDataContainer(itemMeta.getPersistentDataContainer(), DYNAMIC_LORE_KEY);
+
+        UtilPdc.setPersistentDataType(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING, value);
+
+        UtilPdc.setPersistentDataType(itemMeta.getPersistentDataContainer(), DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER, persistentDataContainer);
 
         this.applyLore(itemMeta);
     }
@@ -216,7 +211,7 @@ public abstract class Item {
     }
 
     private List<String> resolveDynamicLore(final ItemMeta itemMeta) {
-        final PersistentDataContainer persistentDataContainer = UtilItemStack.getOrCreatePersistentDataContainer(itemMeta, DYNAMIC_LORE_KEY);
+        final PersistentDataContainer persistentDataContainer = UtilPdc.getOrCreatePersistentDataContainer(itemMeta.getPersistentDataContainer(), DYNAMIC_LORE_KEY);
 
         final Set<NamespacedKey> unusedNamespacedKeySet = new HashSet<>(persistentDataContainer.getKeys());
 
@@ -226,16 +221,16 @@ public abstract class Item {
 
                 unusedNamespacedKeySet.remove(namespacedKey);
 
-                return UtilItemStack.getPersistentData(persistentDataContainer, namespacedKey, PersistentDataType.STRING).map(Matcher::quoteReplacement).orElse("");
+                return UtilPdc.getPersistentData(persistentDataContainer, namespacedKey, PersistentDataType.STRING).map(Matcher::quoteReplacement).orElse("");
             });
         }).toList();
 
-        unusedNamespacedKeySet.forEach(namespacedKey -> UtilItemStack.removePersistentDataType(persistentDataContainer, namespacedKey));
+        unusedNamespacedKeySet.forEach(namespacedKey -> UtilPdc.removePersistentDataType(persistentDataContainer, namespacedKey));
 
         if (persistentDataContainer.isEmpty()) {
-            UtilItemStack.removePersistentDataType(itemMeta, DYNAMIC_LORE_KEY);
+            UtilPdc.removePersistentDataType(itemMeta.getPersistentDataContainer(), DYNAMIC_LORE_KEY);
         } else {
-            UtilItemStack.setPersistentDataType(itemMeta, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER, persistentDataContainer);
+            UtilPdc.setPersistentDataType(itemMeta.getPersistentDataContainer(), DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER, persistentDataContainer);
         }
 
         return loreList;

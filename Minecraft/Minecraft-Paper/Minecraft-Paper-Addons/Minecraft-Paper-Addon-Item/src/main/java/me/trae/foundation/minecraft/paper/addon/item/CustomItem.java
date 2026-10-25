@@ -2,19 +2,19 @@ package me.trae.foundation.minecraft.paper.addon.item;
 
 import lombok.Getter;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPdc;
 import me.trae.foundation.utilities.UtilHash;
 import me.trae.foundation.utilities.UtilString;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.LivingEntity;
-import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -46,17 +46,19 @@ public abstract class CustomItem extends Item {
 
     @Override
     protected final void stamp(final ItemMeta itemMeta) {
-        UtilItemStack.setPersistentDataType(itemMeta, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING, this.uniqueId);
-        UtilItemStack.setPersistentDataType(itemMeta, VERSION_KEY, PersistentDataType.STRING, this.getVersion());
+        final PersistentDataContainer persistentDataContainer = itemMeta.getPersistentDataContainer();
 
-        UtilItemStack.setPersistentDataType(itemMeta, DELETABLE_KEY, PersistentDataType.BOOLEAN, this.deleteIfRemoved());
+        UtilPdc.setPersistentDataType(persistentDataContainer, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING, this.uniqueId);
+
+        UtilPdc.setPersistentDataType(persistentDataContainer, VERSION_KEY, PersistentDataType.STRING, this.getVersion());
+        UtilPdc.setPersistentDataType(persistentDataContainer, DELETABLE_KEY, PersistentDataType.BOOLEAN, this.deleteIfRemoved());
 
         if (this.isTrackable() && this.getMaxStackSize() == 1) {
-            if (UtilItemStack.getPersistentData(itemMeta, TRACKING_ID_KEY, PersistentDataType.STRING).isEmpty()) {
-                UtilItemStack.setPersistentDataType(itemMeta, TRACKING_ID_KEY, PersistentDataType.STRING, UUID.randomUUID().toString());
+            if (UtilPdc.getPersistentData(persistentDataContainer, TRACKING_ID_KEY, PersistentDataType.STRING).isEmpty()) {
+                UtilPdc.setPersistentDataType(persistentDataContainer, TRACKING_ID_KEY, PersistentDataType.STRING, UUID.randomUUID().toString());
             }
         } else {
-            UtilItemStack.removePersistentDataType(itemMeta, TRACKING_ID_KEY);
+            UtilPdc.removePersistentDataType(persistentDataContainer, TRACKING_ID_KEY);
         }
     }
 
@@ -114,21 +116,26 @@ public abstract class CustomItem extends Item {
     }
 
     public final boolean isSimilarByUniqueId(final ItemStack itemStack) {
-        return UtilItemStack.getPersistentData(itemStack, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING)
+        if (!itemStack.hasItemMeta()) {
+            return false;
+        }
+
+        return UtilPdc.getPersistentData(itemStack.getItemMeta().getPersistentDataContainer(), UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING)
                 .map(this.uniqueId::equals)
                 .orElse(false);
     }
 
     public final boolean isOutdatedByItemStack(final ItemStack itemStack) {
-        return UtilItemStack.getPersistentData(itemStack, VERSION_KEY, PersistentDataType.STRING)
+        if (!itemStack.hasItemMeta()) {
+            return false;
+        }
+
+        return UtilPdc.getPersistentData(itemStack.getItemMeta().getPersistentDataContainer(), VERSION_KEY, PersistentDataType.STRING)
                 .map(version -> !this.getVersion().equals(version))
                 .orElse(true);
     }
 
     public final boolean isHolding(final LivingEntity livingEntity) {
-        return Optional.ofNullable(livingEntity.getEquipment())
-                .map(EntityEquipment::getItemInMainHand)
-                .map(this::isSimilarByUniqueId)
-                .orElse(false);
+        return UtilItemStack.getItemInMainHand(livingEntity).map(this::isSimilarByUniqueId).orElse(false);
     }
 }

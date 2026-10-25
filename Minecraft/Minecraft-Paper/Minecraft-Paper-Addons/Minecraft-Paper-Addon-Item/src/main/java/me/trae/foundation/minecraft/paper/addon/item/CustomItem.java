@@ -69,6 +69,10 @@ public abstract class CustomItem extends Item {
         return false;
     }
 
+    public boolean canDespawn() {
+        return true;
+    }
+
     public boolean isTrackable() {
         return false;
     }

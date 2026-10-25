@@ -37,7 +37,7 @@ public enum TimeUnit {
     }
 
     public final String label(final double value) {
-        final String label = this.name().toLowerCase();
+        final String label = this.getName();
 
         return value == 1.0D ? label.substring(0, label.length() - 1) : label;
     }

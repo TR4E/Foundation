@@ -18,7 +18,7 @@ public final class PreDamageListener implements Listener {
 
     private final DamageService damageService;
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityDamage(final EntityDamageEvent entityDamageEvent) {
         if (entityDamageEvent.isCancelled()) {
             return;

@@ -41,11 +41,11 @@ Items form an inheritance chain from simple definitions to fully interactive too
 | Class | Adds |
 | --- | --- |
 | `Item` | Base: material, name, lore, color, style, display name formatting |
-| `CustomItem` | Definition identifier, namespace, version tracking, optional instance tracking, update/refresh lifecycle |
+| `CustomItem` | Persistent unique ID, typable identifier, version tracking, optional instance tracking, update/refresh lifecycle |
 | `ActivatableCustomItem` | Multiple activation types (left click, right click, drop, swap hand) |
 | `SingleActivatableCustomItem` | Single activation type with simplified API and cooldown |
 | `ChannelCustomItem` | Sustained right-click activation with start/channel/stop lifecycle |
-| `DefaultItem` | Wraps vanilla items with styling only, no identifier |
+| `DefaultItem` | Wraps vanilla items with styling only, no custom unique ID or identifier |
 
 `ItemService` discovers registered `CustomItem` components through an injected live list and manages the apply/update/refresh lifecycle. Vanilla materials use cached `DefaultItem` definitions.
 
@@ -101,7 +101,15 @@ public class InfoBook extends Item {
 
 ## Custom item
 
-`CustomItem` extends `Item` with a persistent definition identifier for lookup and version management. Supply this identifier in the constructor; all stacks of the same definition share it. The examples use UUID strings, but the addon does not generate this identifier or require a UUID format. The separate namespace string can provide a readable name for consuming plugins.
+`CustomItem` takes `(material, uniqueId, identifier)`. Its persistent identity, typable name, and display name have separate roles:
+
+| Value | Example | Purpose |
+| --- | --- | --- |
+| `getUniqueId()` | `d4f7a8b2-1c3e-4f5a-9b6d-2e8f0a1c3d5e` | Stable definition identity stored on item stacks for lookup and comparison |
+| `getIdentifier()` | `HEALING_WAND` | Static, typable name used for in-game search, suggestions, and default cooldown names |
+| `getName()` | `Healing Wand` | Raw display name used when rendering the item |
+
+Supply a stable `uniqueId` in the constructor; all stacks of the same definition share it. The examples use UUID strings, but the addon does not generate this value or require a UUID format. Keep it unchanged when renaming the identifier or display name so existing stacks still resolve to the same definition.
 
 ```java
 @Singleton
@@ -218,7 +226,7 @@ public class CombatKnife extends ActivatableCustomItem {
 | `useInteractedBlock(player, itemStack, block, type)` | `Event.Result` | `DEFAULT` | Control vanilla block interaction |
 | `activateOnItemUse(player, itemStack, type)` | `boolean` | `true` | Whether to activate on item use |
 | `activateOnBlockUse(player, itemStack, block, type)` | `boolean` | `false` | Whether to activate on block use |
-| `getCooldownName(type)` | `String` | `getName()` | Cooldown identifier |
+| `getCooldownName(type)` | `String` | `getIdentifier()` | Stable cooldown name, independent of the display name |
 | `getCooldownDuration(type)` | `long` | `0L` | Cooldown in milliseconds |
 
 ## Single activatable custom item
@@ -276,7 +284,7 @@ public class TeleportPearl extends SingleActivatableCustomItem {
 | `canActivate(player, itemStack, block)` | `boolean` | `true` | Pre-activation check |
 | `useItemInHand(player, itemStack)` | `Event.Result` | `DEFAULT` | Control vanilla item-in-hand behavior |
 | `useInteractedBlock(player, itemStack, block)` | `Event.Result` | `DEFAULT` | Control vanilla block interaction |
-| `getCooldownName()` | `String` | `getName()` | Cooldown identifier |
+| `getCooldownName()` | `String` | `getIdentifier()` | Stable cooldown name, independent of the display name |
 | `getCooldownDuration()` | `long` | `0L` | Cooldown in milliseconds |
 
 ## Channel custom item
@@ -331,7 +339,7 @@ public class ChargeBeam extends ChannelCustomItem {
 }
 ```
 
-The constructor takes material, identifier, and namespace. The activation type is always `RIGHT_CLICK`.
+The constructor takes material, unique ID, and identifier. The activation type is always `RIGHT_CLICK`.
 
 ### Additional overridable methods
 
@@ -400,7 +408,7 @@ Custom items are identified through Bukkit's `PersistentDataContainer` on the it
 
 | Key | Type | Purpose |
 | --- | --- | --- |
-| `custom:item_identifier` | `String` | Shared definition identifier supplied to `CustomItem` |
+| `custom:item_unique_id` | `String` | Shared definition `uniqueId` supplied to `CustomItem` |
 | `custom:item_version` | `String` | SHA-256 hash of the item's current configuration for update detection |
 | `custom:item_deletable` | `Boolean` | Allows removal during synchronization when the custom definition no longer resolves |
 | `custom:item_tracking_id` | `String` | UUID for an individually tracked item; enabled only for trackable definitions with a stack limit of `1` |
@@ -415,7 +423,7 @@ During synchronization, registered custom items are checked against their defini
 | `create()` | Build a new, stamped item with an amount of `1` |
 | `create(amount)` / `create(amount, durability)` | Build a new, stamped stack with the supplied amount and damage |
 | `create(itemStack)` | Build a new stack using the supplied stack's amount and damage; does not copy its other metadata |
-| `createView()` | Build a display stack without calling `stamp`, so custom identifiers, versions, and tracking IDs are not added by that hook |
+| `createView()` | Build a display stack without calling `stamp`, so custom unique IDs, versions, and tracking IDs are not added by that hook |
 | `update(itemStack)` | Apply the current definition and stamp metadata, changing material when needed; use the returned stack |
 | `refresh(itemStack)` | Dispatch `ItemStackUpdateEvent` and return the existing stack without restamping its metadata |
 
@@ -437,11 +445,11 @@ protected int getMaxStackSize() {
 
 When stamped, the item receives a random UUID at `CustomItem.TRACKING_ID_KEY` if it does not already have one. Stamped updates preserve an existing ID. When tracking is disabled or the definition's stack limit is greater than `1`, stamping removes the tracking key. The tracking setting is included in the definition's version hash.
 
-The definition identifier and tracking ID serve different purposes:
+The definition unique ID and tracking ID serve different purposes:
 
 | Value | Shared by |
 | --- | --- |
-| `custom:item_identifier` | Every stack belonging to the same `CustomItem` definition |
+| `custom:item_unique_id` | Every stack belonging to the same `CustomItem` definition |
 | `custom:item_tracking_id` | One individually tracked item |
 
 Ordinary stackable items do not receive tracking IDs from `CustomItem.stamp`. For tracked items, call `create()` separately for each item you issue. `create(amount)` does not enforce the stack limit. Cloning an existing stack or reusing a serialized recipe result also copies its tracking ID, so those operations do not issue a new identity. Use `createView()` for display-only stacks; it skips definition stamping as well as tracking.
@@ -511,14 +519,16 @@ Inject `ItemService` to access registered definitions:
 | Method | Returns | Behaviour |
 | --- | --- | --- |
 | `getItemList()` | `List<CustomItem>` | Injected read-only live list of custom definitions |
-| `getItemByIdentifier(identifier)` | `Optional<CustomItem>` | Resolve a definition by its exact identifier; empty for null or unknown input |
+| `getItemByUniqueId(uniqueId)` | `Optional<CustomItem>` | Resolve a definition by its exact persistent unique ID; empty for null or unknown input |
 | `getObtainableItemByMaterial(material)` | `Optional<CustomItem>` | Resolve a naturally obtainable definition; empty for null or unknown input |
-| `getItemByItemStack(itemStack)` | `Optional<CustomItem>` | Resolve the definition from the stack's identifier; empty for null or an unknown identifier |
-| `searchCustomItem(commandSender, input, inform)` | `Optional<CustomItem>` | Search namespaces with exact and partial matching and optional feedback |
+| `getItemByItemStack(itemStack)` | `Optional<CustomItem>` | Resolve the definition from the stack's unique ID; empty for null or an unknown unique ID |
+| `searchCustomItem(commandSender, input, inform)` | `Optional<CustomItem>` | Search typable identifiers with exact and partial matching and optional feedback |
 | `searchCustomItem(commandSender, input, inform, predicate)` | `Optional<CustomItem>` | The same search restricted by the predicate |
 | `apply(itemStack)` | `ItemStack` | Apply the item lifecycle; may return a replacement stack or null |
 
 `getItemList()` follows registrations as dependencies initialize and shut down. Callers cannot add, remove, or replace entries through the injected list. The item definitions themselves retain their own behaviour and state.
+
+`CustomItem.isSimilarByUniqueId(itemStack)` compares a stack's stored unique ID with the definition's `uniqueId`. `isHolding(livingEntity)` uses the same comparison for the main-hand item.
 
 ## Item search
 
@@ -526,23 +536,25 @@ Inject `ItemService` to access registered definitions:
 
 | Behaviour | Value |
 | --- | --- |
-| Exact match | Case-insensitive equality against `CustomItem.getNamespace()` |
-| Partial match | Case-insensitive containment in the namespace |
-| Displayed match | `CustomItem.getName()`, colored with `CustomItem.getColor()` |
+| Exact match | Case-insensitive equality against `CustomItem.getIdentifier()` |
+| Partial match | Case-insensitive containment in the identifier |
+| Displayed match | `CustomItem.getIdentifier()`, colored with `CustomItem.getColor()` |
 | Feedback prefix | `Custom Item Search` |
 
-The namespace is the searchable value. The persistent identifier and display name serve different purposes and are not checked by this engine.
+The identifier is the searchable value. The persistent unique ID resolves saved stacks, while `getName()` supplies the raw item display name. Neither is checked by this engine.
 
 With `itemService`, `commandSender`, and `input` available in a command or service:
 
 ```java
 itemService.searchCustomItem(commandSender, input, true)
-        .ifPresent(customItem -> UtilMessage.message(commandSender, "Item", customItem.getName()));
+        .ifPresent(customItem -> UtilMessage.message(commandSender, "Item", customItem.getIdentifier()));
 ```
 
 Use the four-argument overload to restrict eligible definitions with a predicate. The three-argument overload includes every definition. With `inform` set to `true`, missing or ambiguous matches produce colored feedback; a unique result is returned without an automatic success message.
 
 For direct engine access, use `itemService.getCustomItemSearchEngine()` or construct `new CustomItemSearchEngine(itemService)`. The engine class is also an example of supplying a service's live collection and overriding `getTypeColor` for per-result colors.
+
+`ItemSuggestions.items(predicate, arg)` uses the same typable identifiers for command suggestions. Pass `_ -> true` as the predicate to include every definition; suggestions retain each identifier's original spelling.
 
 ## Events
 

@@ -13,8 +13,8 @@ public abstract class SingleActivatableCustomItem extends ActivatableCustomItem 
 
     private final ActivateType activateType;
 
-    public SingleActivatableCustomItem(final Material material, final String identifier, final String namespace, final ActivateType activateType) {
-        super(material, identifier, namespace);
+    public SingleActivatableCustomItem(final Material material, final String uniqueId, final String identifier, final ActivateType activateType) {
+        super(material, uniqueId, identifier);
 
         this.activateType = activateType;
     }

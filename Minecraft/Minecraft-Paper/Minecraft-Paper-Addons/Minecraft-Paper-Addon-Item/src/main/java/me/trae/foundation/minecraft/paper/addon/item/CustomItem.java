@@ -25,15 +25,15 @@ public abstract class CustomItem extends Item {
     public static final NamespacedKey TRACKING_ID_KEY = new NamespacedKey("custom", "item_tracking_id");
 
     @Getter
-    private final String identifier, namespace;
+    private final String uniqueId, identifier;
 
     private String version;
 
-    public CustomItem(final Material material, final String identifier, final String namespace) {
+    public CustomItem(final Material material, final String uniqueId, final String identifier) {
         super(material);
 
+        this.uniqueId = uniqueId;
         this.identifier = identifier;
-        this.namespace = namespace;
     }
 
     private String getVersion() {
@@ -46,7 +46,7 @@ public abstract class CustomItem extends Item {
 
     @Override
     protected final void stamp(final ItemMeta itemMeta) {
-        UtilItemStack.setPersistentDataType(itemMeta, UtilItemStack.IDENTIFIER_KEY, PersistentDataType.STRING, this.identifier);
+        UtilItemStack.setPersistentDataType(itemMeta, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING, this.uniqueId);
         UtilItemStack.setPersistentDataType(itemMeta, VERSION_KEY, PersistentDataType.STRING, this.getVersion());
 
         UtilItemStack.setPersistentDataType(itemMeta, DELETABLE_KEY, PersistentDataType.BOOLEAN, this.deleteIfRemoved());
@@ -113,9 +113,9 @@ public abstract class CustomItem extends Item {
         );
     }
 
-    public final boolean isSimilarByIdentifier(final ItemStack itemStack) {
-        return UtilItemStack.getPersistentData(itemStack, UtilItemStack.IDENTIFIER_KEY, PersistentDataType.STRING)
-                .map(this.identifier::equals)
+    public final boolean isSimilarByUniqueId(final ItemStack itemStack) {
+        return UtilItemStack.getPersistentData(itemStack, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING)
+                .map(this.uniqueId::equals)
                 .orElse(false);
     }
 
@@ -128,7 +128,7 @@ public abstract class CustomItem extends Item {
     public final boolean isHolding(final LivingEntity livingEntity) {
         return Optional.ofNullable(livingEntity.getEquipment())
                 .map(EntityEquipment::getItemInMainHand)
-                .map(this::isSimilarByIdentifier)
+                .map(this::isSimilarByUniqueId)
                 .orElse(false);
     }
 }

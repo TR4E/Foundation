@@ -13,8 +13,8 @@ import java.util.Set;
 
 public abstract class ActivatableCustomItem extends CustomItem {
 
-    public ActivatableCustomItem(final Material material, final String identifier, final String namespace) {
-        super(material, identifier, namespace);
+    public ActivatableCustomItem(final Material material, final String uniqueId, final String identifier) {
+        super(material, uniqueId, identifier);
     }
 
     public abstract Set<ActivateType> getSupportedActivateTypes();
@@ -42,7 +42,7 @@ public abstract class ActivatableCustomItem extends CustomItem {
     public abstract void onActivate(final Player player, final ItemStack itemStack, final Block clickedBlock, final ActivateType activateType);
 
     public String getCooldownName(final ActivateType activateType) {
-        return this.getName();
+        return this.getIdentifier();
     }
 
     public long getCooldownDuration(final ActivateType activateType) {

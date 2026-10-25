@@ -16,16 +16,16 @@ public final class CustomRecipeSearchEngine extends AbstractPaperSearchEngine<Ab
 
     @Override
     protected String getMatchName(final AbstractCustomRecipe abstractCustomRecipe, final CommandSender commandSender) {
-        return UtilString.clean(abstractCustomRecipe.getKey());
+        return UtilString.clean(abstractCustomRecipe.getIdentifier());
     }
 
     @Override
     protected boolean isExact(final AbstractCustomRecipe abstractCustomRecipe, final String result) {
-        return abstractCustomRecipe.getKey().equalsIgnoreCase(result);
+        return abstractCustomRecipe.getIdentifier().equalsIgnoreCase(result);
     }
 
     @Override
     protected boolean isMatching(final AbstractCustomRecipe abstractCustomRecipe, final String result) {
-        return abstractCustomRecipe.getKey().toLowerCase(Locale.ROOT).contains(result.toLowerCase(Locale.ROOT));
+        return abstractCustomRecipe.getIdentifier().toLowerCase(Locale.ROOT).contains(result.toLowerCase(Locale.ROOT));
     }
 }

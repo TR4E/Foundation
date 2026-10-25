@@ -9,8 +9,8 @@ import java.util.List;
 
 public abstract class CustomShapelessRecipe extends AbstractCustomRecipe {
 
-    public CustomShapelessRecipe(final String key) {
-        super(key);
+    public CustomShapelessRecipe(final String identifier) {
+        super(identifier);
     }
 
     private List<ItemStack> collectIngredients() {

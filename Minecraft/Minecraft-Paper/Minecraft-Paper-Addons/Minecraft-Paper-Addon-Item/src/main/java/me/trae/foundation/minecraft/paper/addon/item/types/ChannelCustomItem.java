@@ -19,8 +19,8 @@ public abstract class ChannelCustomItem extends SingleActivatableCustomItem {
     @Getter
     private final Set<UUID> activeChannelSet = new HashSet<>();
 
-    public ChannelCustomItem(final Material material, final String identifier, final String namespace) {
-        super(material, identifier, namespace, ActivateType.RIGHT_CLICK);
+    public ChannelCustomItem(final Material material, final String uniqueId, final String identifier) {
+        super(material, uniqueId, identifier, ActivateType.RIGHT_CLICK);
     }
 
     @Override

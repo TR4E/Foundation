@@ -27,7 +27,7 @@ public final class ItemService implements Lifecycle {
 
     private final CustomItemSearchEngine customItemSearchEngine = new CustomItemSearchEngine(this);
 
-    private final Map<String, CustomItem> identifierItemMap = new HashMap<>();
+    private final Map<String, CustomItem> uniqueIdItemMap = new HashMap<>();
     private final Map<Material, CustomItem> obtainableItemMap = new EnumMap<>(Material.class);
     private final Map<Material, DefaultItem> defaultItemMap = new EnumMap<>(Material.class);
 
@@ -35,11 +35,11 @@ public final class ItemService implements Lifecycle {
 
     @Override
     public void onLiveDependencyUpdate() {
-        this.identifierItemMap.clear();
+        this.uniqueIdItemMap.clear();
         this.obtainableItemMap.clear();
 
         for (final CustomItem customItem : this.itemList) {
-            this.identifierItemMap.put(customItem.getIdentifier(), customItem);
+            this.uniqueIdItemMap.put(customItem.getUniqueId(), customItem);
 
             if (customItem.naturallyObtainable()) {
                 this.obtainableItemMap.put(customItem.getMaterial(), customItem);
@@ -47,12 +47,12 @@ public final class ItemService implements Lifecycle {
         }
     }
 
-    public Optional<CustomItem> getItemByIdentifier(final String identifier) {
-        if (identifier == null) {
+    public Optional<CustomItem> getItemByUniqueId(final String uniqueId) {
+        if (uniqueId == null) {
             return Optional.empty();
         }
 
-        return Optional.ofNullable(this.identifierItemMap.get(identifier));
+        return Optional.ofNullable(this.uniqueIdItemMap.get(uniqueId));
     }
 
     public Optional<CustomItem> getObtainableItemByMaterial(final Material material) {
@@ -68,15 +68,15 @@ public final class ItemService implements Lifecycle {
             return Optional.empty();
         }
 
-        return UtilItemStack.getPersistentData(itemStack, UtilItemStack.IDENTIFIER_KEY, PersistentDataType.STRING).flatMap(this::getItemByIdentifier);
+        return UtilItemStack.getPersistentData(itemStack, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING).flatMap(this::getItemByUniqueId);
     }
 
     public ItemStack apply(final ItemStack itemStack) {
         if (itemStack != null && !itemStack.isEmpty()) {
-            // Identifier Check
-            final CustomItem identifierItem = this.getItemByItemStack(itemStack).orElse(null);
-            if (identifierItem != null) {
-                return identifierItem.isOutdatedByItemStack(itemStack) ? identifierItem.update(itemStack) : identifierItem.refresh(itemStack);
+            // Unique ID Check
+            final CustomItem customItem = this.getItemByItemStack(itemStack).orElse(null);
+            if (customItem != null) {
+                return customItem.isOutdatedByItemStack(itemStack) ? customItem.update(itemStack) : customItem.refresh(itemStack);
             }
 
             // Obtainable Check
@@ -93,7 +93,7 @@ public final class ItemService implements Lifecycle {
             // Default Item Check
             final DefaultItem defaultItem = this.defaultItemMap.computeIfAbsent(itemStack.getType(), DefaultItem::new);
 
-            final boolean wasCustomItem = UtilItemStack.getPersistentData(itemStack, UtilItemStack.IDENTIFIER_KEY, PersistentDataType.STRING).isPresent() || UtilItemStack.getPersistentData(itemStack, CustomItem.VERSION_KEY, PersistentDataType.STRING).isPresent();
+            final boolean wasCustomItem = UtilItemStack.getPersistentData(itemStack, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING).isPresent() || UtilItemStack.getPersistentData(itemStack, CustomItem.VERSION_KEY, PersistentDataType.STRING).isPresent();
 
             return wasCustomItem ? defaultItem.create(itemStack) : defaultItem.refresh(itemStack);
         }

@@ -26,10 +26,10 @@ import java.util.stream.Collectors;
 @Getter
 public abstract class AbstractCustomRecipe {
 
-    private final String key;
+    private final String identifier;
 
     public final NamespacedKey getNamespacedKey() {
-        return new NamespacedKey("custom", this.key);
+        return new NamespacedKey("custom", this.identifier);
     }
 
     public boolean removeConflictingRecipes() {

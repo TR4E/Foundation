@@ -121,7 +121,7 @@ Both recipe types extend `AbstractCustomRecipe`, which provides the shared API:
 | `matches(matrix)` | `boolean` | Matches occupied input slots against required ingredient occurrences |
 | `build()` | `Recipe` | Builds the Bukkit recipe for registration |
 
-`matches(matrix)` creates a list of required ingredient occurrences from `toMatrix()`. Each occupied input slot consumes one similar ingredient from that list. An unmatched input or a required ingredient left over makes the match fail. Comparison uses the framework's `UtilItemStack.isSimilar`, including custom item identifiers when both items have them.
+`matches(matrix)` creates a list of required ingredient occurrences from `toMatrix()`. Each occupied input slot consumes one similar ingredient from that list. An unmatched input or a required ingredient left over makes the match fail. Comparison uses the framework's `UtilItemStack.isSimilar`, including persistent custom item unique IDs when both items have them.
 
 The registered shaped recipe handles the material pattern. The shared `matches(matrix)` method compares ingredient occurrences independently of position; it does not enforce where distinct custom items of the same material appear. Recipes can override `matches(matrix)` for stricter validation.
 

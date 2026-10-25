@@ -181,7 +181,7 @@ public final class ItemActivateListener implements Listener {
 
                 final ItemStack itemStack = player.getInventory().getItemInMainHand();
 
-                if (!channelCustomItem.isSimilarByIdentifier(itemStack) || !player.isHandRaised()) {
+                if (!channelCustomItem.isSimilarByUniqueId(itemStack) || !player.isHandRaised()) {
                     channelCustomItem.onStop(player, itemStack);
                     return true;
                 }

@@ -19,7 +19,7 @@ import java.util.Optional;
 @UtilityClass
 public class UtilItemStack {
 
-    public static final NamespacedKey IDENTIFIER_KEY = new NamespacedKey("custom", "item_identifier");
+    public static final NamespacedKey UNIQUE_ID_KEY = new NamespacedKey("custom", "item_unique_id");
 
     public static <P, C> void setPersistentDataType(final PersistentDataContainer persistentDataContainer, final NamespacedKey namespacedKey, final PersistentDataType<P, C> persistentDataType, final C value) {
         persistentDataContainer.set(namespacedKey, persistentDataType, value);
@@ -55,8 +55,8 @@ public class UtilItemStack {
         return getPersistentData(persistentDataContainer, namespacedKey, PersistentDataType.TAG_CONTAINER).orElseGet(persistentDataContainer.getAdapterContext()::newPersistentDataContainer);
     }
 
-    public static Optional<String> getIdentifierByItemStack(final ItemStack itemStack) {
-        return getPersistentData(itemStack, IDENTIFIER_KEY, PersistentDataType.STRING);
+    public static Optional<String> getUniqueIdByItemStack(final ItemStack itemStack) {
+        return getPersistentData(itemStack, UNIQUE_ID_KEY, PersistentDataType.STRING);
     }
 
     public static void insert(final Player player, final ItemStack itemStack) {
@@ -125,10 +125,10 @@ public class UtilItemStack {
             return false;
         }
 
-        final String itemStackIdentifier = getPersistentData(itemStack, IDENTIFIER_KEY, PersistentDataType.STRING).orElse(null);
-        final String contentIdentifier = getPersistentData(content, IDENTIFIER_KEY, PersistentDataType.STRING).orElse(null);
-        if (itemStackIdentifier != null && contentIdentifier != null) {
-            return itemStackIdentifier.equals(contentIdentifier);
+        final String itemStackUniqueId = getPersistentData(itemStack, UNIQUE_ID_KEY, PersistentDataType.STRING).orElse(null);
+        final String contentUniqueId = getPersistentData(content, UNIQUE_ID_KEY, PersistentDataType.STRING).orElse(null);
+        if (itemStackUniqueId != null && contentUniqueId != null) {
+            return itemStackUniqueId.equals(contentUniqueId);
         }
 
         if (itemStack.getType() != content.getType()) {

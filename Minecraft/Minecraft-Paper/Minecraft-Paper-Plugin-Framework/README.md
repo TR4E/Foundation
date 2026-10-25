@@ -399,7 +399,7 @@ title.send(player);
 | --- | --- |
 | `UtilColor` | Extends `BaseUtilColor` with `toBukkitColor(Color)` for AWT-to-Bukkit conversion |
 | `UtilEvent` | Event dispatching with sync/async and future variants |
-| `UtilItemStack` | Persistent data helpers, custom item identifiers, inventory insert/remove/contains, item comparison, and display names |
+| `UtilItemStack` | Persistent data helpers, custom item unique IDs, inventory insert/remove/contains, item comparison, and display names |
 | `UtilMaterial` | Classifies materials as interactable, interactable-by-hand, or usable; searches non-legacy material names |
 | `UtilMessage` | Extends `BaseUtilMessage` with `broadcast` and `log` methods |
 | `UtilNms` | Converts Adventure components to NMS components and sends raw packets |
@@ -443,7 +443,7 @@ Time values are converted from `ChronoUnit` to Minecraft ticks (duration in mill
 
 ### UtilItemStack
 
-`UtilItemStack` manages persistent data on item stacks using a `NamespacedKey("custom", "item_identifier")`. `getIdentifierByItemStack` reads the identifier, and `isSimilar` compares items by identifier first when present, then by material, display name, lore, and enchantments.
+`UtilItemStack.UNIQUE_ID_KEY` is `NamespacedKey("custom", "item_unique_id")`. `getUniqueIdByItemStack` reads a custom item's persistent definition unique ID. When both stacks carry unique IDs, `isSimilar` compares those values; otherwise it compares material, display name, lore, and enchantments. The [Item addon](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#custom-item) keeps this identity separate from the typable `identifier` and raw display name returned by `getName()`.
 
 `insert` adds an item to a player's inventory and drops overflow naturally. `contains` and `remove` check and remove items by count, using `isSimilar` for matching.
 

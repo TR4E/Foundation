@@ -16,17 +16,17 @@ public final class CustomItemSearchEngine extends AbstractPaperSearchEngine<Cust
 
     @Override
     protected String getMatchName(final CustomItem customItem, final CommandSender commandSender) {
-        return customItem.getName();
+        return customItem.getIdentifier();
     }
 
     @Override
     protected boolean isExact(final CustomItem customItem, final String result) {
-        return customItem.getNamespace().equalsIgnoreCase(result);
+        return customItem.getIdentifier().equalsIgnoreCase(result);
     }
 
     @Override
     protected boolean isMatching(final CustomItem customItem, final String result) {
-        return customItem.getNamespace().toLowerCase(Locale.ROOT).contains(result.toLowerCase(Locale.ROOT));
+        return customItem.getIdentifier().toLowerCase(Locale.ROOT).contains(result.toLowerCase(Locale.ROOT));
     }
 
     @Override

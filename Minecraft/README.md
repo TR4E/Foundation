@@ -55,7 +55,7 @@ Foundation's search engines share a `find(receiver, input, inform, predicate)` A
 | Minecraft-Common | Adventure feedback, escaped names, and color hooks | [AbstractMinecraftSearchEngine](Minecraft-Common/README.md#search-engines) |
 | Paper framework | `CommandSender` receiver; online players, offline-player records, worlds, materials, and Foundation plugins | [Paper engines and implementation example](Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md#search-engines) |
 | Velocity framework | `CommandSource` receiver; online players and Foundation plugins | [Velocity engines and implementation example](Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md#search-engines) |
-| Item addon | Custom item definitions searched by namespace | [CustomItemSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#item-search) |
+| Item addon | Custom item definitions searched by typable identifier | [CustomItemSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#item-search) |
 | Recipe addon | Custom recipe definitions searched by key | [CustomRecipeSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md#recipe-search) |
 
 The platform guides use the existing classes in `search.types` as references for creating new engines.

@@ -28,6 +28,7 @@ The Item addon provides a framework for defining custom items that are identifie
 - [Crafting prevention](#crafting-prevention)
 - [Inventory synchronization](#inventory-synchronization)
 - [Item service](#item-service)
+- [Item search](#item-search)
 - [Events](#events)
 - [Installation](#installation)
 
@@ -513,9 +514,35 @@ Inject `ItemService` to access registered definitions:
 | `getItemByIdentifier(identifier)` | `Optional<CustomItem>` | Resolve a definition by its exact identifier; empty for null or unknown input |
 | `getObtainableItemByMaterial(material)` | `Optional<CustomItem>` | Resolve a naturally obtainable definition; empty for null or unknown input |
 | `getItemByItemStack(itemStack)` | `Optional<CustomItem>` | Resolve the definition from the stack's identifier; empty for null or an unknown identifier |
+| `searchCustomItem(commandSender, input, inform)` | `Optional<CustomItem>` | Search namespaces with exact and partial matching and optional feedback |
+| `searchCustomItem(commandSender, input, inform, predicate)` | `Optional<CustomItem>` | The same search restricted by the predicate |
 | `apply(itemStack)` | `ItemStack` | Apply the item lifecycle; may return a replacement stack or null |
 
 `getItemList()` follows registrations as dependencies initialize and shut down. Callers cannot add, remove, or replace entries through the injected list. The item definitions themselves retain their own behaviour and state.
+
+## Item search
+
+[CustomItemSearchEngine](src/main/java/me/trae/foundation/minecraft/paper/addon/item/search/types/CustomItemSearchEngine.java) extends the framework's [Paper search engine](../../Minecraft-Paper-Plugin-Framework/README.md#search-engines). `ItemService` keeps a reusable instance and exposes it through `searchCustomItem(...)`; each search reads the service's current item list.
+
+| Behaviour | Value |
+| --- | --- |
+| Exact match | Case-insensitive equality against `CustomItem.getNamespace()` |
+| Partial match | Case-insensitive containment in the namespace |
+| Displayed match | `CustomItem.getName()`, colored with `CustomItem.getColor()` |
+| Feedback prefix | `Custom Item Search` |
+
+The namespace is the searchable value. The persistent identifier and display name serve different purposes and are not checked by this engine.
+
+With `itemService`, `commandSender`, and `input` available in a command or service:
+
+```java
+itemService.searchCustomItem(commandSender, input, true)
+        .ifPresent(customItem -> UtilMessage.message(commandSender, "Item", customItem.getName()));
+```
+
+Use the four-argument overload to restrict eligible definitions with a predicate. The three-argument overload includes every definition. With `inform` set to `true`, missing or ambiguous matches produce colored feedback; a unique result is returned without an automatic success message.
+
+For direct engine access, use `itemService.getCustomItemSearchEngine()` or construct `new CustomItemSearchEngine(itemService)`. The engine class is also an example of supplying a service's live collection and overriding `getTypeColor` for per-result colors.
 
 ## Events
 

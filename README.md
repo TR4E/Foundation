@@ -34,7 +34,7 @@ Foundation is organized as a Maven reactor. Each module can be used independentl
 | [Injector](Injector/README.md) | Constructor-based dependency injection and component lifecycle management |
 | [Minecraft](Minecraft/README.md) | Shared Minecraft support and Paper/Velocity plugin frameworks |
 | [Spring](Spring/README.md) | Reusable Spring Boot web features |
-| [Utilities](Utilities/README.md) | General-purpose Java helper classes |
+| [Utilities](Utilities/README.md) | General-purpose Java helpers and reusable search engines |
 
 ### Database
 
@@ -63,6 +63,8 @@ A lightweight dependency injector with constructor injection, application lifecy
 ### Minecraft
 
 Shared Minecraft support plus platform-specific plugin frameworks. Paper addons are optional and can be selected individually. See the [Minecraft guide](Minecraft/README.md).
+
+Both frameworks include [search engines](Minecraft/README.md#search-engines) with exact and partial matching and colored feedback. Their guides cover the existing `search.types` implementations and creating custom Paper or Velocity searches.
 
 | Maven module | Purpose |
 | --- | --- |
@@ -94,7 +96,7 @@ Reusable, auto-configured Spring Boot web components for servlet-based applicati
 
 ### Utilities
 
-A collection of Java helpers for reflection, strings, numbers, HTTP, files, hashing, Base64, Argon2, and functional interfaces. See the [Utilities guide](Utilities/README.md) for methods and examples.
+A collection of Java helpers for reflection, strings, numbers, HTTP, files, hashing, Base64, Argon2, and functional interfaces, plus a reusable [search engine base](Utilities/README.md#search-engines). See the [Utilities guide](Utilities/README.md) for methods and examples.
 
 ## Getting started
 

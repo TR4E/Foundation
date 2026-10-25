@@ -10,6 +10,8 @@
 
 Minecraft-Paper is a Maven aggregator that contains the Paper plugin framework and its optional addons. The plugin framework bridges Paper's lifecycle with Foundation's [Injector](../../Injector/README.md), providing constructor injection, scheduled tasks, configuration files, hierarchical commands, and automatic listener registration. Addons extend the framework with features such as chat channels, custom items, [damage processing](Minecraft-Paper-Addons/Minecraft-Paper-Addon-Damage/README.md), holograms, sidebars, and more.
 
+The framework also provides [search engines](Minecraft-Paper-Plugin-Framework/README.md#search-engines) for online and offline players, worlds, materials, and Foundation plugins, with examples of using and creating engines. The [Item addon](Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#item-search) and [Recipe addon](Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md#recipe-search) add searches over their registered definitions.
+
 ## Modules
 
 | Module | Purpose |

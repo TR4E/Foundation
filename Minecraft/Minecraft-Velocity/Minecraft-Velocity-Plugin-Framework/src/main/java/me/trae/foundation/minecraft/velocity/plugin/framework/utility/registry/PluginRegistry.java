@@ -1,7 +1,9 @@
 package me.trae.foundation.minecraft.velocity.plugin.framework.utility.registry;
 
+import com.velocitypowered.api.command.CommandSource;
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.velocity.plugin.framework.VelocityPlugin;
+import me.trae.foundation.minecraft.velocity.plugin.framework.search.types.VelocityInternalPluginSearchEngine;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,9 +12,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 @UtilityClass
 public class PluginRegistry {
+
+    private static final VelocityInternalPluginSearchEngine VELOCITY_INTERNAL_PLUGIN_SEARCH_ENGINE = new VelocityInternalPluginSearchEngine();
 
     private static final LinkedHashMap<String, VelocityPlugin> internalPluginMap = new LinkedHashMap<>();
     private static final Map<ClassLoader, VelocityPlugin> classLoaderMap = new ConcurrentHashMap<>();
@@ -53,5 +58,13 @@ public class PluginRegistry {
                         .filter(Objects::nonNull)
                         .findFirst())
                 .orElseThrow(() -> new IllegalStateException("No plugin found for the calling class"));
+    }
+
+    public static Optional<VelocityPlugin> searchInternalPlugin(final CommandSource commandSource, final String input, final boolean inform, final Predicate<VelocityPlugin> predicate) {
+        return VELOCITY_INTERNAL_PLUGIN_SEARCH_ENGINE.find(commandSource, input, inform, predicate);
+    }
+
+    public static Optional<VelocityPlugin> searchInternalPlugin(final CommandSource commandSource, final String input, final boolean inform) {
+        return searchInternalPlugin(commandSource, input, inform, null);
     }
 }

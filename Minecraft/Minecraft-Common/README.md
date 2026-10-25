@@ -1,6 +1,6 @@
 <h1 align="center">Minecraft-Common</h1>
 
-<p align="center">Shared Adventure text, color translation, Mojang API, and message formatting for Minecraft modules.</p>
+<p align="center">Shared Adventure text, color translation, Mojang API, message formatting, and search support for Minecraft modules.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -8,7 +8,7 @@
   <a href="https://docs.advntr.dev/"><img alt="Adventure" src="https://img.shields.io/badge/Adventure-5.2.0-4B5563?logo=minecraft&logoColor=white"></a>
 </p>
 
-Minecraft-Common is the shared library used by both the Paper and Velocity plugin frameworks. It provides Adventure component utilities, legacy-to-MiniMessage color translation, configurable message formatting with prefix and color defaults, and a Mojang API client for UUID and username lookups. All classes are static utility classes or enums with no mutable instance state.
+Minecraft-Common is the shared library used by both the Paper and Velocity plugin frameworks. It provides Adventure component utilities, legacy-to-MiniMessage color translation, configurable message formatting with prefix and color defaults, a Mojang API client for UUID and username lookups, and an abstract search engine with Adventure feedback.
 
 ## Contents
 
@@ -19,6 +19,7 @@ Minecraft-Common is the shared library used by both the Paper and Velocity plugi
 - [Color translation](#color-translation)
 - [Message formatting](#message-formatting)
 - [Mojang API](#mojang-api)
+- [Search engines](#search-engines)
 - [Installation](#installation)
 
 </details>
@@ -129,6 +130,29 @@ final Optional<String> name = MojangApi.getUsernameById(uuid);
 ```
 
 Mojang rate-limits these endpoints. The methods do not cache results; add application-level caching when calling them frequently.
+
+## Search engines
+
+[AbstractMinecraftSearchEngine](src/main/java/me/trae/foundation/minecraft/common/search/AbstractMinecraftSearchEngine.java) extends Utilities' [AbstractSearchEngine](../../Utilities/README.md#search-engines) with `Receiver extends Audience`. It keeps the same `find(receiver, input, inform, predicate)` API and matching behaviour, and sends unresolved-search feedback through `BaseUtilMessage` to the receiver.
+
+| Behaviour | Default |
+| --- | --- |
+| Prefix | The engine name supplied to its constructor |
+| Input and match-count color | Yellow, configurable by overriding `getInputColor()` |
+| Match color | Yellow, configurable per candidate and receiver by overriding `getTypeColor(type, receiver)` |
+| Match separator | Gray comma and space |
+| Input and match names | Backslashes and MiniMessage tags are escaped before colors are applied |
+
+Implement `getMatchName`, `isExact`, and `isMatching` to define a Minecraft search. `formatMatch`, `message`, `getInputFormat`, and `getMatchSeparator` are final in this layer; use the color hooks to customize its presentation. The inherited `updateList` hook can adjust partial results before the engine decides whether they are unique.
+
+The platform bases fix the receiver type:
+
+| Platform | Base class | Receiver | Examples |
+| --- | --- | --- | --- |
+| Paper | `AbstractPaperSearchEngine<Type>` | Bukkit `CommandSender` | [Built-in engines and implementation example](../Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md#search-engines) |
+| Velocity | `AbstractVelocitySearchEngine<Type>` | Velocity `CommandSource` | [Built-in engines and implementation example](../Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md#search-engines) |
+
+Engines call the collection supplier on every search. Call them in a context supported by the collection and platform API they access; the shared base does not schedule work.
 
 ## Installation
 

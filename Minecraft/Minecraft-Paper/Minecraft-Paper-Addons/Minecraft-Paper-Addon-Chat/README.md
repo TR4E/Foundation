@@ -234,6 +234,10 @@ Declare the addon on your plugin class:
 @Addons({ChatAddon.class})
 public final class MyPlugin extends PaperPlugin {
 
+    @Override
+    public String getPluginName() {
+        return "MyPlugin";
+    }
 }
 ```
 

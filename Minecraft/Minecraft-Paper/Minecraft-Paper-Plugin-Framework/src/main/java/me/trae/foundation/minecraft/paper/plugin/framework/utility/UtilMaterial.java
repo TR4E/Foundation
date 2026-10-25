@@ -1,11 +1,18 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.utility;
 
 import lombok.experimental.UtilityClass;
+import me.trae.foundation.minecraft.paper.plugin.framework.search.types.PaperMaterialSearchEngine;
 import org.bukkit.Material;
+import org.bukkit.command.CommandSender;
 import org.bukkit.inventory.ItemStack;
+
+import java.util.Optional;
+import java.util.function.Predicate;
 
 @UtilityClass
 public class UtilMaterial {
+
+    private static final PaperMaterialSearchEngine PAPER_MATERIAL_SEARCH_ENGINE = new PaperMaterialSearchEngine();
 
     public static boolean isInteractable(final Material material) {
         return switch (material) {
@@ -122,5 +129,13 @@ public class UtilMaterial {
                  EGG, ENDER_EYE, ENDER_PEARL, EXPERIENCE_BOTTLE, FIREWORK_ROCKET, LINGERING_POTION, SNOWBALL, SPLASH_POTION, WIND_CHARGE -> true;
             default -> false;
         };
+    }
+
+    public static Optional<Material> searchMaterial(final CommandSender commandSender, final String input, final boolean inform, final Predicate<Material> predicate) {
+        return PAPER_MATERIAL_SEARCH_ENGINE.find(commandSender, input, inform, predicate);
+    }
+
+    public static Optional<Material> searchMaterial(final CommandSender commandSender, final String input, final boolean inform) {
+        return searchMaterial(commandSender, input, inform, null);
     }
 }

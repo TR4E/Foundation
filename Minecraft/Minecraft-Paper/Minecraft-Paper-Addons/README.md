@@ -27,6 +27,8 @@ Minecraft-Paper-Addons is a Maven aggregator for the ten optional feature addons
 
 The NMS column indicates whether the addon requires Paper NMS for server internals or direct packet access. Addons without NMS use the Bukkit API only.
 
+The [Item addon](Minecraft-Paper-Addon-Item/README.md#item-search) and [Recipe addon](Minecraft-Paper-Addon-Recipe/README.md#recipe-search) include search engines for their registered definitions. Both use the framework's [Paper search API](../Minecraft-Paper-Plugin-Framework/README.md#search-engines) with exact and partial matching and colored feedback.
+
 All addons share the Plugin Framework and Paper API as `provided` dependencies. The Damage addon depends on the Death addon for custom death events and message integration. The Recipe addon has an optional dependency on the Item addon for restricting custom items to their own recipes. The remaining addons have no dependencies on other addons.
 
 This module is a Maven aggregator with `pom` packaging. Return to the [Minecraft README](../../README.md).

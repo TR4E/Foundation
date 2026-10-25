@@ -122,4 +122,6 @@ public abstract class VelocityPlugin implements ApplicationCallback, SchedulerCa
     public final void onConfigurationReload(final Class<?> type) {
         UtilEvent.dispatch(this, new ConfigReloadEvent(this, type));
     }
+
+    public abstract String getPluginName();
 }

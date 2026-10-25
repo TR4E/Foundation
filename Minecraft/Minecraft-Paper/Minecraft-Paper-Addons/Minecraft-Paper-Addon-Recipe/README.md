@@ -23,6 +23,7 @@ The Recipe addon registers custom crafting recipes, validates ingredient occurre
 - [Events](#events)
 - [Disabled recipe placeholders](#disabled-recipe-placeholders)
 - [Recipe service](#recipe-service)
+- [Recipe search](#recipe-search)
 - [Conflict resolution](#conflict-resolution)
 - [Item addon integration](#item-addon-integration)
 - [Installation](#installation)
@@ -218,10 +219,36 @@ Inject `RecipeService` into plugin components to inspect registered recipes:
 | `getRecipeList()` | The injected read-only live list of recipe definitions |
 | `getRegisteredNamespacedKeySet()` | Keys of custom recipes successfully registered during the latest rebuild |
 | `getRecipeByKey(namespacedKey)` | Resolve a custom recipe through the key map; empty for null or an unknown key |
+| `searchCustomRecipe(commandSender, input, inform)` | Search recipe keys with exact and partial matching and optional feedback |
+| `searchCustomRecipe(commandSender, input, inform, predicate)` | The same search restricted by the predicate |
 | `isIngredient(namespacedKey, itemStack)` | Check whether the item is an ingredient of that registered recipe |
 | `DISABLED_RECIPE_KEY` | Persistent-data key for disabled preview items |
 
 On live dependency updates, the service rebuilds its recipe lookup map and publishes an unmodifiable snapshot through a volatile field. Key lookup and ingredient checks use that map instead of scanning the recipe list. Shutdown removes registered recipes and clears the lookup snapshot. Use unique recipe keys; when definitions share a key, lookup retains the first definition in the live list.
+
+## Recipe search
+
+[CustomRecipeSearchEngine](src/main/java/me/trae/foundation/minecraft/paper/addon/recipe/search/types/CustomRecipeSearchEngine.java) extends the framework's [Paper search engine](../../Minecraft-Paper-Plugin-Framework/README.md#search-engines). `RecipeService` keeps a reusable instance and exposes it through `searchCustomRecipe(...)`; each search reads the service's current recipe list. Both service overloads return `Optional<AbstractCustomRecipe>`.
+
+| Behaviour | Value |
+| --- | --- |
+| Exact match | Case-insensitive equality against `AbstractCustomRecipe.getKey()` |
+| Partial match | Case-insensitive containment in the recipe key |
+| Displayed match | Key formatted with `UtilString.clean`, such as `Diamond Hammer` for `diamond_hammer` |
+| Feedback prefix | `Custom Recipe Search` |
+
+Search with the bare key, such as `diamond_hammer`, rather than the namespaced Bukkit key `custom:diamond_hammer` or the formatted display name.
+
+With `recipeService`, `commandSender`, and `input` available in a command or service:
+
+```java
+recipeService.searchCustomRecipe(commandSender, input, true)
+        .ifPresent(abstractCustomRecipe -> UtilMessage.message(commandSender, "Recipe", abstractCustomRecipe.getKey()));
+```
+
+Use the four-argument overload to restrict eligible definitions with a predicate. The three-argument overload includes every definition. With `inform` set to `true`, missing or ambiguous matches produce colored feedback; a unique result is returned without an automatic success message. For direct engine access, use `recipeService.getCustomRecipeSearchEngine()` or construct `new CustomRecipeSearchEngine(recipeService)`.
+
+The engine searches the service's recipe definitions. Use `RecipeService.getRegisteredNamespacedKeySet()` when you also need to distinguish which keys were successfully registered during the latest rebuild.
 
 ## Conflict resolution
 

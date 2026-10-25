@@ -18,6 +18,7 @@ Minecraft-Velocity-Plugin-Framework connects Velocity's proxy lifecycle with Fou
 - [Quick start](#quick-start)
 - [VelocityPlugin base class](#velocityplugin-base-class)
 - [Command system](#command-system)
+- [Search engines](#search-engines)
 - [Event system](#event-system)
 - [Utilities](#utilities)
 - [Installation](#installation)
@@ -33,6 +34,11 @@ public class MyProxyPlugin extends VelocityPlugin {
     @Inject
     public MyProxyPlugin(final ProxyServer proxyServer, @DataDirectory final Path dataDirectory) {
         super(proxyServer, dataDirectory);
+    }
+
+    @Override
+    public String getPluginName() {
+        return "MyProxyPlugin";
     }
 }
 
@@ -69,6 +75,8 @@ Place public types in separate files under the plugin's package. Components use 
 ## VelocityPlugin base class
 
 `VelocityPlugin` implements `ApplicationCallback`, `SchedulerCallback`, and `ConfigurationCallback`. It manages the full plugin lifecycle:
+
+Implement `getPluginName()` to supply the name used by `VelocityInternalPluginSearchEngine` and `PluginRegistry.searchInternalPlugin(...)`. The registry's direct `getInternalPluginByName(...)` lookup uses the plugin class's simple name.
 
 **Startup (`onProxyInitialize`):**
 1. Registers the plugin with `PluginRegistry`.
@@ -143,6 +151,108 @@ Root commands are wrapped as `BrigadierCommand` instances. The wrapper handles r
 | `players(predicate, arg)` | Filtered online player names |
 | `internalPlugins(arg)` | Registered framework plugins |
 
+## Search engines
+
+`AbstractVelocitySearchEngine<Type>` extends the [Minecraft search engine](../../Minecraft-Common/README.md#search-engines) with Velocity's `CommandSource` as the receiver. It supplies colored feedback for missing or ambiguous results and leaves candidate collection and matching rules to the implementation. The shared [search contract](../../../Utilities/README.md#search-engines) describes exact-match priority, filtering, and the display limit.
+
+### Built-in engines
+
+These implementations live in `me.trae.foundation.minecraft.velocity.plugin.framework.search.types`. Both have no-argument constructors and use case-insensitive equality for exact matches and case-insensitive containment for partial matches.
+
+| Engine | Candidates | Match value and displayed name |
+| --- | --- | --- |
+| [VelocityOnlinePlayerSearchEngine](src/main/java/me/trae/foundation/minecraft/velocity/plugin/framework/search/types/VelocityOnlinePlayerSearchEngine.java) | Current online players on the proxy | Player username |
+| [VelocityInternalPluginSearchEngine](src/main/java/me/trae/foundation/minecraft/velocity/plugin/framework/search/types/VelocityInternalPluginSearchEngine.java) | Foundation `VelocityPlugin` instances in `PluginRegistry` | Plugin name |
+
+Internal plugin search covers Foundation plugins registered with the framework.
+
+### Search helpers
+
+Utilities expose reusable engines for the built-in search types. Each helper accepts `(commandSource, input, inform)` and an overload with a final `Predicate<Type>` argument. Omitting the predicate includes all candidates.
+
+| Helper | Returns | Engine |
+| --- | --- | --- |
+| `UtilServer.searchOnlinePlayer(...)` | `Optional<Player>` | `VelocityOnlinePlayerSearchEngine` |
+| `PluginRegistry.searchInternalPlugin(...)` | `Optional<VelocityPlugin>` | `VelocityInternalPluginSearchEngine` |
+
+`UtilServer` belongs to the framework's `utility` package; `PluginRegistry` belongs to `utility.registry`.
+
+```java
+UtilServer.searchOnlinePlayer(commandSource, input, true)
+        .ifPresent(player -> UtilMessage.message(commandSource, "Player", player.getUsername()));
+```
+
+Filter before both exact and partial matching, for example when a command accepts only staff:
+
+```java
+final Optional<Player> playerOptional = UtilServer.searchOnlinePlayer(
+        commandSource,
+        input,
+        true,
+        player -> player.hasPermission("myplugin.staff")
+);
+```
+
+These helpers have the same result and feedback behaviour as calling an engine's `find(...)` directly. Direct UUID and name getters remain available for lookups that do not need partial matching.
+
+### Using an engine
+
+Inside a command or service, pass the source, input, whether to report an unresolved search, and an optional candidate predicate. These examples omit imports, as do the other framework examples:
+
+```java
+final VelocityOnlinePlayerSearchEngine velocityOnlinePlayerSearchEngine = new VelocityOnlinePlayerSearchEngine();
+
+velocityOnlinePlayerSearchEngine.find(commandSource, input, true, null)
+        .ifPresent(player -> UtilMessage.message(commandSource, "Player", player.getUsername()));
+```
+
+Set `inform` to `false` for a silent lookup. `Optional.empty()` can mean either no match or multiple partial matches. Reuse an engine as a field when searching repeatedly; its supplier obtains current candidates each time.
+
+A predicate restricts both exact and partial matches. For example, search only players with a particular permission:
+
+```java
+final Optional<Player> playerOptional = velocityOnlinePlayerSearchEngine.find(
+        commandSource,
+        input,
+        true,
+        player -> player.hasPermission("myplugin.staff")
+);
+```
+
+Here `Player` is `com.velocitypowered.api.proxy.Player` and `CommandSource` is `com.velocitypowered.api.command.CommandSource`.
+
+### Creating an engine
+
+The existing `VelocityOnlinePlayerSearchEngine` shows the implementation pattern. Extend `AbstractVelocitySearchEngine<Player>`, supply the current collection, and define the display name and two matching checks:
+
+```java
+public final class VelocityOnlinePlayerSearchEngine extends AbstractVelocitySearchEngine<Player> {
+
+    public VelocityOnlinePlayerSearchEngine() {
+        super("Online Player Search", UtilServer::getOnlinePlayers);
+    }
+
+    @Override
+    protected String getMatchName(final Player player, final CommandSource commandSource) {
+        return player.getUsername();
+    }
+
+    @Override
+    protected boolean isExact(final Player player, final String result) {
+        return player.getUsername().equalsIgnoreCase(result);
+    }
+
+    @Override
+    protected boolean isMatching(final Player player, final String result) {
+        return player.getUsername().toLowerCase(Locale.ROOT).contains(result.toLowerCase(Locale.ROOT));
+    }
+}
+```
+
+`UtilServer` is the Velocity framework utility. For a new search type, replace `Player`, the supplier, and the matching methods with your own candidate type and rules. Override `getTypeColor(type, commandSource)` to color individual matches, `getInputColor()` to change the input color, or `updateList(resultList, commandSource, input)` to adjust partial results. Exact matches return before that list hook runs.
+
+The supplied engines are ordinary classes without component annotations. Construct them directly, or annotate your own engine with Injector's `@Singleton` when it should be a plugin component.
+
 ## Event system
 
 ### Marker interfaces
@@ -198,10 +308,10 @@ final CompletableFuture<MyEvent> future = UtilEvent.supply(event);
 | `UtilMessage` | Extends `BaseUtilMessage` with `broadcast` and `log` methods using `ProxyServer` |
 | `UtilPermission` | Permission checking with wildcard and custom wildcard support |
 | `UtilPlayer` | Extracts IP address from a player's remote address |
-| `UtilServer` | Online player lookups by UUID or name through `ProxyServer` |
+| `UtilServer` | Online player lookups by UUID or name through `ProxyServer`, plus exact and partial username searches |
 | `UtilTask` | Task scheduling through Velocity's scheduler with `ChronoUnit` time units |
 | `CommandRegistry` | Registers and unregisters root and child commands with Velocity's command manager |
-| `PluginRegistry` | Tracks framework plugins by name, class, and class loader for cross-plugin discovery |
+| `PluginRegistry` | Tracks framework plugins by name, class, and class loader for cross-plugin discovery; searches their `getPluginName()` values |
 
 ### UtilTask
 

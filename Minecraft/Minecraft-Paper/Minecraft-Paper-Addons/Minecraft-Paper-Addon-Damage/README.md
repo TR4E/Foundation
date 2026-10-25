@@ -380,6 +380,10 @@ Declare `DamageAddon` on your `PaperPlugin`. For damage processing and death-mes
 @Addons({DamageAddon.class, DeathAddon.class})
 public final class CombatPlugin extends PaperPlugin {
 
+    @Override
+    public String getPluginName() {
+        return "CombatPlugin";
+    }
 }
 ```
 

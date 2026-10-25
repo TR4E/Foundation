@@ -19,6 +19,7 @@ Minecraft-Paper-Plugin-Framework connects Paper's plugin lifecycle with Foundati
 - [PaperPlugin base class](#paperplugin-base-class)
 - [Addon system](#addon-system)
 - [Command system](#command-system)
+- [Search engines](#search-engines)
 - [Event system](#event-system)
 - [Display names](#display-names)
 - [Stash classes](#stash-classes)
@@ -32,6 +33,11 @@ Minecraft-Paper-Plugin-Framework connects Paper's plugin lifecycle with Foundati
 ```java
 @Addons({ItemAddon.class})
 public class MyPlugin extends PaperPlugin {
+
+    @Override
+    public String getPluginName() {
+        return "MyPlugin";
+    }
 }
 
 @Singleton
@@ -68,6 +74,8 @@ Place public types in separate files under the plugin's package. Plugin componen
 
 `PaperPlugin` extends `JavaPlugin` and implements `ApplicationCallback`, `SchedulerCallback`, and `ConfigurationCallback`. It manages the full plugin lifecycle:
 
+Implement `getPluginName()` to supply the name used by `PaperInternalPluginSearchEngine` and `PluginRegistry.searchInternalPlugin(...)`. The registry's direct `getInternalPluginByName(...)` lookup uses Bukkit's plugin name from `getName()`.
+
 **Startup (`onEnable`):**
 1. Registers the plugin with `PluginRegistry`.
 2. Initializes the addon registry, which scans `@Addons` for addon classes, discovers `@AddonSingleton` components in each addon's package, elects addons through Paper's `ServicesManager`, and returns the component classes of elected addons.
@@ -96,6 +104,11 @@ Annotate the plugin class with `@Addons` and list the addon classes:
 ```java
 @Addons({ItemAddon.class, RecipeAddon.class})
 public class MyPlugin extends PaperPlugin {
+
+    @Override
+    public String getPluginName() {
+        return "MyPlugin";
+    }
 }
 ```
 
@@ -191,6 +204,112 @@ All suggestion methods filter case-insensitively by the current argument prefix.
 
 Root commands are wrapped in `BukkitCommandWrapper`, which extends `BukkitCommand` and handles recursive command resolution, sender validation, permission checks, event dispatch, and tab completion through Bukkit's command system.
 
+## Search engines
+
+`AbstractPaperSearchEngine<Type>` extends the [Minecraft search engine](../../Minecraft-Common/README.md#search-engines) with Bukkit's `CommandSender` as the receiver. It supplies colored feedback for missing or ambiguous results and leaves candidate collection and matching rules to the implementation. The shared [search contract](../../../Utilities/README.md#search-engines) describes exact-match priority, filtering, and the display limit.
+
+### Built-in engines
+
+These implementations live in `me.trae.foundation.minecraft.paper.plugin.framework.search.types`. Each has a no-argument constructor and uses case-insensitive equality for exact matches and case-insensitive containment for partial matches.
+
+| Engine | Candidates | Match value | Displayed name |
+| --- | --- | --- | --- |
+| [PaperOnlinePlayerSearchEngine](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/search/types/PaperOnlinePlayerSearchEngine.java) | Current online players | Player name | Player name |
+| [PaperOfflinePlayerSearchEngine](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/search/types/PaperOfflinePlayerSearchEngine.java) | Bukkit's offline-player records that have played before and have a non-null name | Player name | Player name |
+| [PaperWorldSearchEngine](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/search/types/PaperWorldSearchEngine.java) | Loaded worlds | World name | World name |
+| [PaperMaterialSearchEngine](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/search/types/PaperMaterialSearchEngine.java) | Non-legacy `Material` values | Enum name, such as `DIAMOND_SWORD` | Cleaned name, such as `Diamond Sword` |
+| [PaperInternalPluginSearchEngine](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/search/types/PaperInternalPluginSearchEngine.java) | Foundation `PaperPlugin` instances in `PluginRegistry` | Plugin name | Plugin name |
+
+Internal plugin search covers Foundation plugins registered with the framework. Material search uses enum names, so use underscores in the input even though feedback displays spaces.
+
+### Search helpers
+
+Utilities expose reusable engines for the built-in search types. Each helper accepts `(commandSender, input, inform)` and an overload with a final `Predicate<Type>` argument. Omitting the predicate includes all candidates.
+
+| Helper | Returns | Engine |
+| --- | --- | --- |
+| `UtilServer.searchOnlinePlayer(...)` | `Optional<Player>` | `PaperOnlinePlayerSearchEngine` |
+| `UtilServer.searchOfflinePlayer(...)` | `Optional<OfflinePlayer>` | `PaperOfflinePlayerSearchEngine` |
+| `UtilWorld.searchWorld(...)` | `Optional<World>` | `PaperWorldSearchEngine` |
+| `UtilMaterial.searchMaterial(...)` | `Optional<Material>` | `PaperMaterialSearchEngine` |
+| `PluginRegistry.searchInternalPlugin(...)` | `Optional<PaperPlugin>` | `PaperInternalPluginSearchEngine` |
+
+`UtilServer`, `UtilWorld`, and `UtilMaterial` belong to the framework's `utility` package; `PluginRegistry` belongs to `utility.registry`.
+
+```java
+UtilServer.searchOnlinePlayer(commandSender, input, true)
+        .ifPresent(player -> UtilMessage.message(commandSender, "Player", player.getName()));
+```
+
+Filter before both exact and partial matching, for example when a command accepts only blocks:
+
+```java
+final Optional<Material> materialOptional = UtilMaterial.searchMaterial(
+        commandSender,
+        input,
+        true,
+        Material::isBlock
+);
+```
+
+These helpers have the same result and feedback behaviour as calling an engine's `find(...)` directly. Direct UUID and name getters remain available for lookups that do not need partial matching.
+
+### Using an engine
+
+Inside a command or service, pass the sender, input, whether to report an unresolved search, and an optional candidate predicate. These examples omit imports, as do the other framework examples:
+
+```java
+final PaperOnlinePlayerSearchEngine paperOnlinePlayerSearchEngine = new PaperOnlinePlayerSearchEngine();
+
+paperOnlinePlayerSearchEngine.find(commandSender, input, true, null)
+        .ifPresent(player -> UtilMessage.message(commandSender, "Player", player.getName()));
+```
+
+Set `inform` to `false` for a silent lookup. `Optional.empty()` can mean either no match or multiple partial matches. Reuse an engine as a field when searching repeatedly; its supplier obtains current candidates each time.
+
+A predicate can restrict both exact and partial matches, for example to online players in a particular world:
+
+```java
+final Optional<Player> playerOptional = paperOnlinePlayerSearchEngine.find(
+        commandSender,
+        input,
+        true,
+        player -> player.getWorld().equals(world)
+);
+```
+
+### Creating an engine
+
+The existing `PaperWorldSearchEngine` shows the implementation pattern. Extend `AbstractPaperSearchEngine<World>`, supply the current collection, and define the display name and two matching checks:
+
+```java
+public final class PaperWorldSearchEngine extends AbstractPaperSearchEngine<World> {
+
+    public PaperWorldSearchEngine() {
+        super("World Search", () -> Bukkit.getServer().getWorlds());
+    }
+
+    @Override
+    protected String getMatchName(final World world, final CommandSender commandSender) {
+        return world.getName();
+    }
+
+    @Override
+    protected boolean isExact(final World world, final String result) {
+        return world.getName().equalsIgnoreCase(result);
+    }
+
+    @Override
+    protected boolean isMatching(final World world, final String result) {
+        return world.getName().toLowerCase(Locale.ROOT).contains(result.toLowerCase(Locale.ROOT));
+    }
+}
+```
+
+For a new search type, replace `World`, the supplier, and the matching methods with your own candidate type and rules. Override `getTypeColor(type, commandSender)` to color individual matches, `getInputColor()` to change the input color, or `updateList(resultList, commandSender, input)` to adjust partial results. Exact matches return before that list hook runs.
+
+The supplied engines are ordinary classes without component annotations. Construct them directly, or annotate your own engine with Injector's `@Singleton` when it should be a plugin component. The [Item addon](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#item-search) and [Recipe addon](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md#recipe-search) provide further examples backed by injected services.
+
 ## Event system
 
 The framework provides base classes for custom events:
@@ -281,14 +400,34 @@ title.send(player);
 | `UtilColor` | Extends `BaseUtilColor` with `toBukkitColor(Color)` for AWT-to-Bukkit conversion |
 | `UtilEvent` | Event dispatching with sync/async and future variants |
 | `UtilItemStack` | Persistent data helpers, custom item identifiers, inventory insert/remove/contains, item comparison, and display names |
-| `UtilMaterial` | Classifies materials as interactable, interactable-by-hand, or usable |
+| `UtilMaterial` | Classifies materials as interactable, interactable-by-hand, or usable; searches non-legacy material names |
 | `UtilMessage` | Extends `BaseUtilMessage` with `broadcast` and `log` methods |
 | `UtilNms` | Converts Adventure components to NMS components and sends raw packets |
 | `UtilPermission` | Permission checking with OP, wildcard, and custom wildcard support |
-| `UtilServer` | Online and offline player lookups by UUID or name |
+| `UtilServer` | Online and offline player lookups by UUID or name, plus exact and partial name searches |
 | `UtilTask` | Task scheduling with `ChronoUnit` time conversion, delayed and repeating variants, and optional cancellation suppliers |
+| `UtilWorld` | Loaded worlds, direct UUID and name lookups, and exact and partial world-name searches |
 | `CommandRegistry` | Registers and unregisters root and child commands with Bukkit's command map |
-| `PluginRegistry` | Tracks framework plugins by name and class for cross-plugin discovery |
+| `PluginRegistry` | Tracks framework plugins by name and class for cross-plugin discovery; searches their `getPluginName()` values |
+
+### UtilWorld
+
+[UtilWorld](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/utility/UtilWorld.java) provides loaded-world access and search:
+
+| Method | Returns | Behaviour |
+| --- | --- | --- |
+| `getWorlds()` | `List<World>` | The server's current loaded worlds |
+| `getWorldById(id)` | `Optional<World>` | Direct UUID lookup; empty when the world is not loaded |
+| `getWorldByName(name)` | `Optional<World>` | Direct Bukkit name lookup; empty when no loaded world matches |
+| `searchWorld(commandSender, input, inform)` | `Optional<World>` | Case-insensitive exact match, then a unique partial name match |
+| `searchWorld(commandSender, input, inform, predicate)` | `Optional<World>` | The same search restricted by the predicate |
+
+```java
+UtilWorld.searchWorld(commandSender, input, true)
+        .ifPresent(world -> UtilMessage.message(commandSender, "World", world.getName()));
+```
+
+These methods inspect loaded worlds; they do not load or create them. See [Search helpers](#search-helpers) for the shared feedback and filtering behaviour.
 
 ### UtilTask
 

@@ -126,4 +126,6 @@ public abstract class PaperPlugin extends JavaPlugin implements ApplicationCallb
     public final void onConfigurationReload(final Class<?> type) {
         UtilEvent.dispatch(new ConfigReloadEvent(this, type));
     }
+
+    public abstract String getPluginName();
 }

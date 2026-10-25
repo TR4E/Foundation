@@ -1,6 +1,6 @@
 <h1 align="center">Utilities</h1>
 
-<p align="center">Static Java helpers for strings, numbers, reflection, HTTP, files, encoding, and cryptography.</p>
+<p align="center">Java helpers for strings, numbers, reflection, HTTP, files, encoding, cryptography, and reusable search engines.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -8,7 +8,7 @@
   <a href="https://github.com/phxql/argon2-jvm"><img alt="Argon2id" src="https://img.shields.io/badge/Argon2id-Password%20hashing-4B5563?logo=lock&logoColor=white"></a>
 </p>
 
-Utilities is a zero-framework dependency library of focused, thread-safe static helpers. Every class is a Lombok `@UtilityClass`: non-instantiable, all static methods. The module exists so that Foundation's other modules and consumer applications share one well-tested set of common operations rather than reimplementing string formatting, password hashing, HTTP calls, or reflection patterns in each project. Password hashing uses the `argon2-jvm` library; everything else uses the Java standard library.
+Utilities provides general Java helpers and a reusable search engine without depending on an application framework. Static helpers use Lombok's `@UtilityClass`; `AbstractSearchEngine` is an extensible instance class. Password hashing uses `argon2-jvm`, and the default search feedback uses the SLF4J API inherited from Foundation's root POM. A consuming application supplies its logging backend.
 
 ## Contents
 
@@ -27,6 +27,7 @@ Utilities is a zero-framework dependency library of focused, thread-safe static 
 - [File reads and caching](#file-reads-and-caching)
 - [Base64 encoding](#base64-encoding)
 - [Functional interfaces](#functional-interfaces)
+- [Search engines](#search-engines)
 - [Installation and build](#installation-and-build)
 
 </details>
@@ -44,8 +45,9 @@ Utilities is a zero-framework dependency library of focused, thread-safe static 
 | HTTP | [UtilHttp](src/main/java/me/trae/foundation/utilities/UtilHttp.java) | Synchronous and asynchronous HTTP with response classification, built on Java's `HttpClient` |
 | Files | [UtilFile](src/main/java/me/trae/foundation/utilities/UtilFile.java) | Cached file reads with size and timestamp freshness checks |
 | Functional | [TriConsumer](src/main/java/me/trae/foundation/utilities/functional/consumer/TriConsumer.java), [QuadConsumer](src/main/java/me/trae/foundation/utilities/functional/consumer/QuadConsumer.java), [TriFunction](src/main/java/me/trae/foundation/utilities/functional/function/TriFunction.java), [QuadFunction](src/main/java/me/trae/foundation/utilities/functional/function/QuadFunction.java) | Three- and four-argument functional interfaces that the standard library does not provide |
+| Search | [AbstractSearchEngine](src/main/java/me/trae/foundation/utilities/search/AbstractSearchEngine.java) | Shared exact and partial matching, optional filtering, and feedback for unresolved searches |
 
-All utility classes use `ConcurrentHashMap` or thread-safe structures where they cache results. None of them carry mutable instance state; all shared state is static and thread-safe.
+Static helpers use `ConcurrentHashMap` or thread-safe structures where they cache results. Search engines obtain their candidates from a supplier on each call; collection access and subclass behaviour determine where they can safely run.
 
 ## Strings and English articles
 
@@ -417,6 +419,50 @@ Java provides `Consumer`, `BiConsumer`, `Function`, and `BiFunction`. Utilities 
 | `QuadFunction<A, B, C, D, R>` | `R apply(A, B, C, D)` |
 
 All four are `@FunctionalInterface` annotated.
+
+## Search engines
+
+Extend `AbstractSearchEngine<Type, Receiver>` to search a supplied collection. Its protected constructor takes a feedback prefix and a `Supplier<Collection<? extends Type>>`. The supplier is called for every search, so an engine can follow changing registrations or online players without holding a snapshot.
+
+```java
+final Optional<Type> result = this.searchEngine.find(receiver, input, true, null);
+```
+
+`find(receiver, input, inform, predicate)` returns an `Optional<Type>`:
+
+| Step | Behaviour |
+| --- | --- |
+| Filter | A non-null predicate excludes candidates before either match check; pass `null` for no filter |
+| Exact match | The first candidate accepted by `isExact` returns immediately |
+| Partial matches | Candidates accepted by `isMatching` are collected in supplier order |
+| Result adjustment | `updateList(resultList, receiver, input)` can filter, reorder, or otherwise adjust partial results |
+| One result | A single remaining partial match is returned |
+| No result or ambiguity | Returns `Optional.empty()`; when `inform` is `true`, reports no matches or lists the matching names |
+
+Exact matches bypass `updateList` and feedback. A successful search sends no automatic message. Case handling, aliases, and partial-match rules belong to the subclass; the base engine does not normalize the input.
+
+### Implementing an engine
+
+| Method | Purpose |
+| --- | --- |
+| `getMatchName(type, receiver)` | Name used when listing ambiguous results |
+| `formatMatch(type, name, receiver)` | Format each displayed match |
+| `isExact(type, result)` | Decide whether a candidate is an exact match |
+| `isMatching(type, result)` | Decide whether a candidate is a partial match |
+| `updateList(resultList, receiver, input)` | Optional hook after collecting partial matches; defaults to no changes |
+| `message(receiver, prefix, message)` | Defaults to `LOGGER.info`, with `[prefix]` when a prefix is supplied |
+| `getInputFormat(string)` | Format the input or match count; defaults to unchanged text |
+| `getMatchSeparator()` | Separator between displayed matches; defaults to `", "` |
+
+The display limit defaults to 100 and is shared by all engines using this base class:
+
+```java
+AbstractSearchEngine.setMaxResultLimit(25);
+```
+
+This limits the names shown in ambiguous feedback. It does not limit the candidate scan or change whether a search is ambiguous; the reported count still includes all remaining matches.
+
+[Minecraft-Common](../Minecraft/Minecraft-Common/README.md#search-engines) adds Adventure messages and colors. The [Paper guide](../Minecraft/Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md#search-engines) and [Velocity guide](../Minecraft/Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md#search-engines) show the existing `search.types` engines and examples of implementing platform searches.
 
 ## Installation and build
 

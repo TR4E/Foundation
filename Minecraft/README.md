@@ -17,6 +17,7 @@ Minecraft provides a common library for Adventure text components, color handlin
 <summary>On this page</summary>
 
 - [Modules](#modules)
+- [Search engines](#search-engines)
 - [Installation](#installation)
 - [Paper plugin quick start](#paper-plugin-quick-start)
 - [Velocity plugin quick start](#velocity-plugin-quick-start)
@@ -27,7 +28,7 @@ Minecraft provides a common library for Adventure text components, color handlin
 
 | Module | Artifact | Purpose |
 | --- | --- | --- |
-| [Minecraft-Common](Minecraft-Common/README.md) | `me.trae.foundation.minecraft:Minecraft-Common` | Shared code: Adventure text, color translation, Mojang API, and message formatting |
+| [Minecraft-Common](Minecraft-Common/README.md) | `me.trae.foundation.minecraft:Minecraft-Common` | Shared code: Adventure text, color translation, Mojang API, message formatting, and search feedback |
 | [Minecraft-Paper-Plugin-Framework](Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md) | `me.trae.foundation.minecraft.paper:Minecraft-Paper-Plugin-Framework` | Paper plugin framework integrated with Injector |
 | [Minecraft-Paper-Addons](Minecraft-Paper/Minecraft-Paper-Addons/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addons` | Optional Paper features |
 | [Minecraft-Paper-Addon-Billboard](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Billboard/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Billboard` | Billboard displays and image/video support |
@@ -43,6 +44,21 @@ Minecraft provides a common library for Adventure text components, color handlin
 | [Minecraft-Velocity-Plugin-Framework](Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md) | `me.trae.foundation.minecraft.velocity:Minecraft-Velocity-Plugin-Framework` | Velocity plugin framework integrated with Injector |
 
 `Minecraft`, `Minecraft-Paper`, `Minecraft-Paper-Addons`, and `Minecraft-Velocity` are Maven aggregators with `pom` packaging. Applications depend on the library artifacts listed above.
+
+## Search engines
+
+Foundation's search engines share a `find(receiver, input, inform, predicate)` API. An exact match returns immediately; otherwise a unique partial match is returned. Missing or ambiguous results return `Optional.empty()`, with optional colored feedback to the command sender or source. Collection suppliers are evaluated for each search.
+
+| Layer | Responsibility | Guide |
+| --- | --- | --- |
+| Utilities | Generic matching, predicates, result adjustment, and feedback limits | [AbstractSearchEngine](../Utilities/README.md#search-engines) |
+| Minecraft-Common | Adventure feedback, escaped names, and color hooks | [AbstractMinecraftSearchEngine](Minecraft-Common/README.md#search-engines) |
+| Paper framework | `CommandSender` receiver; online players, offline-player records, worlds, materials, and Foundation plugins | [Paper engines and implementation example](Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md#search-engines) |
+| Velocity framework | `CommandSource` receiver; online players and Foundation plugins | [Velocity engines and implementation example](Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md#search-engines) |
+| Item addon | Custom item definitions searched by namespace | [CustomItemSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#item-search) |
+| Recipe addon | Custom recipe definitions searched by key | [CustomRecipeSearchEngine](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md#recipe-search) |
+
+The platform guides use the existing classes in `search.types` as references for creating new engines.
 
 ## Installation
 
@@ -93,6 +109,11 @@ Extend `PaperPlugin` and declare addons. The framework scans your package for `@
 ```java
 @Addons({ItemAddon.class})
 public class MyPlugin extends PaperPlugin {
+
+    @Override
+    public String getPluginName() {
+        return "MyPlugin";
+    }
 }
 
 @Singleton
@@ -131,6 +152,11 @@ public class MyProxyPlugin extends VelocityPlugin {
     @Inject
     public MyProxyPlugin(final ProxyServer proxyServer, @DataDirectory final Path dataDirectory) {
         super(proxyServer, dataDirectory);
+    }
+
+    @Override
+    public String getPluginName() {
+        return "MyProxyPlugin";
     }
 }
 

@@ -10,6 +10,8 @@
 
 Minecraft-Velocity is a Maven aggregator that contains the Velocity plugin framework. The framework bridges Velocity's proxy lifecycle with Foundation's [Injector](../../Injector/README.md), providing constructor injection, scheduled tasks, configuration files, and hierarchical Brigadier commands.
 
+The framework also provides [search engines](Minecraft-Velocity-Plugin-Framework/README.md#search-engines) for online players and Foundation plugins, with colored feedback to a `CommandSource`. Its guide includes usage and implementation examples based on the existing `search.types` classes.
+
 ## Modules
 
 | Module | Purpose |

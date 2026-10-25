@@ -5,9 +5,11 @@ import lombok.Getter;
 import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.DefaultItem;
+import me.trae.foundation.minecraft.paper.addon.item.search.types.CustomItemSearchEngine;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import org.bukkit.Material;
+import org.bukkit.command.CommandSender;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -16,11 +18,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 @AllArgsConstructor
 @Getter
 @AddonSingleton
 public final class ItemService implements Lifecycle {
+
+    private final CustomItemSearchEngine customItemSearchEngine = new CustomItemSearchEngine(this);
 
     private final Map<String, CustomItem> identifierItemMap = new HashMap<>();
     private final Map<Material, CustomItem> obtainableItemMap = new EnumMap<>(Material.class);
@@ -94,5 +99,13 @@ public final class ItemService implements Lifecycle {
         }
 
         return itemStack;
+    }
+
+    public Optional<CustomItem> searchCustomItem(final CommandSender commandSender, final String input, final boolean inform, final Predicate<CustomItem> predicate) {
+        return this.customItemSearchEngine.find(commandSender, input, inform, predicate);
+    }
+
+    public Optional<CustomItem> searchCustomItem(final CommandSender commandSender, final String input, final boolean inform) {
+        return this.searchCustomItem(commandSender, input, inform, null);
     }
 }

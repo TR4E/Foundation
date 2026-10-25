@@ -2,15 +2,20 @@ package me.trae.foundation.minecraft.paper.plugin.framework.utility.registry;
 
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.paper.plugin.framework.PaperPlugin;
+import me.trae.foundation.minecraft.paper.plugin.framework.search.types.PaperInternalPluginSearchEngine;
+import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 @UtilityClass
 public class PluginRegistry {
+
+    private static final PaperInternalPluginSearchEngine PAPER_INTERNAL_PLUGIN_SEARCH_ENGINE = new PaperInternalPluginSearchEngine();
 
     private static final LinkedHashMap<String, PaperPlugin> internalPluginMap = new LinkedHashMap<>();
 
@@ -40,5 +45,13 @@ public class PluginRegistry {
 
     public static PaperPlugin getSelfPlugin() {
         return JavaPlugin.getPlugin(PaperPlugin.class);
+    }
+
+    public static Optional<PaperPlugin> searchInternalPlugin(final CommandSender commandSender, final String input, final boolean inform, final Predicate<PaperPlugin> predicate) {
+        return PAPER_INTERNAL_PLUGIN_SEARCH_ENGINE.find(commandSender, input, inform, predicate);
+    }
+
+    public static Optional<PaperPlugin> searchInternalPlugin(final CommandSender commandSender, final String input, final boolean inform) {
+        return searchInternalPlugin(commandSender, input, inform, null);
     }
 }

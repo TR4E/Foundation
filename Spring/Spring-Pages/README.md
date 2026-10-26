@@ -73,14 +73,11 @@ An enum satisfies `PageRole` with no implementation, since `Enum.name()` already
 Then one bean answers both questions the module needs:
 
 ```java
+@AllArgsConstructor
 @Component
 public final class MyPageAccessResolver implements PageAccessResolver {
 
     private final MyJwtService jwtService;
-
-    public MyPageAccessResolver(final MyJwtService jwtService) {
-        this.jwtService = jwtService;
-    }
 
     @Override
     public boolean isAuthenticated(final HttpServletRequest httpServletRequest, final HttpServletResponse httpServletResponse) {
@@ -98,7 +95,7 @@ public final class MyPageAccessResolver implements PageAccessResolver {
 
 Two methods rather than one, because the answers differ: not authenticated redirects to the login page; authenticated but underprivileged gets `403` rather than a pointless login bounce.
 
-Without this bean, the default `DenyPageAccessResolver` refuses everything. That is deliberate: a missing resolver fails closed. Every role-gated page returns `403` until you provide one.
+Without this bean, the default `DenyPageAccessResolver` reports every request as unauthenticated. Gated page requests redirect to the configured login path, and gated assets return `404`. Provide an access resolver to allow authenticated viewers through.
 
 ## Writing a page
 
@@ -180,7 +177,7 @@ public final class SharedAssetProvider implements AssetProvider {
 }
 ```
 
-The one-argument `PageAsset` constructor creates a public, uncached-but-shareable asset (`SHARED_SHORT`, no role).
+The one-argument `PageAsset` constructor creates a public asset cached for five minutes (`SHARED_SHORT`, no role).
 
 ## Cache control
 
@@ -200,26 +197,22 @@ Anything under `foundation.pages.system-path-list` gets `NO_STORE` regardless.
 
 ## Navigation
 
-Optional. A page implements `Navbar` and appears in the navigation bar; pages that do not implement it are excluded.
+Optional. Add `implements Navbar` to the `OrdersPage` class above and include these methods to make it appear in navigation. Pages that do not implement `Navbar` are excluded.
 
 ```java
-@Component
-public final class OrdersPage extends Page implements Navbar {
+@Override
+public int getNavbarPosition() {
+    return 2;
+}
 
-    @Override
-    public int getNavbarPosition() {
-        return 2;
-    }
+@Override
+public String getNavbarName() {
+    return "Orders";
+}
 
-    @Override
-    public String getNavbarName() {
-        return "Orders";
-    }
-
-    @Override
-    public List<String> getNavbarDescription() {
-        return List.of("Every order and its current status.", "Create orders and change where they are up to.");
-    }
+@Override
+public List<String> getNavbarDescription() {
+    return List.of("Every order and its current status.", "Create orders and change where they are up to.");
 }
 ```
 
@@ -258,7 +251,7 @@ Every component compares canonical paths, via `UtilRequestPath` from [Spring-Com
 
 This only holds while every component uses canonical paths. One filter reading `getRequestURI()` directly reopens the mismatch.
 
-The filter is controlled by `foundation.pages.trailing-slash-redirect` (default `true`). It does not redirect; it only canonicalizes. Serving `/orders/` and `/orders` as one URL is a redirect, which this filter handles.
+The filter is controlled by `foundation.pages.trailing-slash-redirect` (default `true`). `UtilRequestPath` computes the canonical path; `PageTrailingSlashFilter` sends the redirect. Disabling the filter leaves the shared path comparisons in place without redirecting requests.
 
 ## Login redirects and open redirect prevention
 
@@ -341,7 +334,7 @@ Adding the JAR to a non-web or reactive application registers nothing.
 
 **Setup checklist:**
 
-1. Have your role enum implement `PageRole` and declare a `PageAccessResolver` bean. Until then, every gated page returns `403`.
+1. Have your role enum implement `PageRole` and declare a `PageAccessResolver` bean. Without a resolver, gated page requests redirect to the login path and gated assets return `404`.
 2. Write pages as `@Component` classes extending `Page`, each with exactly one `@Render` method returning a view name.
 3. Point `foundation.pages.login-path` at your login page and run its redirect parameter through `UtilRedirect.sanitise`.
 

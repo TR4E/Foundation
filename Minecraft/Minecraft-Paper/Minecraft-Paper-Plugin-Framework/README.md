@@ -339,15 +339,17 @@ The framework provides base classes for custom events:
 ```java
 UtilEvent.dispatch(event);
 UtilEvent.dispatchSynchronously(event);
-UtilEvent.dispatchAsynchronously(event);
+UtilEvent.dispatchAsynchronous(asynchronousEvent);
 
 final MyEvent result = UtilEvent.supply(new MyEvent());
 if (result.isCancelled()) {
     return;
 }
 
-final CompletableFuture<MyEvent> future = UtilEvent.supplyAsynchronous(event);
+final CompletableFuture<MyAsynchronousEvent> completableFuture = UtilEvent.supplyAsynchronous(asynchronousEvent);
 ```
+
+`dispatch` and `supply` run on the calling thread. Use a synchronous event with the synchronous helpers and an event marked asynchronous with the asynchronous helpers; scheduling an event in the wrong mode throws `IllegalStateException`.
 
 ## Display names
 
@@ -399,10 +401,11 @@ title.send(player);
 | --- | --- |
 | `UtilColor` | Extends `BaseUtilColor` with `toBukkitColor(Color)` for AWT-to-Bukkit conversion |
 | `UtilEvent` | Event dispatching with sync/async and future variants |
-| `UtilItemStack` | Persistent data helpers, custom item unique IDs, inventory insert/remove/contains, item comparison, and display names |
+| `UtilItemStack` | Reads item persistent data and custom item unique IDs; provides inventory insert/remove/contains, item comparison, and display names |
 | `UtilMaterial` | Classifies materials as interactable, interactable-by-hand, or usable; searches non-legacy material names |
 | `UtilMessage` | Extends `BaseUtilMessage` with `broadcast` and `log` methods |
 | `UtilNms` | Converts Adventure components to NMS components and sends raw packets |
+| `UtilPdc` | Reads, writes, and removes values in a `PersistentDataContainer`; retrieves or creates nested containers |
 | `UtilPermission` | Permission checking with OP, wildcard, and custom wildcard support |
 | `UtilServer` | Online and offline player lookups by UUID or name, plus exact and partial name searches |
 | `UtilTask` | Task scheduling with `ChronoUnit` time conversion, delayed and repeating variants, and optional cancellation suppliers |
@@ -446,6 +449,21 @@ Time values are converted from `ChronoUnit` to Minecraft ticks (duration in mill
 `UtilItemStack.UNIQUE_ID_KEY` is `NamespacedKey("custom", "item_unique_id")`. `getUniqueIdByItemStack` reads a custom item's persistent definition unique ID. When both stacks carry unique IDs, `isSimilar` compares those values; otherwise it compares material, display name, lore, and enchantments. The [Item addon](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#custom-item) keeps this identity separate from the typable `identifier` and raw display name returned by `getName()`.
 
 `insert` adds an item to a player's inventory and drops overflow naturally. `contains` and `remove` check and remove items by count, using `isSimilar` for matching.
+
+### UtilPdc
+
+Use `UtilPdc` with the container itself when writing persistent data. For item metadata, pass `itemMeta.getPersistentDataContainer()` inside `ItemStack.editMeta(...)`:
+
+```java
+itemStack.editMeta(itemMeta -> UtilPdc.setPersistentDataType(
+        itemMeta.getPersistentDataContainer(),
+        namespacedKey,
+        PersistentDataType.BOOLEAN,
+        true
+));
+```
+
+`getPersistentData(container, key, type)` returns an `Optional`. `removePersistentDataType(container, key)` removes a value. `getOrCreatePersistentDataContainer(container, key)` returns an existing nested container or a new one; write the nested container back with `PersistentDataType.TAG_CONTAINER` after editing it.
 
 ## Installation
 

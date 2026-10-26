@@ -154,19 +154,16 @@ Two limitations of Java's `@Inherited`: it follows class inheritance only, so a 
 `RateLimitScope.ACCOUNT` keys it by the current account identity, falling back to IP when nobody is authenticated. Account scope is the only thing that stops an attacker rotating through addresses, but it needs the module to see your principal. Implement the resolver:
 
 ```java
+@AllArgsConstructor
 @Component
 public final class MyRateLimitAccountResolver implements RateLimitAccountResolver {
 
     private final AccountManager accountManager;
 
-    public MyRateLimitAccountResolver(final AccountManager accountManager) {
-        this.accountManager = accountManager;
-    }
-
     @Override
     public Optional<String> getAccountIdByRequest(final HttpServletRequest httpServletRequest) {
         return this.accountManager.getAccountByRequest(httpServletRequest)
-                .map(Account::getId);
+                .map(account -> account.getId().toString());
     }
 }
 ```
@@ -175,7 +172,7 @@ Without one, the default `EmptyRateLimitAccountResolver` always returns empty, s
 
 ## Unresolvable IPs
 
-The request is rejected with `429`. An unresolvable IP means the request did not arrive through the expected proxy, and allowing it through unlimited would be a free bypass of every IP-keyed limit on the application.
+An IP-scoped request with no resolvable IP is rejected with `429`. Account-scoped requests use an authenticated account ID when available and need an IP only for the anonymous fallback.
 
 ## Response format
 

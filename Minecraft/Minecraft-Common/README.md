@@ -124,9 +124,9 @@ The `filter` helper creates a composite `Audience` that excludes the ignored UUI
 Both methods return an empty `Optional` when the player does not exist or the input is invalid. HTTP calls use Foundation's `UtilHttp`. Non-success status codes other than 204 and 404 throw `HttpException`.
 
 ```java
-final Optional<UUID> uuid = MojangApi.getIdByUsername("Notch");
+final Optional<UUID> uuidOptional = MojangApi.getIdByUsername("Notch");
 
-final Optional<String> name = MojangApi.getUsernameById(uuid);
+final Optional<String> usernameOptional = uuidOptional.flatMap(MojangApi::getUsernameById);
 ```
 
 Mojang rate-limits these endpoints. The methods do not cache results; add application-level caching when calling them frequently.

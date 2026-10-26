@@ -57,8 +57,7 @@ public class RankTeam extends Team {
 
     @Override
     public Component getPrefix(final Player player, final Player viewer) {
-        final String rank = getRank(player);
-        return Component.text("[" + rank + "] ", NamedTextColor.GOLD);
+        return Component.text("[Member] ", NamedTextColor.GOLD);
     }
 
     @Override
@@ -91,7 +90,7 @@ The constructor takes a unique identifier and an integer priority. Override meth
 | `getDeathMessageVisibility(player, viewer)` | `Visibility` | `null` | When death messages are shown |
 | `getCollisionRule(player, viewer)` | `CollisionRule` | `null` | ALWAYS, NEVER, PUSH_OWN_TEAM, or PUSH_OTHER_TEAMS |
 
-All methods receive both the target player and the viewer, enabling per-viewer customization.
+The per-viewer methods receive both the target player and the viewer. `canDisplay()` is the separate global check. These settings are sent to each viewer through packets; the addon does not configure server-side scoreboard membership or enforce friendly-fire rules on the server.
 
 ## Priority
 
@@ -99,14 +98,14 @@ Teams use integer priority where `0` is the highest priority and `Integer.MAX_VA
 
 ## Bidirectional teams
 
-Each player-viewer pair has its own team, identified as `{playerUUID}:{viewerUUID}`. This means player A can appear differently to player B than to player C. When player A joins a server with 50 players, 100 team create operations occur: 50 teams for how A appears to each viewer, and 50 teams for how each existing player appears to A.
+Each player-viewer pair has its own team, identified as `{playerUUID}:{viewerUUID}`. This means player A can appear differently to player B than to player C. With 50 players online including the joining player, the listener refreshes 99 pairs: 50 views of the joining player and 49 views of the other players for that player. Each pair creates a team only when a definition is eligible.
 
 ## Events
 
 `TeamUpdateEvent` extends `CustomEvent` and carries the player and an optional team identifier. Listeners can fire this event to trigger a team refresh:
 
-- With an identifier: refreshes only the specified team for the player.
-- Without an identifier: refreshes all teams for the player.
+- With an identifier: creates the normally selected eligible team only if its identifier matches; otherwise removes the player's team for that viewer.
+- Without an identifier: selects the first eligible team for each viewer, or removes the team when none is eligible.
 
 ## Installation
 

@@ -192,8 +192,8 @@ public final class RecipeAvailabilityListener implements Listener {
         final ItemStack placeholderItemStack = new ItemStack(Material.BARRIER);
         placeholderItemStack.editMeta(itemMeta -> {
             itemMeta.displayName(Component.text("Recipe unavailable", NamedTextColor.RED));
-            UtilItemStack.setPersistentDataType(
-                    itemMeta,
+            UtilPdc.setPersistentDataType(
+                    itemMeta.getPersistentDataContainer(),
                     RecipeService.DISABLED_RECIPE_KEY,
                     PersistentDataType.BOOLEAN,
                     true

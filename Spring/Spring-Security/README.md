@@ -8,7 +8,7 @@
   <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet-0769AD?logo=jakartaee&logoColor=white"></a>
 </p>
 
-The request-hardening layer every Spring Boot site needs and nobody wants to write twice: security response headers with a per-directive Content Security Policy, and double-submit CSRF protection that fails closed. Both filters run on every dispatch, including error pages, so nothing escapes without headers and nothing state-changing gets through without a valid token. Depends on [Spring-Common](../Spring-Common/README.md) only.
+Spring-Security provides security response headers with a per-directive Content Security Policy and double-submit CSRF protection. Security headers cover request, error, and async dispatches; CSRF validation runs on initial request dispatches for protected methods unless the path is excluded. Depends on [Spring-Common](../Spring-Common/README.md) only.
 
 ## Contents
 
@@ -149,7 +149,7 @@ In production the cookie name is `__Host-XSRF-TOKEN`. Read it from `CsrfTokenSer
 
 ### Same-origin validation
 
-When `require-same-origin` is `true` (the default), the filter additionally checks the `Origin` header, falling back to `Referer`, against the request's server name. A request carrying neither header is rejected. This adds a second layer beyond the token comparison.
+When `require-same-origin` is `true` (the default), the filter compares the host in `Origin`, falling back to `Referer`, with the request's server name, ignoring case. It does not compare the scheme or port. A request carrying neither header is rejected. Token comparison is still required.
 
 ### Rejection behavior
 
@@ -176,7 +176,7 @@ Works on a single method too.
 
 What legitimately belongs here: webhook receivers, which cannot carry the application's cookie and are authenticated by signature instead, and APIs authenticated purely by an `Authorization` header, which are not CSRF-vulnerable because a browser will not attach that header on a cross-site request. Nothing else.
 
-`@CsrfExclude` is read at startup and turned into `PathPattern` instances, so the exclusion is applied by the filter before the request reaches a handler. An interceptor could not do this: at filter time no handler has been matched yet, and moving CSRF to an interceptor would leave forwards, error dispatches, and every endpoint outside the handler mapping uncovered, which is exactly where forgotten endpoints live.
+`@CsrfExclude` is read at startup and turned into `PathPattern` instances, so the exclusion is applied by the filter before the request reaches a handler. Exclusions match paths, independent of the incoming HTTP method. CSRF validation also applies to initial requests outside the handler mapping; internal forward, error, and async dispatches are not rechecked.
 
 Paths are matched canonically, with and without a trailing slash.
 

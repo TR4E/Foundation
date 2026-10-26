@@ -50,7 +50,7 @@ public class ServerTablist extends Tablist {
 
     @Override
     public Component getFooter(final Player player) {
-        return Component.text("Online: " + Bukkit.getOnlinePlayers().size(), NamedTextColor.GRAY);
+        return Component.text("Online: %d".formatted(Bukkit.getOnlinePlayers().size()), NamedTextColor.GRAY);
     }
 }
 ```
@@ -63,7 +63,7 @@ Priority `0` is the highest (checked first), and `Integer.MAX_VALUE` is the lowe
 
 ## Events
 
-`TablistUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player. Cancel the event to prevent the tablist from being updated for that player on this tick.
+`TablistUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player. Cancelling the event clears the player's active header and footer on this tick. A later uncancelled update can display them again.
 
 ## Installation
 

@@ -28,9 +28,9 @@ The Sidebar addon displays scoreboard sidebars using NMS packets. Multiple sideb
 
 `SidebarService` manages registered sidebars and dispatches `SidebarUpdateEvent` every 250 milliseconds for each online player (asynchronously). `SidebarListener` handles the event and determines which sidebar to display:
 
-1. Check if the current sidebar is still eligible for the player.
-2. If not, clear it.
-3. Find the highest-priority eligible sidebar.
+1. Clear the current sidebar if the update event is cancelled.
+2. If an identifier is supplied, process the update only when it matches the currently active sidebar.
+3. Find the first eligible sidebar, clearing the current one if none is eligible.
 4. If it differs from the current one, switch by clearing the old and creating the new.
 5. If it is the same, update the title and lines if they changed.
 
@@ -63,10 +63,10 @@ public class GameSidebar extends Sidebar {
     @Override
     public List<Component> getLines(final Player player) {
         return List.of(
-                Component.text("Kills: " + getKills(player), NamedTextColor.WHITE),
-                Component.text("Deaths: " + getDeaths(player), NamedTextColor.GRAY),
+                Component.text("Player: %s".formatted(player.getName()), NamedTextColor.WHITE),
+                Component.text("Server statistics", NamedTextColor.GRAY),
                 Component.empty(),
-                Component.text("Score: " + getScore(player), NamedTextColor.YELLOW)
+                Component.text("Online: %d".formatted(Bukkit.getOnlinePlayers().size()), NamedTextColor.YELLOW)
         );
     }
 }
@@ -86,7 +86,7 @@ Titles and lines are cached per player in `cachedTitleMap` and `cachedLinesMap`.
 
 ## Events
 
-`SidebarUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional sidebar identifier. Cancel the event to clear the sidebar for that player. Set the identifier to update a specific sidebar.
+`SidebarUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional sidebar identifier. Cancel the event to clear the sidebar for that player. An identifier restricts the update to a player already displaying that sidebar; it does not force selection of that sidebar. An update without an identifier reevaluates normal eligibility and priority.
 
 ## Installation
 

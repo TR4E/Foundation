@@ -60,7 +60,7 @@ Every module provides defaults that work out of the box, with `@ConditionalOnMis
 | `PageAccessResolver` | `DenyPageAccessResolver` (fails closed) | Any role-gated page |
 | `RateLimitStore` | `MemoryRateLimitStore` (single instance) | Multi-instance deployment |
 | `RateLimitAccountResolver` | `EmptyRateLimitAccountResolver` | Account-scoped limits |
-| `CsrfTokenService` | `SecureRandom` cookie token | Custom token strategy |
+| `CsrfTokenService` | `SecureRandom` cookie token | Explicit construction with application-selected properties; the service class is final |
 
 ### Filter chain
 

@@ -102,7 +102,7 @@ public final class HolderComponents<E extends Entity> {
 
             final boolean flushed = entity.isEmpty() || flushSafely(entity.get(), changeTracker, holderWriter, batchQueue);
 
-            if (flushed) {
+            if (flushed && !localStorage.isPinned(id)) {
                 holderWriter.evictLocal(id);
                 changeTracker.forget(id);
             }

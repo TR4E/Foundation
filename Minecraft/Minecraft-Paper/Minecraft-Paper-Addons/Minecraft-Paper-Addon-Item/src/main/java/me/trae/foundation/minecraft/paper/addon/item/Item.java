@@ -29,6 +29,7 @@ import java.awt.Color;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -173,7 +174,7 @@ public abstract class Item {
     }
 
     public final Optional<String> getDynamicLoreValue(final ItemStack itemStack, final String key) {
-        return UtilItemStack.getPersistentData(itemStack, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER).flatMap(persistentDataContainer -> UtilPdc.getPersistentData(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING));
+        return UtilItemStack.getPersistentData(itemStack, DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER).flatMap(persistentDataContainer -> UtilPdc.getPersistentData(persistentDataContainer, new NamespacedKey("dynamic", key.toLowerCase(Locale.ROOT)), PersistentDataType.STRING));
     }
 
     public final void setDynamicLoreValue(final ItemStack itemStack, final String key, final String value) {
@@ -181,13 +182,13 @@ public abstract class Item {
     }
 
     public final void setDynamicLoreValue(final ItemMeta itemMeta, final String key, final String value) {
-        if (this.getLore().stream().flatMap(line -> DYNAMIC_LORE_PATTERN.matcher(line).results()).noneMatch(matchResult -> matchResult.group(1).equals(key))) {
+        if (this.getLore().stream().flatMap(line -> DYNAMIC_LORE_PATTERN.matcher(line).results()).noneMatch(matchResult -> matchResult.group(1).equalsIgnoreCase(key))) {
             throw new IllegalArgumentException("Unknown dynamic lore key: %s".formatted(key));
         }
 
         final PersistentDataContainer persistentDataContainer = UtilPdc.getOrCreatePersistentDataContainer(itemMeta.getPersistentDataContainer(), DYNAMIC_LORE_KEY);
 
-        UtilPdc.setPersistentDataType(persistentDataContainer, new NamespacedKey("dynamic", key), PersistentDataType.STRING, value);
+        UtilPdc.setPersistentDataType(persistentDataContainer, new NamespacedKey("dynamic", key.toLowerCase(Locale.ROOT)), PersistentDataType.STRING, value);
 
         UtilPdc.setPersistentDataType(itemMeta.getPersistentDataContainer(), DYNAMIC_LORE_KEY, PersistentDataType.TAG_CONTAINER, persistentDataContainer);
 

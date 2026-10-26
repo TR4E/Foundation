@@ -18,6 +18,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -29,7 +30,7 @@ public abstract class AbstractCustomRecipe {
     private final String identifier;
 
     public final NamespacedKey getNamespacedKey() {
-        return new NamespacedKey("custom", this.identifier);
+        return new NamespacedKey("custom", this.identifier.toLowerCase(Locale.ROOT));
     }
 
     public boolean removeConflictingRecipes() {

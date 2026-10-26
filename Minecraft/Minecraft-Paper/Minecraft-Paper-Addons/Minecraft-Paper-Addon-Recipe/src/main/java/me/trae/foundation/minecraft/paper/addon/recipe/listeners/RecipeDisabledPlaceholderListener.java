@@ -7,9 +7,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.CrafterCraftEvent;
+import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -17,13 +16,15 @@ import org.bukkit.persistence.PersistentDataType;
 @AddonSingleton
 public final class RecipeDisabledPlaceholderListener implements Listener {
 
-    @EventHandler(priority = EventPriority.LOW)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onInventoryClick(final InventoryClickEvent event) {
         if (event.isCancelled()) {
             return;
         }
 
-        if (event.getInventory().getType() != InventoryType.CRAFTING && event.getInventory().getType() != InventoryType.WORKBENCH) {
+        final InventoryType inventoryType = event.getInventory().getType();
+
+        if (inventoryType != InventoryType.CRAFTING && inventoryType != InventoryType.WORKBENCH && inventoryType != InventoryType.CRAFTER) {
             return;
         }
 
@@ -38,30 +39,13 @@ public final class RecipeDisabledPlaceholderListener implements Listener {
         event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.LOW)
-    public void onInventoryDrag(final InventoryDragEvent event) {
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onCraftItem(final CraftItemEvent event) {
         if (event.isCancelled()) {
             return;
         }
 
-        if (event.getInventory().getType() != InventoryType.CRAFTING && event.getInventory().getType() != InventoryType.WORKBENCH) {
-            return;
-        }
-
-        if (!this.isDisabled(event.getOldCursor()) && event.getNewItems().values().stream().noneMatch(this::isDisabled)) {
-            return;
-        }
-
-        event.setCancelled(true);
-    }
-
-    @EventHandler(priority = EventPriority.LOW)
-    public void onInventoryMoveItem(final InventoryMoveItemEvent event) {
-        if (event.isCancelled()) {
-            return;
-        }
-
-        if (!this.isDisabled(event.getItem())) {
+        if (!this.isDisabled(event.getCurrentItem())) {
             return;
         }
 

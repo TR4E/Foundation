@@ -61,6 +61,7 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     }
 
     public void evict(final Key key) {
+        this.pinnedKeySet.remove(key);
         this.entryMap.remove(key);
     }
 

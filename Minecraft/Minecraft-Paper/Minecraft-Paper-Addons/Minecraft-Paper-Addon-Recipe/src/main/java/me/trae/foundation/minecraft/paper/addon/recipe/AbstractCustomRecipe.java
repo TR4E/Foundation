@@ -50,6 +50,10 @@ public abstract class AbstractCustomRecipe {
     }
 
     protected final RecipeChoice toChoice(final ItemStack itemStack) {
+        if (UtilItemStack.getUniqueIdByItemStack(itemStack).isPresent()) {
+            return new RecipeChoice.ExactChoice(itemStack);
+        }
+
         return new RecipeChoice.MaterialChoice(itemStack.getType());
     }
 
@@ -101,7 +105,7 @@ public abstract class AbstractCustomRecipe {
 
     public final Set<NamespacedKey> getConflictingKeys() {
         return UtilJava.createCollection(new HashSet<>(), set -> {
-            if (!this.removeConflictingRecipes() || Bukkit.getWorlds().isEmpty()) {
+            if (!this.removeConflictingRecipes() || UtilItemStack.getUniqueIdByItemStack(this.getResult()).isPresent() || Bukkit.getWorlds().isEmpty()) {
                 return;
             }
 

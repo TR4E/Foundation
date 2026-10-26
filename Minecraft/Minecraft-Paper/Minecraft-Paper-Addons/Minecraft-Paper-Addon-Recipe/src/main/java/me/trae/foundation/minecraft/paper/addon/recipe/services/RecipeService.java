@@ -45,6 +45,7 @@ public final class RecipeService implements Lifecycle {
 
         for (final AbstractCustomRecipe abstractCustomRecipe : this.recipeList) {
             recipeByKeyMap.putIfAbsent(abstractCustomRecipe.getNamespacedKey(), abstractCustomRecipe);
+
             conflictingNamespacedKeySet.addAll(abstractCustomRecipe.getConflictingKeys());
         }
 

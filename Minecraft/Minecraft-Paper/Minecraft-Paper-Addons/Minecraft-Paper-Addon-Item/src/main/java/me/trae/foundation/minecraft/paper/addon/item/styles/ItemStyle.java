@@ -14,13 +14,9 @@ import java.util.List;
 public final class ItemStyle {
 
     private final String name;
-
     private final Color color;
-
     private final List<TextDecoration> decorations;
-
     private final NamespacedKey tooltipStyle;
-
     private final String tag;
 
     public static ItemStyle of(final String name, final Color color, final List<TextDecoration> decorations, final NamespacedKey tooltipStyle, final String tag) {

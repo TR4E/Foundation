@@ -10,8 +10,8 @@ import org.bukkit.event.block.CrafterCraftEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.persistence.PersistentDataType;
 
 @AddonSingleton
@@ -23,7 +23,15 @@ public final class RecipeDisabledPlaceholderListener implements Listener {
             return;
         }
 
-        if (!this.isDisabled(event.getCurrentItem()) && !this.isDisabled(event.getCursor()) && !this.isDisabled(this.getSwapItem(event))) {
+        if (event.getInventory().getType() != InventoryType.CRAFTING && event.getInventory().getType() != InventoryType.WORKBENCH) {
+            return;
+        }
+
+        if (event.getSlotType() != InventoryType.SlotType.RESULT) {
+            return;
+        }
+
+        if (!this.isDisabled(event.getCurrentItem())) {
             return;
         }
 
@@ -33,6 +41,10 @@ public final class RecipeDisabledPlaceholderListener implements Listener {
     @EventHandler(priority = EventPriority.LOW)
     public void onInventoryDrag(final InventoryDragEvent event) {
         if (event.isCancelled()) {
+            return;
+        }
+
+        if (event.getInventory().getType() != InventoryType.CRAFTING && event.getInventory().getType() != InventoryType.WORKBENCH) {
             return;
         }
 
@@ -56,7 +68,7 @@ public final class RecipeDisabledPlaceholderListener implements Listener {
         event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.LOW)
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onCrafterCraft(final CrafterCraftEvent event) {
         if (event.isCancelled()) {
             return;
@@ -67,16 +79,6 @@ public final class RecipeDisabledPlaceholderListener implements Listener {
         }
 
         event.setCancelled(true);
-    }
-
-    private ItemStack getSwapItem(final InventoryClickEvent event) {
-        final PlayerInventory playerInventory = event.getWhoClicked().getInventory();
-
-        return switch (event.getClick()) {
-            case NUMBER_KEY -> playerInventory.getItem(event.getHotbarButton());
-            case SWAP_OFFHAND -> playerInventory.getItemInOffHand();
-            default -> null;
-        };
     }
 
     private boolean isDisabled(final ItemStack itemStack) {

@@ -63,7 +63,7 @@ public abstract class CustomItem extends Item {
     }
 
     @Override
-    protected boolean hideAttributes() {
+    public boolean hideAttributes() {
         return true;
     }
 
@@ -87,7 +87,7 @@ public abstract class CustomItem extends Item {
         return false;
     }
 
-    protected boolean deleteIfRemoved() {
+    public boolean deleteIfRemoved() {
         return false;
     }
 

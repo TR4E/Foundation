@@ -51,19 +51,19 @@ public abstract class Item {
     protected void editMeta(final ItemMeta itemMeta) {
     }
 
-    protected boolean hideAttributes() {
+    public boolean hideAttributes() {
         return false;
     }
 
-    protected int getMaxStackSize() {
+    public int getMaxStackSize() {
         return this.material.getMaxStackSize();
     }
 
-    protected Boolean addGlow() {
+    public Boolean addGlow() {
         return null;
     }
 
-    protected ItemStyle getStyle() {
+    public ItemStyle getStyle() {
         return null;
     }
 

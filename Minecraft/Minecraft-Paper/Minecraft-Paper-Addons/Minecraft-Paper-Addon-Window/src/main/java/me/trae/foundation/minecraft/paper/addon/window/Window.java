@@ -127,39 +127,35 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
 
         this.rendering = true;
 
-        try {
-            UtilTask.executeAsynchronously(() -> {
-                try {
-                    this.layout.clear();
+        if (!this.isAsynchronous()) {
+            try {
+                this.layout.clear();
 
-                    this.registerElements(this.layout);
-                } catch (final RuntimeException | Error throwable) {
-                    UtilTask.executeSynchronously(this::abort);
+                this.registerElements(this.layout);
+            } catch (final RuntimeException | Error throwable) {
+                this.abort();
 
-                    throw throwable;
-                }
+                throw throwable;
+            }
 
-                UtilTask.executeSynchronously(() -> {
-                    try {
-                        this.layout.applyTo(this.getInventory());
+            this.apply(runnable);
 
-                        if (runnable != null) {
-                            runnable.run();
-                        }
-
-                        this.rendering = false;
-                    } catch (final RuntimeException | Error throwable) {
-                        this.abort();
-
-                        throw throwable;
-                    }
-                });
-            });
-        } catch (final RuntimeException | Error throwable) {
-            this.rendering = false;
-
-            throw throwable;
+            return;
         }
+
+        UtilTask.executeAsynchronously(() -> {
+            try {
+                this.layout.clear();
+
+                this.registerElements(this.layout);
+            } catch (final RuntimeException | Error throwable) {
+                UtilTask.executeSynchronously(this::abort);
+
+                throw throwable;
+            }
+
+            UtilTask.executeSynchronously(() -> this.apply(runnable));
+        });
     }
 
     public final void refresh() {
@@ -174,6 +170,10 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
 
             throw throwable;
         }
+    }
+
+    protected boolean isAsynchronous() {
+        return true;
     }
 
     protected abstract Inventory createInventory();
@@ -194,6 +194,22 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
     }
 
     public void onClose(final Player player) {
+    }
+
+    private void apply(final Runnable runnable) {
+        try {
+            this.layout.applyTo(this.getInventory());
+
+            if (runnable != null) {
+                runnable.run();
+            }
+
+            this.rendering = false;
+        } catch (final RuntimeException | Error throwable) {
+            this.abort();
+
+            throw throwable;
+        }
     }
 
     private WindowService getWindowService() {

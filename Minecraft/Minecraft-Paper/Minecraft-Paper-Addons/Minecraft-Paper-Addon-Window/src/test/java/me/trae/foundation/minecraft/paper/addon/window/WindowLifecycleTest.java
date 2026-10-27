@@ -465,7 +465,7 @@ final class WindowLifecycleTest {
     void aFailedBuildClearsPageContentAndDefersTheForcedClose() {
         final PaginatedLayout paginatedLayout = PaginatedLayout.of(9, new int[]{4});
         final TestWindow testWindow = this.window(paginatedLayout, () -> {
-            paginatedLayout.setContent(List.of(mock(Element.class)));
+            paginatedLayout.setContent(List.<Element<?>>of(mock(Element.class)));
 
             throw new IllegalStateException("Build failed");
         });

@@ -26,6 +26,7 @@
         <module>Minecraft-Paper-Addon-Sidebar</module>
         <module>Minecraft-Paper-Addon-Tablist</module>
         <module>Minecraft-Paper-Addon-Team</module>
+        <module>Minecraft-Paper-Addon-Window</module>
     </modules>
 
     <dependencies>

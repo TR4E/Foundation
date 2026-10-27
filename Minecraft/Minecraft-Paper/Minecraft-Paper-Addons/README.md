@@ -25,6 +25,7 @@ Minecraft-Paper-Addons is a Maven aggregator for the eleven optional feature add
 | [Sidebar](Minecraft-Paper-Addon-Sidebar/README.md) | Scoreboard sidebars with per-player content | Yes |
 | [Tablist](Minecraft-Paper-Addon-Tablist/README.md) | Player tab list header and footer | No |
 | [Team](Minecraft-Paper-Addon-Team/README.md) | Team prefixes, suffixes, colors, and collision rules | Yes |
+| [Window](Minecraft-Paper-Addon-Window/README.md) | Inventory menus with layouts, pagination, and asynchronous element loading | No |
 
 The NMS column indicates whether the addon requires Paper NMS for server internals or direct packet access. Addons without NMS use the Bukkit API only.
 

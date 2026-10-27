@@ -30,21 +30,10 @@ Minecraft provides a common library for Adventure text components, color handlin
 | --- | --- | --- |
 | [Minecraft-Common](Minecraft-Common/README.md) | `me.trae.foundation.minecraft:Minecraft-Common` | Shared code: Adventure text, color translation, Mojang API, message formatting, and search feedback |
 | [Minecraft-Paper-Plugin-Framework](Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md) | `me.trae.foundation.minecraft.paper:Minecraft-Paper-Plugin-Framework` | Paper plugin framework integrated with Injector |
-| [Minecraft-Paper-Addons](Minecraft-Paper/Minecraft-Paper-Addons/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addons` | Optional Paper features |
-| [Minecraft-Paper-Addon-Billboard](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Billboard/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Billboard` | Billboard displays and image/video support |
-| [Minecraft-Paper-Addon-Chat](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Chat/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Chat` | Chat channels with static and per-recipient placeholders |
-| [Minecraft-Paper-Addon-Damage](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Damage/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Damage` | Staged damage processing, hit delays, and combat events |
-| [Minecraft-Paper-Addon-Death](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Death/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Death` | Death events and custom death messages |
-| [Minecraft-Paper-Addon-Hologram](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Hologram/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Hologram` | Holograms and their lifecycle events |
-| [Minecraft-Paper-Addon-Item](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Item` | Custom items, activation, and cooldowns |
-| [Minecraft-Paper-Addon-Npc](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Npc/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Npc` | NPC definitions, capabilities, state restoration, and respawns |
-| [Minecraft-Paper-Addon-Recipe](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Recipe` | Custom shaped and shapeless crafting recipes |
-| [Minecraft-Paper-Addon-Sidebar](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Sidebar/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Sidebar` | Player sidebar displays |
-| [Minecraft-Paper-Addon-Tablist](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Tablist/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Tablist` | Player tab list management |
-| [Minecraft-Paper-Addon-Team](Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Team/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addon-Team` | Team management and related events |
+| [Minecraft-Paper-Addons](Minecraft-Paper/Minecraft-Paper-Addons/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addons` | Optional Paper features: billboards, chat, damage, death, holograms, items, NPCs, recipes, sidebars, tab lists, teams, and windows |
 | [Minecraft-Velocity-Plugin-Framework](Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md) | `me.trae.foundation.minecraft.velocity:Minecraft-Velocity-Plugin-Framework` | Velocity plugin framework integrated with Injector |
 
-`Minecraft`, `Minecraft-Paper`, `Minecraft-Paper-Addons`, and `Minecraft-Velocity` are Maven aggregators with `pom` packaging. Applications depend on the library artifacts listed above.
+`Minecraft`, `Minecraft-Paper`, `Minecraft-Paper-Addons`, and `Minecraft-Velocity` are Maven aggregators with `pom` packaging. Applications depend on the library artifacts listed above; each addon's artifact is listed in the [Addons README](Minecraft-Paper/Minecraft-Paper-Addons/README.md).
 
 ## Search engines
 

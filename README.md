@@ -70,18 +70,7 @@ Both frameworks include [search engines](Minecraft/README.md#search-engines) wit
 | --- | --- |
 | [Minecraft-Common](Minecraft/Minecraft-Common/README.md) | Shared code and Adventure text support |
 | [Minecraft-Paper-Plugin-Framework](Minecraft/Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md) | Paper plugin framework integrated with Utilities and Injector |
-| [Minecraft-Paper-Addons](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/README.md) | Optional Paper features |
-| [Minecraft-Paper-Addon-Billboard](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Billboard/README.md) | Billboard displays and image/video support |
-| [Minecraft-Paper-Addon-Chat](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Chat/README.md) | Chat channels with static and per-recipient placeholders |
-| [Minecraft-Paper-Addon-Damage](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Damage/README.md) | Staged damage processing, hit delays, and combat events |
-| [Minecraft-Paper-Addon-Death](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Death/README.md) | Death events and custom death messages |
-| [Minecraft-Paper-Addon-Hologram](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Hologram/README.md) | Holograms and their lifecycle events |
-| [Minecraft-Paper-Addon-Item](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md) | Custom items, activation, and cooldowns |
-| [Minecraft-Paper-Addon-Npc](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Npc/README.md) | NPC definitions, capabilities, state restoration, and respawns |
-| [Minecraft-Paper-Addon-Recipe](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Recipe/README.md) | Custom shaped and shapeless crafting recipes |
-| [Minecraft-Paper-Addon-Sidebar](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Sidebar/README.md) | Player sidebar displays |
-| [Minecraft-Paper-Addon-Tablist](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Tablist/README.md) | Player tab list management |
-| [Minecraft-Paper-Addon-Team](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/Minecraft-Paper-Addon-Team/README.md) | Team management and related events |
+| [Minecraft-Paper-Addons](Minecraft/Minecraft-Paper/Minecraft-Paper-Addons/README.md) | Optional Paper features: billboards, chat, damage, death, holograms, items, NPCs, recipes, sidebars, tab lists, teams, and windows |
 | [Minecraft-Velocity-Plugin-Framework](Minecraft/Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md) | Velocity plugin framework integrated with Utilities and Injector |
 
 ### Spring

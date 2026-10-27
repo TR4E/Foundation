@@ -41,7 +41,7 @@ public final class PaginatedLayout extends Layout {
         return new PaginatedLayout(size, contentSlots);
     }
 
-    public void setContent(final List<? extends Element<?>> content) {
+    public <Type extends Element<?>> void setContent(final List<Type> content) {
         this.content = new ArrayList<>(content);
     }
 

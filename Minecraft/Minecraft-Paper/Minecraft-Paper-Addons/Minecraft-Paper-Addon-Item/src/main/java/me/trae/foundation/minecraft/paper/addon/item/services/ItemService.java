@@ -5,8 +5,10 @@ import lombok.Getter;
 import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.DefaultItem;
+import me.trae.foundation.minecraft.paper.addon.item.events.VanillaItemStackUpdateEvent;
 import me.trae.foundation.minecraft.paper.addon.item.search.types.CustomItemSearchEngine;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
@@ -73,6 +75,8 @@ public final class ItemService implements Lifecycle {
 
     public ItemStack apply(final ItemStack itemStack) {
         if (itemStack != null && !itemStack.isEmpty()) {
+            UtilEvent.dispatch(new VanillaItemStackUpdateEvent(itemStack));
+
             // Unique ID Check
             final CustomItem customItem = this.getItemByItemStack(itemStack).orElse(null);
             if (customItem != null) {

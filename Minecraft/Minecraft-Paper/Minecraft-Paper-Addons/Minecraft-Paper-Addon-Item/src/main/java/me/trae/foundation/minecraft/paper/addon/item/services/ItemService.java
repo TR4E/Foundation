@@ -75,18 +75,16 @@ public final class ItemService implements Lifecycle {
 
     public ItemStack apply(final ItemStack itemStack) {
         if (itemStack != null && !itemStack.isEmpty()) {
-            UtilEvent.dispatch(new VanillaItemStackUpdateEvent(itemStack));
-
             // Unique ID Check
             final CustomItem customItem = this.getItemByItemStack(itemStack).orElse(null);
             if (customItem != null) {
-                return customItem.isOutdatedByItemStack(itemStack) ? customItem.update(itemStack) : customItem.refresh(itemStack);
+                return this.touch(customItem.isOutdatedByItemStack(itemStack) ? customItem.update(itemStack) : customItem.refresh(itemStack));
             }
 
             // Obtainable Check
             final CustomItem obtainableItem = this.getObtainableItemByMaterial(itemStack.getType()).orElse(null);
             if (obtainableItem != null) {
-                return obtainableItem.create(itemStack);
+                return this.touch(obtainableItem.create(itemStack));
             }
 
             // Deletable Check
@@ -99,7 +97,7 @@ public final class ItemService implements Lifecycle {
 
             final boolean wasCustomItem = UtilItemStack.getPersistentData(itemStack, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING).isPresent() || UtilItemStack.getPersistentData(itemStack, CustomItem.VERSION_KEY, PersistentDataType.STRING).isPresent();
 
-            return wasCustomItem ? defaultItem.create(itemStack) : defaultItem.refresh(itemStack);
+            return this.touch(wasCustomItem ? defaultItem.create(itemStack) : defaultItem.refresh(itemStack));
         }
 
         return itemStack;
@@ -111,5 +109,9 @@ public final class ItemService implements Lifecycle {
 
     public Optional<CustomItem> searchCustomItem(final CommandSender commandSender, final String input, final boolean inform) {
         return this.searchCustomItem(commandSender, input, inform, null);
+    }
+
+    private ItemStack touch(final ItemStack itemStack) {
+        return UtilEvent.supply(new VanillaItemStackUpdateEvent(itemStack)).getItemStack();
     }
 }

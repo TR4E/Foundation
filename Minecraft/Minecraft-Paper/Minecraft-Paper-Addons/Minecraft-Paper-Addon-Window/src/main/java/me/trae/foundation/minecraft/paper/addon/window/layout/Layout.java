@@ -61,7 +61,7 @@ public class Layout {
         }
     }
 
-    public final void clear() {
+    public void clear() {
         this.elementMap.clear();
     }
 

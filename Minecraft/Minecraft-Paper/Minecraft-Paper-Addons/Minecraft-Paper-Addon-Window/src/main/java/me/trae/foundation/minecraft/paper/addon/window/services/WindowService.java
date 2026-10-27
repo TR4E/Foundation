@@ -5,6 +5,7 @@ import me.trae.foundation.minecraft.paper.addon.window.Window;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 
 import java.util.List;
@@ -25,7 +26,7 @@ public final class WindowService {
     public void closeAll() {
         this.reopeningMap.clear();
 
-        List.copyOf(this.windowByPlayerMap.keySet()).forEach(uuid -> UtilServer.getOnlinePlayerById(uuid).ifPresent(Player::closeInventory));
+        List.copyOf(this.windowByPlayerMap.keySet()).forEach(uuid -> UtilServer.getOnlinePlayerById(uuid).ifPresent(value -> value.closeInventory(InventoryCloseEvent.Reason.CANT_USE)));
 
         this.windowByPlayerMap.clear();
         this.windowByInventoryMap.clear();

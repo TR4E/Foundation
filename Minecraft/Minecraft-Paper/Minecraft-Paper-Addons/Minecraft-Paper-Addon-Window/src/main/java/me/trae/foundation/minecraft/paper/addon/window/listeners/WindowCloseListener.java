@@ -13,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
 
 import java.time.temporal.ChronoUnit;
@@ -38,19 +39,43 @@ public final class WindowCloseListener implements Listener {
 
         final UUID uniqueId = player.getUniqueId();
 
-        if (UtilEvent.supply(new WindowCloseEvent(window, player)).isCancelled() || !window.canClose(player)) {
-            this.windowService.getReopeningMap().put(uniqueId, inventory);
-
-            UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> UtilServer.getOnlinePlayerById(uniqueId).ifPresent(value -> {
-                value.openInventory(inventory);
-            }));
-            return;
-        }
-
         this.windowService.getWindowByPlayerMap().remove(uniqueId, window);
         this.windowService.getWindowByInventoryMap().remove(inventory, window);
         this.windowService.getWindowLastScheduleRefreshedAtMap().remove(window);
 
+        if (this.isVetoable(event.getReason()) && (UtilEvent.supply(new WindowCloseEvent(window, player)).isCancelled() || !window.canClose(player))) {
+            this.windowService.getReopeningMap().put(uniqueId, inventory);
+
+            UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> {
+                if (this.windowService.getReopeningMap().get(uniqueId) != inventory) {
+                    return;
+                }
+
+                UtilServer.getOnlinePlayerById(uniqueId).ifPresent(value -> {
+                    if (value.getOpenInventory().getType() != InventoryType.CRAFTING) {
+                        return;
+                    }
+
+                    value.openInventory(inventory);
+                });
+
+                this.windowService.getReopeningMap().remove(uniqueId, inventory);
+            });
+            return;
+        }
+
         window.onClose(player);
+    }
+
+    private boolean isVetoable(final InventoryCloseEvent.Reason reason) {
+        if (reason == InventoryCloseEvent.Reason.PLAYER) {
+            return true;
+        }
+
+        if (reason == InventoryCloseEvent.Reason.PLUGIN) {
+            return true;
+        }
+
+        return false;
     }
 }

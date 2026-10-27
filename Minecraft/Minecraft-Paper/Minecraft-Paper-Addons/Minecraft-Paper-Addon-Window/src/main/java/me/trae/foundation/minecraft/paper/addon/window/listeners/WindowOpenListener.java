@@ -17,12 +17,8 @@ public final class WindowOpenListener implements Listener {
 
     private final WindowService windowService;
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onInventoryOpen(final InventoryOpenEvent event) {
-        if (event.isCancelled()) {
-            return;
-        }
-
         if (!(event.getPlayer() instanceof final Player player)) {
             return;
         }

@@ -43,6 +43,30 @@ public final class PaginatedLayout extends Layout {
         return new PaginatedLayout(size, contentSlots);
     }
 
+    public void setTotal(final int total) {
+        this.total = Math.max(0, total);
+        this.page = Math.clamp(this.page, 0, this.getPageCount() - 1);
+    }
+
+    public void setPage(final int page) {
+        this.page = Math.clamp(page, 0, this.getPageCount() - 1);
+    }
+
+    public int getOffset() {
+        return this.page * this.contentSlots.length;
+    }
+
+    public int getLimit() {
+        return this.contentSlots.length;
+    }
+
+    @Override
+    public void clear() {
+        super.clear();
+
+        this.content = new ArrayList<>();
+    }
+
     @Override
     public Optional<Element<?>> getElementBySlot(final int slot) {
         final int index = this.getContentIndex(slot);
@@ -67,25 +91,8 @@ public final class PaginatedLayout extends Layout {
         }
     }
 
-    public void setTotal(final int total) {
-        this.total = Math.max(0, total);
-        this.page = Math.clamp(this.page, 0, this.getPageCount() - 1);
-    }
-
-    public void setPage(final int page) {
-        this.page = Math.clamp(page, 0, this.getPageCount() - 1);
-    }
-
-    public int getOffset() {
-        return this.page * this.contentSlots.length;
-    }
-
-    public int getLimit() {
-        return this.contentSlots.length;
-    }
-
     public int getPageCount() {
-        return Math.max(1, (this.total + this.contentSlots.length - 1) / this.contentSlots.length);
+        return Math.max(1, (int) (((long) this.total + this.contentSlots.length - 1) / this.contentSlots.length));
     }
 
     public boolean hasNextPage() {

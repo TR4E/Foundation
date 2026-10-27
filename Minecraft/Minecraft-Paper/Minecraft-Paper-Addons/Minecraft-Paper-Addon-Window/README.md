@@ -55,7 +55,7 @@ public final class OrderWindow extends ChestWindow<Layout> {
     }
 
     @Override
-    public Component getTitle() {
+    protected Component getTitle() {
         return BaseUtilMessage.deserialize("<gold>Order %s".formatted(this.orderId));
     }
 
@@ -64,7 +64,7 @@ public final class OrderWindow extends ChestWindow<Layout> {
         final Order order = this.orderRepository.findOrderById(this.orderId);
 
         layout.border(new FillerElement(this));
-        
+
         layout.set(13, new OrderElement(this, order));
     }
 }
@@ -83,13 +83,13 @@ The base constructor rejects a layout whose size is zero or negative. Window typ
 
 | Method | Returns | Default | Purpose |
 | --- | --- | --- | --- |
-| `getTitle()` | `Component` | _abstract_ | Inventory title, read once when the inventory is created |
+| `getTitle()` | `Component` | _abstract_ | Protected method; inventory title, read once when the inventory is created |
 | `registerElements(layout)` | `void` | _abstract_ | Populate the layout; runs off the main thread |
 | `createInventory()` | `Inventory` | _abstract_ | Implemented as final by the supplied window types |
 | `canOpen(player)` | `boolean` | `true` | Pre-open check |
-| `canClose(player)` | `boolean` | `true` | Pre-close check; `false` reopens the window |
-| `onOpen(player)` | `void` | no-op | Called once the inventory is open |
-| `onClose(player)` | `void` | no-op | Called once the close is allowed to proceed |
+| `canClose(player)` | `boolean` | `true` | Check for player and API closes; `false` schedules a reopen |
+| `onOpen(player)` | `void` | no-op | Called from an uncancelled Bukkit open event; tracked reopens skip it |
+| `onClose(player)` | `void` | no-op | Called for an accepted close, including forced closes |
 
 `getTitle()` is evaluated when the inventory is built, so a title cannot change on a later render. Build a new window to change it.
 
@@ -110,7 +110,7 @@ public final class InvoiceWindow extends DispenserWindow<Layout> {
     }
 
     @Override
-    public Component getTitle() {
+    protected Component getTitle() {
         return BaseUtilMessage.deserialize("<gold>Invoice");
     }
 
@@ -138,7 +138,7 @@ Create it with `Layout.of(size)`. The constructor is protected for layout subcla
 | `border(element)` | `void` | Place the element around the edge of a layout with nine columns |
 | `row(row, element)` | `void` | Place the element across one zero-based row of nine slots |
 | `column(column, element)` | `void` | Place the element down one zero-based column, from `0` through `8` |
-| `clear()` | `void` | Drop every static placement |
+| `clear()` | `void` | Drop every static placement; subclasses can extend the cleanup |
 | `getElementBySlot(slot)` | `Optional<Element<?>>` | Resolve the element at a slot |
 | `applyTo(inventory)` | `void` | Clear the inventory and write every element's item stack |
 
@@ -168,7 +168,7 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
     }
 
     @Override
-    public Component getTitle() {
+    protected Component getTitle() {
         return BaseUtilMessage.deserialize("<gold>Order History");
     }
 
@@ -181,7 +181,7 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
         if (layout.hasPreviousPage()) {
             layout.set(18, new PreviousPageButton(this));
         }
-        
+
         if (layout.hasNextPage()) {
             layout.set(26, new NextPageButton(this));
         }
@@ -191,7 +191,7 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
                 .stream()
                 .map(order -> new OrderElement(this, order))
                 .collect(Collectors.toCollection(ArrayList::new));
-        
+
         layout.setContent(orderElementList);
     }
 }
@@ -214,12 +214,13 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
 | `hasPreviousPage()` | `boolean` | Whether the current page is greater than `0`, without changing it |
 | `nextPage()` | `boolean` | Advance a page; `false` when already on the last |
 | `previousPage()` | `boolean` | Go back a page; `false` when already on the first |
+| `clear()` | `void` | Drop static placements and replace the content with an empty list; retain the total and page |
 
 The factory rejects an empty content-slot array and any slot that falls outside the layout size. Supply distinct content slots so rendering and click resolution agree.
 
 `setContent` stores the current page's list directly. Rendering and click resolution use its indices starting at `0`, with no page offset applied to the list. Supply at most `getLimit()` elements; entries beyond the content-slot count are not displayed. Loading content does not update the total, so call `setTotal` explicitly even when the first page contains all results.
 
-`clear()` removes static placements only; it leaves the content list, total, and page unchanged. Replace the content during each rebuild, including with an empty list when the query returns no results.
+`clear()` removes static placements and resets the loaded content to an empty list. The total and page stay unchanged. Each render starts with an empty content list; `registerElements` supplies the new page's results.
 
 Content is written after the static placements, so an element placed in a content slot shows through wherever the current page runs short. A filler behind the content region fills the gaps on the last page without any extra work. The same rule applies to click resolution: a content slot past the end of the list resolves to whatever static element sits underneath it.
 
@@ -243,13 +244,13 @@ public final class NextPageButton extends Button<OrderHistoryWindow> {
                 paginatedLayout.getPageCount()
         ));
     }
-    
+
     @Override
     public void onClick(final Player player, final ClickType clickType) {
         if (!this.getWindow().getLayout().nextPage()) {
             return;
         }
-        
+
         this.getWindow().render(null);
     }
 }
@@ -327,18 +328,20 @@ Button callbacks run inside `InventoryClickEvent`. Schedule `close()` for the ne
 
 | Method | Behaviour |
 | --- | --- |
-| `open()` | Resolve the viewer, fire `WindowOpenEvent`, run `canOpen`, render, then show the inventory |
+| `open()` | Resolve the viewer, fire `WindowOpenEvent`, run `canOpen`, and render; show only if the viewer is still online and has the same top inventory |
 | `close()` | Close the inventory, but only while this window is the one the viewer has open |
 | `render(runnable)` | Rebuild every element off-thread, write them on the main thread, then run the callback |
-| `refresh()` | Rewrite the current elements immediately with no rebuild; call on the main thread |
+| `refresh()` | Rewrite the current elements immediately with no rebuild; skipped while rendering; call on the main thread |
 
-`open()` does nothing when the viewer is offline, when a listener cancels `WindowOpenEvent`, or when `canOpen` returns `false`. Nothing is shown until the elements are in place, so a viewer never sees the menu fill in.
+`open()` does nothing when the viewer is offline, when a listener cancels `WindowOpenEvent`, or when `canOpen` returns `false`. It captures the viewer's current top inventory before rendering. Once rendering finishes, it resolves the viewer again and opens only if that same inventory is still on top. If a different inventory is on top at completion, the window is not shown. Items are applied before it is shown.
 
 `close()` compares the viewer's top inventory against this window, so a stale reference cannot close whatever the viewer happens to be looking at. The close still passes through `canClose`.
 
-A close is gated the same way an open is. When a listener cancels `WindowCloseEvent` or `canClose` returns `false`, the window is scheduled to reopen one tick later and `onClose` does not fire for that close. A matching entry in the reopening map suppresses `onOpen` when the inventory reopens.
+A close removes the window from the active tracking maps before any veto check. Only Bukkit close reasons `PLAYER` and `PLUGIN` dispatch `WindowCloseEvent` and check `canClose`. Cancelling that event or returning `false` schedules a reopen one tick later and skips `onClose` for that close. Other reasons, including replacement, disconnect, death, and `CANT_USE`, bypass both checks and call `onClose`.
 
-Opening a second window replaces the first: Bukkit closes the current inventory, which runs the first window's close path, then opens the new one. A vetoed close can reopen the first window over the replacement. Pending reopens only check whether the player is online; they are not cancelled when another window opens.
+The delayed reopen runs only while the reopening map still points to that inventory. It also requires an online viewer whose current view is the default `CRAFTING` view, so it skips a viewer who has another menu open. A matching reopen marker suppresses `onOpen` when the inventory reopens. Opening a replacement inventory closes the previous window without a veto.
+
+The open listener handles uncancelled Bukkit open events at `MONITOR` priority, registers the window in both active maps, and then calls `onOpen` unless it is a tracked reopen.
 
 ## Asynchronous rendering
 
@@ -355,11 +358,13 @@ protected void registerElements(final Layout layout) {
 }
 ```
 
-A render in flight blocks another from starting on the same window instance. A render requested while one is running is dropped. Separate instances can render concurrently, and a slower open request can replace a newer menu when it completes.
+A render in flight blocks another from starting on the same window instance. A render requested while one is running is dropped. Separate instances can render concurrently; `open()` checks the captured top inventory before showing its result.
 
-The rendering flag is cleared in the main-thread completion task even when `registerElements` throws. That task still applies the layout and runs the callback, so a failed build can display partially registered elements.
+If `registerElements` throws a `RuntimeException` or `Error`, the normal apply and callback steps are skipped and an abort is scheduled on the main thread. Exceptions while applying items or running the callback also abort the render. The abort clears the layout, resets the rendering flag, and closes this window with reason `CANT_USE` if the viewer still has it open. The original exception is rethrown for the scheduler to report.
 
-Treat `registerElements` as a rebuild of the static placements. The layout is cleared before it runs; paginated content must be replaced explicitly. The previous items can remain visible during a rebuild, but button clicks are ignored while `isRendering()` is `true`.
+Treat `registerElements` as a rebuild from an empty layout. Static placements are cleared before it runs, and `PaginatedLayout.clear()` also clears loaded content while retaining the page and total. The previous items can remain visible during a rebuild, but button clicks are ignored while `isRendering()` is `true`.
+
+On a successful render, the rendering flag stays set until after the callback returns. Calls to `render()` or `refresh()` from that callback are therefore skipped, including from `onOpen` invoked while `open()` shows the inventory.
 
 ## Refreshing
 
@@ -367,7 +372,7 @@ Treat `registerElements` as a rebuild of the static placements. The layout is cl
 
 Use `refresh()` when the item stacks should change but the element set should not, such as a counter in a description or a toggle whose state lives on the element. Use `render(null)` when the element set itself has to be rebuilt, including page navigation, a list that gained an entry, or a slot that became available.
 
-`refresh()` is a no-op until the backing inventory has been created. Calling `getInventory()` creates it even before the first `open()`.
+`refresh()` is a no-op while rendering or until the backing inventory has been created. Calling `getInventory()` creates it even before the first `open()`. It applies items directly, so its exceptions propagate to the caller rather than using the render abort path.
 
 ## Click handling
 
@@ -416,7 +421,7 @@ public final class ConfirmWindow extends ChestWindow<Layout> {
     }
 
     @Override
-    public Component getTitle() {
+    protected Component getTitle() {
         return BaseUtilMessage.deserialize("<red>Confirm");
     }
 
@@ -457,7 +462,7 @@ Pre events are cancellable, post events are informational.
 | `ButtonPreClickEvent` | Yes | Window, button, player, click type |
 | `ButtonPostClickEvent` | No | Window, button, player, click type |
 
-`WindowOpenEvent` is dispatched by `open()` before the render begins, so cancelling it avoids the element build entirely. `WindowCloseEvent` is dispatched from the close path, and cancelling it reopens the window exactly as a `canClose` rejection does.
+`WindowOpenEvent` is dispatched by `open()` before the render begins, so cancelling it avoids the element build entirely. `WindowCloseEvent` is dispatched only for `PLAYER` and `PLUGIN` closes. Cancelling it schedules the same guarded reopen as a `canClose` rejection. Forced closes and inventory replacements do not dispatch this custom event.
 
 Each pre event runs before the window's or button's own check, so a cancelled event stops the operation regardless of what the definition would have allowed.
 
@@ -470,14 +475,14 @@ Inject `WindowService` to resolve open windows:
 | `getWindowByPlayerMap()` | `Map<UUID, Window<?>>` | The window each player currently has open |
 | `getWindowByInventoryMap()` | `Map<Inventory, Window<?>>` | The window backing each open inventory |
 | `getReopeningMap()` | `Map<UUID, Inventory>` | Internal: inventories pending a reopen after a vetoed close |
-| `closeAll()` | `void` | Close every open window and clear the maps |
+| `closeAll()` | `void` | Clear pending reopen markers, force-close tracked players' inventories with `CANT_USE`, and clear the tracking maps |
 | `cleanup(player)` | `void` | Drop a player's entries, called on quit |
 
 A window is also reachable from its inventory without the service, since `Inventory.getHolder()` returns the window itself.
 
-Use `closeAll()` in a consuming plugin's shutdown path. It calls each tracked player's normal close path and clears the window maps; it does not bypass close vetoes or cancel pending render and reopen tasks. Allow closes during shutdown so a veto does not schedule a window to reopen.
+Use `closeAll()` in a consuming plugin's shutdown path. It clears pending reopen markers before closing tracked players' inventories with reason `CANT_USE`, which bypasses close vetoes. Existing delayed reopen callbacks then fail their marker check. It does not cancel render tasks already in flight.
 
-Cleanup runs on `PlayerQuitEvent` at `MONITOR` priority. It removes the player's current window entry, that window's inventory entry, and the pending-reopen marker. It does not scan for older inventory entries left by overlapping vetoed closes and replacement windows.
+Cleanup runs on `PlayerQuitEvent` at `MONITOR` priority. It removes the player's current window entry, that window's inventory entry, and the pending-reopen marker. The close listener also removes active entries immediately when an inventory closes, including when that close is vetoed.
 
 ## Installation
 

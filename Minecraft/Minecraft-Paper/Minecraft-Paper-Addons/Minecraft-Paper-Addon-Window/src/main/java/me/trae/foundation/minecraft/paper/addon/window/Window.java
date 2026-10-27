@@ -7,6 +7,7 @@ import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 
@@ -23,7 +24,7 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
 
     private Inventory inventory;
 
-    private boolean rendering;
+    private volatile boolean rendering;
 
     protected Window(final Layout layout, final Player viewer) {
         if (layout.getSize() <= 0) {
@@ -57,7 +58,15 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
             return;
         }
 
-        this.render(() -> viewer.openInventory(this.getInventory()));
+        final Inventory previousInventory = viewer.getOpenInventory().getTopInventory();
+
+        this.render(() -> this.getViewer().ifPresent(value -> {
+            if (value.getOpenInventory().getTopInventory() != previousInventory) {
+                return;
+            }
+
+            value.openInventory(this.getInventory());
+        }));
     }
 
     public final void close() {
@@ -85,31 +94,41 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
                 this.layout.clear();
 
                 this.registerElements(this.layout);
-            } finally {
-                UtilTask.executeSynchronously(() -> {
-                    this.rendering = false;
+            } catch (final RuntimeException | Error throwable) {
+                UtilTask.executeSynchronously(this::abort);
 
+                throw throwable;
+            }
+
+            UtilTask.executeSynchronously(() -> {
+                try {
                     this.layout.applyTo(this.getInventory());
 
                     if (runnable != null) {
                         runnable.run();
                     }
-                });
-            }
+
+                    this.rendering = false;
+                } catch (final RuntimeException | Error throwable) {
+                    this.abort();
+
+                    throw throwable;
+                }
+            });
         });
     }
 
     public final void refresh() {
-        if (this.inventory == null) {
+        if (this.rendering || this.inventory == null) {
             return;
         }
 
-        this.layout.applyTo(this.getInventory());
+        this.layout.applyTo(this.inventory);
     }
 
     protected abstract Inventory createInventory();
 
-    public abstract Component getTitle();
+    protected abstract Component getTitle();
 
     protected abstract void registerElements(final Layout layout);
 
@@ -125,5 +144,19 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
     }
 
     public void onClose(final Player player) {
+    }
+
+    private void abort() {
+        this.layout.clear();
+
+        this.rendering = false;
+
+        this.getViewer().ifPresent(viewer -> {
+            if (viewer.getOpenInventory().getTopInventory() != this.inventory) {
+                return;
+            }
+
+            viewer.closeInventory(InventoryCloseEvent.Reason.CANT_USE);
+        });
     }
 }

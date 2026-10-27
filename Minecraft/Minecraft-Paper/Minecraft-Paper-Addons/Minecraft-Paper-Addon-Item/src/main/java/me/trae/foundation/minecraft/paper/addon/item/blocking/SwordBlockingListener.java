@@ -52,14 +52,18 @@ public final class SwordBlockingListener implements Listener {
         }
 
         if (!enabled) {
-            itemStack.resetData(DataComponentTypes.BLOCKS_ATTACKS);
+            if (itemStack.hasData(DataComponentTypes.BLOCKS_ATTACKS)) {
+                itemStack.resetData(DataComponentTypes.BLOCKS_ATTACKS);
+            }
             return;
         }
 
-        itemStack.setData(DataComponentTypes.BLOCKS_ATTACKS, BlocksAttacks.blocksAttacks()
-                .blockDelaySeconds(0.05F)
-                .disableCooldownScale(0.0F)
-                .damageReductions(List.of())
-                .build());
+        if (!itemStack.hasData(DataComponentTypes.BLOCKS_ATTACKS)) {
+            itemStack.setData(DataComponentTypes.BLOCKS_ATTACKS, BlocksAttacks.blocksAttacks()
+                    .blockDelaySeconds(0.05F)
+                    .disableCooldownScale(0.0F)
+                    .damageReductions(List.of())
+                    .build());
+        }
     }
 }

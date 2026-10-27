@@ -173,7 +173,7 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
     }
 
     protected boolean isAsynchronous() {
-        return true;
+        return false;
     }
 
     protected abstract Inventory createInventory();

@@ -1,7 +1,6 @@
 package me.trae.foundation.minecraft.paper.addon.window.layout;
 
 import lombok.Getter;
-import lombok.Setter;
 import me.trae.foundation.minecraft.paper.addon.window.element.Element;
 import org.bukkit.inventory.Inventory;
 
@@ -14,7 +13,6 @@ public final class PaginatedLayout extends Layout {
 
     private final int[] contentSlots;
 
-    @Setter
     private List<Element<?>> content;
 
     private int total;
@@ -41,6 +39,10 @@ public final class PaginatedLayout extends Layout {
 
     public static PaginatedLayout of(final int size, final int[] contentSlots) {
         return new PaginatedLayout(size, contentSlots);
+    }
+
+    public void setContent(final List<? extends Element<?>> content) {
+        this.content = new ArrayList<>(content);
     }
 
     public void setTotal(final int total) {

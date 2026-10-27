@@ -29,13 +29,11 @@ public class Message {
     private String prefixFormat = "[%s] ";
 
     public static Component render(final Component prefix, final Component message) {
-        final Component body = message.colorIfAbsent(BaseUtilColor.toTextColor(messageColor));
-
         if (prefix == null) {
-            return body;
+            return message;
         }
 
-        return prefix.colorIfAbsent(BaseUtilColor.toTextColor(prefixColor)).append(body);
+        return prefix.colorIfAbsent(BaseUtilColor.toTextColor(prefixColor)).append(message.colorIfAbsent(BaseUtilColor.toTextColor(messageColor)));
     }
 
     public static Component render(final String prefix, final String message) {

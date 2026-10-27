@@ -1,9 +1,7 @@
 package me.trae.foundation.minecraft.paper.addon.window;
 
 import lombok.Getter;
-import me.trae.foundation.injector.api.Injector;
 import me.trae.foundation.minecraft.paper.addon.window.events.WindowOpenEvent;
-import me.trae.foundation.minecraft.paper.addon.window.services.WindowService;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
@@ -13,7 +11,6 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 
-import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,8 +23,6 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
     private final UUID viewerId;
 
     private Inventory inventory;
-
-    private UUID requestId;
 
     private volatile boolean rendering;
 
@@ -54,70 +49,37 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
     }
 
     public final void open() {
-        UtilTask.executeSynchronously(() -> {
-            if (this.rendering || this.getViewer().isEmpty()) {
+        final Player viewer = this.getViewer().orElse(null);
+        if (viewer == null) {
+            return;
+        }
+
+        if (UtilEvent.supply(new WindowOpenEvent(this, viewer)).isCancelled() || !this.canOpen(viewer)) {
+            return;
+        }
+
+        final Inventory previousInventory = viewer.getOpenInventory().getTopInventory();
+
+        this.render(() -> this.getViewer().ifPresent(value -> {
+            if (value.getOpenInventory().getTopInventory() != previousInventory) {
                 return;
             }
 
-            final WindowService windowService = this.getWindowService();
-
-            if (windowService.isClosingAll()) {
-                return;
-            }
-
-            final UUID requestId = windowService.beginRequest(this.viewerId);
-
-            this.requestId = requestId;
-
-            try {
-                UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> this.open(windowService, requestId));
-            } catch (final RuntimeException | Error throwable) {
-                windowService.completeRequest(this.viewerId, requestId);
-
-                throw throwable;
-            }
-        });
+            value.openInventory(this.getInventory());
+        }));
     }
 
     public final void close() {
-        UtilTask.executeSynchronously(() -> {
-            final Player viewer = this.getViewer().orElse(null);
-            if (viewer == null) {
-                return;
-            }
+        final Player viewer = this.getViewer().orElse(null);
+        if (viewer == null) {
+            return;
+        }
 
-            final WindowService windowService = this.getWindowService();
+        if (viewer.getOpenInventory().getTopInventory() != this.getInventory()) {
+            return;
+        }
 
-            if (windowService.isClosingAll()) {
-                return;
-            }
-
-            if (viewer.getOpenInventory().getTopInventory() != this.inventory && (this.requestId == null || !windowService.isCurrentRequest(this.viewerId, this.requestId))) {
-                return;
-            }
-
-            final UUID requestId = windowService.beginRequest(this.viewerId);
-
-            this.requestId = requestId;
-
-            try {
-                UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> {
-                    if (!windowService.isCurrentRequest(this.viewerId, requestId)) {
-                        return;
-                    }
-
-                    windowService.completeRequest(this.viewerId, requestId);
-
-                    this.getViewer().ifPresent(player -> {
-                        windowService.closeInventory(player, this.inventory, InventoryCloseEvent.Reason.PLUGIN);
-                    });
-                });
-            } catch (final RuntimeException | Error throwable) {
-                windowService.completeRequest(this.viewerId, requestId);
-
-                throw throwable;
-            }
-        });
+        viewer.closeInventory();
     }
 
     public final void render(final Runnable runnable) {
@@ -127,27 +89,9 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
 
         this.rendering = true;
 
-        if (!this.isAsynchronous()) {
-            try {
-                this.layout.clear();
-
-                this.registerElements(this.layout);
-            } catch (final RuntimeException | Error throwable) {
-                this.abort();
-
-                throw throwable;
-            }
-
-            this.apply(runnable);
-
-            return;
-        }
-
         UtilTask.executeAsynchronously(() -> {
             try {
-                this.layout.clear();
-
-                this.registerElements(this.layout);
+                this.build();
             } catch (final RuntimeException | Error throwable) {
                 UtilTask.executeSynchronously(this::abort);
 
@@ -163,41 +107,15 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
             return;
         }
 
-        try {
-            this.layout.applyTo(this.inventory);
-        } catch (final RuntimeException | Error throwable) {
-            this.abort();
-
-            throw throwable;
-        }
-    }
-
-    protected boolean isAsynchronous() {
-        return false;
-    }
-
-    protected abstract Inventory createInventory();
-
-    protected abstract Component getTitle();
-
-    protected abstract void registerElements(final Layout layout);
-
-    public boolean canOpen(final Player player) {
-        return true;
-    }
-
-    public boolean canClose(final Player player) {
-        return true;
-    }
-
-    public void onOpen(final Player player) {
-    }
-
-    public void onClose(final Player player) {
+        this.layout.applyTo(this.inventory);
     }
 
     private void apply(final Runnable runnable) {
         try {
+            this.layout.clear();
+
+            this.registerElements(this.layout);
+
             this.layout.applyTo(this.getInventory());
 
             if (runnable != null) {
@@ -212,63 +130,40 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
         }
     }
 
-    private WindowService getWindowService() {
-        return Injector.INSTANCE.get(WindowService.class);
-    }
+    private void abort() {
+        this.layout.clear();
 
-    private void open(final WindowService windowService, final UUID requestId) {
-        if (!windowService.isCurrentRequest(this.viewerId, requestId)) {
-            return;
-        }
+        this.rendering = false;
 
-        final Player viewer = this.getViewer().orElse(null);
-        if (viewer == null || this.rendering) {
-            windowService.completeRequest(this.viewerId, requestId);
-            return;
-        }
-
-        try {
-            if (UtilEvent.supply(new WindowOpenEvent(this, viewer)).isCancelled() || !this.canOpen(viewer)
-                    || !windowService.isCurrentRequest(this.viewerId, requestId) || this.rendering) {
-                windowService.completeRequest(this.viewerId, requestId);
+        this.getViewer().ifPresent(viewer -> {
+            if (viewer.getOpenInventory().getTopInventory() != this.inventory) {
                 return;
             }
 
-            this.render(() -> windowService.openInventory(this.viewerId, requestId, this.getInventory()));
-        } catch (final RuntimeException | Error throwable) {
-            windowService.completeRequest(this.viewerId, requestId);
-
-            throw throwable;
-        }
+            viewer.closeInventory(InventoryCloseEvent.Reason.CANT_USE);
+        });
     }
 
-    private void abort() {
-        this.rendering = true;
+    protected abstract Inventory createInventory();
 
-        try {
-            this.layout.clear();
+    protected abstract Component getTitle();
 
-            if (this.requestId != null) {
-                this.getWindowService().completeRequest(this.viewerId, this.requestId);
-            }
+    protected abstract void registerElements(final Layout layout);
 
-            UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> {
-                try {
-                    this.getViewer().ifPresent(viewer -> {
-                        this.getWindowService().closeInventory(
-                                viewer,
-                                this.inventory,
-                                InventoryCloseEvent.Reason.CANT_USE
-                        );
-                    });
-                } finally {
-                    this.rendering = false;
-                }
-            });
-        } catch (final RuntimeException | Error throwable) {
-            this.rendering = false;
+    protected void build() {
+    }
 
-            throw throwable;
-        }
+    public boolean canOpen(final Player player) {
+        return true;
+    }
+
+    public boolean canClose(final Player player) {
+        return true;
+    }
+
+    public void onOpen(final Player player) {
+    }
+
+    public void onClose(final Player player) {
     }
 }

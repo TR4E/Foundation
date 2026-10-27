@@ -11,6 +11,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.inventory.Inventory;
 
+import java.util.UUID;
+
 @AllArgsConstructor
 @AddonSingleton
 public final class WindowOpenListener implements Listener {
@@ -23,17 +25,27 @@ public final class WindowOpenListener implements Listener {
             return;
         }
 
+        final UUID viewerId = player.getUniqueId();
+
         final Inventory inventory = event.getInventory();
+
+        final boolean expected = this.windowService.getInventoryChangeMap().get(viewerId) == inventory;
+
+        final boolean reopening = expected && this.windowService.getReopeningMap().get(viewerId) == inventory;
+
+        if (!expected) {
+            this.windowService.cancelRequests(viewerId);
+        }
 
         if (!(inventory.getHolder() instanceof final Window<?> window)) {
             return;
         }
 
-        this.windowService.getWindowByPlayerMap().put(player.getUniqueId(), window);
+        this.windowService.getWindowByPlayerMap().put(viewerId, window);
         this.windowService.getWindowByInventoryMap().put(inventory, window);
 
-        if (this.windowService.getReopeningMap().get(player.getUniqueId()) == inventory) {
-            this.windowService.getReopeningMap().remove(player.getUniqueId());
+        if (reopening) {
+            this.windowService.getReopeningMap().remove(viewerId, inventory);
             return;
         }
 

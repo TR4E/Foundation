@@ -31,36 +31,52 @@ public final class WindowCloseListener implements Listener {
             return;
         }
 
+        final UUID uniqueId = player.getUniqueId();
+
+        if (!this.windowService.getInventoryChangeMap().containsKey(uniqueId)) {
+            this.windowService.cancelRequests(uniqueId);
+        }
+
         final Inventory inventory = event.getInventory();
 
         if (!(inventory.getHolder() instanceof final Window<?> window)) {
             return;
         }
 
-        final UUID uniqueId = player.getUniqueId();
-
         this.windowService.getWindowByPlayerMap().remove(uniqueId, window);
         this.windowService.getWindowByInventoryMap().remove(inventory, window);
         this.windowService.getWindowLastScheduleRefreshedAtMap().remove(window);
 
         if (this.isVetoable(event.getReason()) && (UtilEvent.supply(new WindowCloseEvent(window, player)).isCancelled() || !window.canClose(player))) {
+            if (this.windowService.getRequestIdMap().containsKey(uniqueId)) {
+                return;
+            }
+
+            final UUID requestId = this.windowService.beginRequest(uniqueId);
+
             this.windowService.getReopeningMap().put(uniqueId, inventory);
 
-            UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> {
-                if (this.windowService.getReopeningMap().get(uniqueId) != inventory) {
-                    return;
-                }
-
-                UtilServer.getOnlinePlayerById(uniqueId).ifPresent(value -> {
-                    if (value.getOpenInventory().getType() != InventoryType.CRAFTING) {
+            try {
+                UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> {
+                    if (!this.windowService.isCurrentRequest(uniqueId, requestId) || this.windowService.getReopeningMap().get(uniqueId) != inventory) {
                         return;
                     }
 
-                    value.openInventory(inventory);
+                    try {
+                        UtilServer.getOnlinePlayerById(uniqueId).ifPresent(value -> {
+                            if (value.getOpenInventory().getType() == InventoryType.CRAFTING) {
+                                this.windowService.openInventory(uniqueId, requestId, inventory);
+                            }
+                        });
+                    } finally {
+                        this.windowService.completeRequest(uniqueId, requestId);
+                    }
                 });
+            } catch (final RuntimeException | Error throwable) {
+                this.windowService.completeRequest(uniqueId, requestId);
 
-                this.windowService.getReopeningMap().remove(uniqueId, inventory);
-            });
+                throw throwable;
+            }
             return;
         }
 

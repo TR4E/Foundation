@@ -312,7 +312,7 @@ public final class CancelOrderButton extends Button<OrderWindow> {
     public void onClick(final Player player, final ClickType clickType) {
         UtilMessage.message(player, "Order", "Cancelled.");
 
-        UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, this.getWindow()::close);
+        this.getWindow().close();
     }
 }
 ```
@@ -322,32 +322,34 @@ public final class CancelOrderButton extends Button<OrderWindow> {
 | `onClick(player, clickType)` | `void` | _abstract_ | Called when the button is clicked |
 | `canClick(player, clickType)` | `boolean` | `true` | Pre-click check |
 
-Button callbacks run inside `InventoryClickEvent`. Schedule `close()` for the next tick, as above, because it closes the inventory immediately. `open()` already defers showing the inventory until its asynchronous render finishes.
+Button callbacks run inside `InventoryClickEvent`. Call `open()` and `close()` directly: the Window API marshals these calls to the main thread and defers the operation until the next tick. Button classes do not need scheduler calls.
 
 ## Lifecycle
 
 | Method | Behaviour |
 | --- | --- |
-| `open()` | Resolve the viewer, fire `WindowOpenEvent`, run `canOpen`, and render; show only if the viewer is still online and has the same top inventory |
-| `close()` | Close the inventory, but only while this window is the one the viewer has open |
+| `open()` | Queue an open for the next tick, check the viewer and open gates, render, and show only if its request is still current |
+| `close()` | Cancel an unfinished open for this window and queue a close for the next tick; close only if this window is still on top |
 | `render(runnable)` | Rebuild every element off-thread, write them on the main thread, then run the callback |
 | `refresh()` | Rewrite the current elements immediately with no rebuild; skipped while rendering; call on the main thread |
 
-`open()` does nothing when the viewer is offline, when a listener cancels `WindowOpenEvent`, or when `canOpen` returns `false`. It captures the viewer's current top inventory before rendering. Once rendering finishes, it resolves the viewer again and opens only if that same inventory is still on top. If a different inventory is on top at completion, the window is not shown. Items are applied before it is shown.
+`open()` does nothing when the viewer is offline or this instance is already rendering. Otherwise it creates a unique request for that viewer and schedules the open checks for the next tick. Cancelling `WindowOpenEvent` or returning `false` from `canOpen` prevents the build. Items are applied before the inventory is shown, and the viewer and request are checked again before opening it.
 
-`close()` compares the viewer's top inventory against this window, so a stale reference cannot close whatever the viewer happens to be looking at. The close still passes through `canClose`.
+A newer open or close request invalidates the viewer's previous request. Opening or closing another inventory through Bukkit also invalidates pending requests, including when the viewer returns to the same crafting inventory afterward. Completing an older request cannot consume a newer one. Disconnect cleanup and `closeAll()` invalidate pending requests too.
+
+`close()` accepts a request only if this window is currently visible or owns the viewer's pending request. It invalidates the previous request immediately on the main thread, then checks its request and the current inventory again next tick. A stale reference cannot close a replacement inventory, and calling `close()` before an unfinished open completes prevents that open from appearing. A normal API close still passes through `canClose`.
 
 A close removes the window from the active tracking maps before any veto check. Only Bukkit close reasons `PLAYER` and `PLUGIN` dispatch `WindowCloseEvent` and check `canClose`. Cancelling that event or returning `false` schedules a reopen one tick later and skips `onClose` for that close. Other reasons, including replacement, disconnect, death, and `CANT_USE`, bypass both checks and call `onClose`.
 
-The delayed reopen runs only while the reopening map still points to that inventory. It also requires an online viewer whose current view is the default `CRAFTING` view, so it skips a viewer who has another menu open. A matching reopen marker suppresses `onOpen` when the inventory reopens. Opening a replacement inventory closes the previous window without a veto.
+The delayed reopen checks both its unique request ID and the pending inventory. It requires an online, living viewer whose current view is the default `CRAFTING` view. A newer request or another inventory open or close invalidates it, so opening and closing a newer menu cannot revive an old reopen. A matching reopen marker suppresses `onOpen`. Opening a replacement inventory closes the previous window without a veto.
 
-The open listener handles uncancelled Bukkit open events at `MONITOR` priority, registers the window in both active maps, and then calls `onOpen` unless it is a tracked reopen.
+The open listener handles uncancelled Bukkit open events at `MONITOR` priority, registers the window in both active maps, and then calls `onOpen` unless it is a tracked reopen. Internal inventory transitions preserve their expected request, including a newer request made by a lifecycle callback.
 
 ## Asynchronous rendering
 
 `registerElements` runs off the main thread on every render. Blocking calls belong there, which is the point: a window can query a database, read a cache, or fetch a profile while it opens, with no scheduling code in the definition.
 
-Call `open()`, `close()`, `render()`, `refresh()`, and `getInventory()` on the main thread. `render()` schedules `registerElements` asynchronously, then schedules `applyTo` and its callback on the main thread. `toItemStack()` runs inside `applyTo`; keep any Bukkit operations in element constructors or `registerElements` limited to APIs that support asynchronous use.
+`open()` and `close()` handle main-thread scheduling internally and can be called directly from button handlers or asynchronous code. Call `render()`, `refresh()`, and `getInventory()` on the main thread. `render()` schedules `registerElements` asynchronously, then schedules `applyTo` and its callback on the main thread. `toItemStack()` runs inside `applyTo`; keep any Bukkit operations in element constructors or `registerElements` limited to APIs that support asynchronous use.
 
 ```java
 @Override
@@ -358,13 +360,13 @@ protected void registerElements(final Layout layout) {
 }
 ```
 
-A render in flight blocks another from starting on the same window instance. A render requested while one is running is dropped. Separate instances can render concurrently; `open()` checks the captured top inventory before showing its result.
+A render in flight blocks another from starting on the same window instance. A render requested while one is running is dropped. Separate instances can render concurrently; only the viewer's current open request can show its result.
 
-If `registerElements` throws a `RuntimeException` or `Error`, the normal apply and callback steps are skipped and an abort is scheduled on the main thread. Exceptions while applying items or running the callback also abort the render. The abort clears the layout, resets the rendering flag, and closes this window with reason `CANT_USE` if the viewer still has it open. The original exception is rethrown for the scheduler to report.
+If `registerElements` throws a `RuntimeException` or `Error`, the normal apply and callback steps are skipped and an abort is scheduled on the main thread. Exceptions while applying items or running the callback also abort the render. The abort clears the layout, invalidates this window's current request, and schedules a forced close for the next tick with reason `CANT_USE`. That close affects only this window if it is still visible. Click routing remains blocked until cleanup finishes, and the original exception is rethrown for the scheduler to report.
 
 Treat `registerElements` as a rebuild from an empty layout. Static placements are cleared before it runs, and `PaginatedLayout.clear()` also clears loaded content while retaining the page and total. The previous items can remain visible during a rebuild, but button clicks are ignored while `isRendering()` is `true`.
 
-On a successful render, the rendering flag stays set until after the callback returns. Calls to `render()` or `refresh()` from that callback are therefore skipped, including from `onOpen` invoked while `open()` shows the inventory.
+On a successful render, the rendering flag stays set until after the callback returns. Calls to `render()` or `refresh()` from that callback are therefore skipped, including from `onOpen` invoked while `open()` shows the inventory. Calling `close()` or opening another window from a lifecycle callback queues the operation safely for the next tick.
 
 ## Refreshing
 
@@ -372,7 +374,7 @@ On a successful render, the rendering flag stays set until after the callback re
 
 Use `refresh()` when the item stacks should change but the element set should not, such as a counter in a description or a toggle whose state lives on the element. Use `render(null)` when the element set itself has to be rebuilt, including page navigation, a list that gained an entry, or a slot that became available.
 
-`refresh()` is a no-op while rendering or until the backing inventory has been created. Calling `getInventory()` creates it even before the first `open()`. It applies items directly, so its exceptions propagate to the caller rather than using the render abort path.
+`refresh()` is a no-op while rendering or until the backing inventory has been created. Calling `getInventory()` creates it even before the first `open()`. If item rendering fails, it uses the same deferred abort cleanup as `render()` and rethrows the exception to the caller.
 
 ## Click handling
 
@@ -449,7 +451,7 @@ public void onClick(final Player player, final ClickType clickType) {
 }
 ```
 
-Opening from inside a click is safe here. `open()` renders off-thread first, so the inventory is never shown during the click event, which is where this pattern usually breaks. The parent instance stays alive because the child holds it, and reopening it runs `registerElements` again, so it comes back with current data rather than a stale snapshot.
+Opening and closing from inside a click are safe through the Window API: both methods defer the inventory operation internally. The parent instance stays alive because the child holds it, and reopening it runs `registerElements` again, so it comes back with current data.
 
 ## Events
 
@@ -475,14 +477,14 @@ Inject `WindowService` to resolve open windows:
 | `getWindowByPlayerMap()` | `Map<UUID, Window<?>>` | The window each player currently has open |
 | `getWindowByInventoryMap()` | `Map<Inventory, Window<?>>` | The window backing each open inventory |
 | `getReopeningMap()` | `Map<UUID, Inventory>` | Internal: inventories pending a reopen after a vetoed close |
-| `closeAll()` | `void` | Clear pending reopen markers, force-close tracked players' inventories with `CANT_USE`, and clear the tracking maps |
+| `closeAll()` | `void` | Invalidate pending requests, force-close tracked windows with `CANT_USE`, and clear the tracking maps |
 | `cleanup(player)` | `void` | Drop a player's entries, called on quit |
 
 A window is also reachable from its inventory without the service, since `Inventory.getHolder()` returns the window itself.
 
-Use `closeAll()` in a consuming plugin's shutdown path. It clears pending reopen markers before closing tracked players' inventories with reason `CANT_USE`, which bypasses close vetoes. Existing delayed reopen callbacks then fail their marker check. It does not cancel render tasks already in flight.
+Use `closeAll()` on the main thread in a consuming plugin's shutdown path. It invalidates open, close, and reopen requests before closing tracked windows with reason `CANT_USE`, which bypasses close vetoes. New Window API requests are ignored while it runs. Builds already in flight can finish, but their invalidated open requests cannot show an inventory afterward.
 
-Cleanup runs on `PlayerQuitEvent` at `MONITOR` priority. It removes the player's current window entry, that window's inventory entry, and the pending-reopen marker. The close listener also removes active entries immediately when an inventory closes, including when that close is vetoed.
+Cleanup runs on `PlayerQuitEvent` at `MONITOR` priority. It removes the player's current window entry, that window's inventory entry, and all pending request markers. The close listener also removes active entries immediately when an inventory closes, including when that close is vetoed.
 
 ## Installation
 

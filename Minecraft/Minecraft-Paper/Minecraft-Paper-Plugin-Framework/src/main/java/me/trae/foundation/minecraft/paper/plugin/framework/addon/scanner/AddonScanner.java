@@ -2,6 +2,7 @@ package me.trae.foundation.minecraft.paper.plugin.framework.addon.scanner;
 
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.Addon;
+import me.trae.foundation.minecraft.paper.plugin.framework.addon.settings.AddonSettings;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 
 import java.io.File;
@@ -24,6 +25,17 @@ public class AddonScanner {
                 .filter(entry -> entry.startsWith(packagePath) && entry.endsWith(".class"))
                 .<Class<?>>map(entry -> load(type, entry))
                 .filter(clazz -> clazz.isAnnotationPresent(AddonSingleton.class))
+                .toList();
+    }
+
+    public static List<Class<? extends AddonSettings>> scanSettings(final Class<? extends Addon> type) {
+        final String packagePath = "%s/".formatted(type.getPackageName().replace('.', '/'));
+
+        return getEntries(type).stream()
+                .filter(entry -> entry.startsWith(packagePath) && entry.endsWith(".class"))
+                .<Class<?>>map(entry -> load(type, entry))
+                .filter(clazz -> clazz.isInterface() && clazz != AddonSettings.class && AddonSettings.class.isAssignableFrom(clazz))
+                .<Class<? extends AddonSettings>>map(clazz -> clazz.asSubclass(AddonSettings.class))
                 .toList();
     }
 

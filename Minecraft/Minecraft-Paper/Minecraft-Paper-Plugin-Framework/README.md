@@ -138,6 +138,90 @@ public class ItemService implements Lifecycle {
 }
 ```
 
+### Addon settings
+
+An addon can declare settings interfaces extending `AddonSettings`. Every setting has a default method, so plugins that accept the addon defaults need no settings component or provider. `Addon` still only declares `getKey()`.
+
+```java
+public final class DamageAddon implements Addon {
+
+    @Override
+    public String getKey() {
+        return "damage";
+    }
+}
+
+public interface DamageAddonSettings extends AddonSettings {
+
+    default DelayMode getDelayMode() {
+        return DelayMode.MODERN;
+    }
+}
+
+@RequiredArgsConstructor
+@AddonSingleton
+public final class DamageService {
+
+    private final DamageAddonSettings damageAddonSettings;
+
+    public DelayMode getDelayMode() {
+        return this.damageAddonSettings.getDelayMode();
+    }
+}
+```
+
+Place the interface and addon components under the addon's package. The elected host discovers the settings contracts and binds them before constructing addon components.
+
+A plugin supplies an override by declaring a component under its own package:
+
+```java
+@Singleton
+public final class CoreDamageAddonSettings implements DamageAddonSettings {
+
+    @Override
+    public DelayMode getDelayMode() {
+        return DelayMode.LEGACY;
+    }
+}
+```
+
+Another plugin can independently implement the same interface. Declare its application dependency to establish which plugin initializes later:
+
+```java
+@Application
+@Addons(DamageAddon.class)
+public final class CorePlugin extends PaperPlugin {
+
+    @Override
+    public String getPluginName() {
+        return "Core";
+    }
+}
+
+@Application(dependencies = CorePlugin.class)
+@Addons(DamageAddon.class)
+public final class LifestealPlugin extends PaperPlugin {
+
+    @Override
+    public String getPluginName() {
+        return "Lifesteal";
+    }
+}
+
+@Singleton
+public final class LifestealDamageAddonSettings implements DamageAddonSettings {
+
+    @Override
+    public DelayMode getDelayMode() {
+        return DelayMode.MODERN;
+    }
+}
+```
+
+Keep the Core and Lifesteal components under their respective plugin packages. Settings apply globally. The last implementation in application initialization order wins as a whole; methods it does not override use the interface defaults. Implementations never extend each other, and Core's individual values are not merged into Lifesteal's settings.
+
+Injected settings retain one forwarding binding, so existing services observe later plugin overrides and return to the preceding implementation when that plugin stops. With no implementations, the binding uses the interface defaults. Runtime bindings are excluded from override collections, so the default proxy cannot become its own override.
+
 ### Election
 
 The addon registry registers each addon key as a service in Paper's `ServicesManager`. The first plugin to register a key hosts the addon. When a hosting plugin is disabled, the next plugin that declared the same addon automatically takes over: `AddonListener` listens for `ServiceUnregisterEvent` and calls `elect()` to attach the newly elected addon's components to Injector.

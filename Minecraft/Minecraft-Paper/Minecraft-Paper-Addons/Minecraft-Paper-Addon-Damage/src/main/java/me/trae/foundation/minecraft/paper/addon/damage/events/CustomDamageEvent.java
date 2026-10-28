@@ -3,6 +3,7 @@ package me.trae.foundation.minecraft.paper.addon.damage.events;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
+import me.trae.foundation.minecraft.paper.addon.death.reason.Reason;
 import me.trae.foundation.minecraft.paper.plugin.framework.event.CustomCancellableEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
@@ -36,6 +37,7 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
     private boolean critical, fullDamage, applied;
 
     private SoundStash soundStash;
+    private Reason reason;
 
     // EntityDamageEvent
     public CustomDamageEvent(final EntityDamageEvent entityDamageEvent) {
@@ -57,7 +59,8 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 false,
                 false,
                 false,
-                getHurtSound(entity)
+                getHurtSound(entity),
+                null
         );
     }
 
@@ -92,7 +95,8 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 entityDamageByEntityEvent.isCritical(),
                 false,
                 false,
-                getHurtSound(entity)
+                getHurtSound(entity),
+                null
         );
     }
 
@@ -112,7 +116,8 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 false,
                 false,
                 false,
-                getHurtSound(damagee)
+                getHurtSound(damagee),
+                null
         );
     }
 
@@ -132,7 +137,8 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 false,
                 false,
                 false,
-                getHurtSound(damagee)
+                getHurtSound(damagee),
+                null
         );
     }
 

@@ -4,11 +4,11 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
+import me.trae.foundation.minecraft.paper.addon.death.reason.Reason;
+import me.trae.foundation.minecraft.paper.addon.death.settings.DeathAddonSettings;
 import me.trae.foundation.minecraft.paper.plugin.framework.event.CustomEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -24,38 +24,33 @@ import java.util.List;
 @Setter
 public final class VanillaDeathEvent extends CustomEvent implements DeathEvent {
 
+    private final DeathAddonSettings settings;
+
     private final LivingEntity entity;
     private final Entity killer;
     private final DamageCause cause;
     private final ItemStack itemStack;
     private final List<ItemStack> drops;
 
+    private Reason reason;
     private int dropExp;
     private SoundStash soundStash;
 
-    public VanillaDeathEvent(final EntityDeathEvent entityDeathEvent) {
+    public VanillaDeathEvent(final EntityDeathEvent entityDeathEvent, final DeathAddonSettings settings) {
         final LivingEntity entity = entityDeathEvent.getEntity();
         final Entity killer = entityDeathEvent.getDamageSource().getCausingEntity();
 
         this(
+                settings,
                 entity,
                 killer,
                 entity.getLastDamageCause() != null ? entity.getLastDamageCause().getCause() : EntityDamageEvent.DamageCause.CUSTOM,
                 UtilItemStack.getItemInMainHand(killer).orElse(null),
                 new ArrayList<>(entityDeathEvent.getDrops()),
+                null,
                 entityDeathEvent.getDroppedExp(),
                 SoundStash.of(entityDeathEvent.getDeathSound(), entityDeathEvent.getDeathSoundCategory(), entityDeathEvent.getDeathSoundVolume(), entityDeathEvent.getDeathSoundPitch())
         );
-    }
-
-    @Override
-    public Component getReasonName() {
-        final ItemStack itemStack = this.getItemStack();
-        if (itemStack == null || itemStack.isEmpty()) {
-            return null;
-        }
-
-        return UtilItemStack.getDisplayName(itemStack, true).colorIfAbsent(NamedTextColor.GREEN);
     }
 
     @Override

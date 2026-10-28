@@ -5,6 +5,8 @@ import me.trae.foundation.minecraft.paper.addon.death.creators.DeathCreator;
 import me.trae.foundation.minecraft.paper.addon.death.events.CustomDeathMessageEvent;
 import me.trae.foundation.minecraft.paper.addon.death.events.DeathEvent;
 import me.trae.foundation.minecraft.paper.addon.death.events.VanillaDeathEvent;
+import me.trae.foundation.minecraft.paper.addon.death.services.DeathService;
+import me.trae.foundation.minecraft.paper.addon.death.settings.DeathAddonSettings;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
@@ -22,6 +24,7 @@ import java.util.List;
 @AddonSingleton
 public final class DeathListener implements Listener {
 
+    private final DeathService deathService;
     private final List<DeathCreator> deathCreatorList;
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -30,7 +33,9 @@ public final class DeathListener implements Listener {
             return;
         }
 
-        final Event event = Event.class.cast(this.deathCreatorList.isEmpty() ? new VanillaDeathEvent(entityDeathEvent) : this.deathCreatorList.getFirst().createDeathEvent(entityDeathEvent));
+        final DeathAddonSettings settings = this.deathService.getSettings();
+
+        final Event event = Event.class.cast(this.deathCreatorList.isEmpty() ? new VanillaDeathEvent(entityDeathEvent, settings) : this.deathCreatorList.getFirst().createDeathEvent(entityDeathEvent, settings));
         if (event == null) {
             return;
         }

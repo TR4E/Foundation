@@ -19,6 +19,7 @@ The Damage addon replaces the normal Bukkit damage application path with a stage
 - [Damage processing stages](#damage-processing-stages)
 - [CustomDamageEvent](#customdamageevent)
 - [Damage service](#damage-service)
+- [Addon settings](#addon-settings)
 - [Damage delay modes](#damage-delay-modes)
 - [Damage reductions](#damage-reductions)
 - [Attacker mechanics](#attacker-mechanics)
@@ -35,7 +36,7 @@ The Damage addon replaces the normal Bukkit damage application path with a stage
 
 ## How it works
 
-`PreDamageListener` listens to Bukkit's `EntityDamageEvent` at `LOWEST` priority. For a non-cancelled event targeting a `Damageable` entity (excluding `ComplexEntityPart`), it cancels the original event, wraps it in `CustomDamageEvent`, and passes it to `DamageService`.
+`PreDamageListener` listens to Bukkit's `EntityDamageEvent` at `MONITOR` priority. For a non-cancelled event targeting a `Damageable` entity (excluding `ComplexEntityPart`), it cancels the original event, wraps it in `CustomDamageEvent`, and passes it to `DamageService`.
 
 The service dispatches `CustomDamageEvent` first, then sends `DamageSetupEvent` through a fixed sequence of stages. Built-in listeners handle individual stages, while consuming plugins can listen for the same events to change damage values, cancel an attack, or customize a specific vanilla mechanic.
 
@@ -88,6 +89,7 @@ Cancellation is checked after the initial custom event, after `DELAY`, after `AB
 | `isApplied()` | Whether the built-in health or absorption handler actually reduced a value |
 | `getSoundStash()` / `setSoundStash(...)` | Optional `SoundStash` for the damagee’s hurt sound; includes the sound key, category, volume, and pitch |
 | `getSystemTime()` | Damage-event creation time in milliseconds |
+| `getReason()` / `setReason(...)` | Optional Death addon `Reason`, used for death attribution and message formatting |
 | `getFinalDamage()` | Current damage clamped to a minimum of zero |
 | `hasDamage()` | Whether final damage is greater than zero |
 | `isMelee()` | Whether the cause is `ENTITY_ATTACK` or `ENTITY_SWEEP_ATTACK` |
@@ -104,6 +106,8 @@ Inject `DamageService` to process custom damage or inspect the latest applied da
 | --- | --- |
 | `process(damageEvent)` | Execute the complete damage pipeline for a `CustomDamageEvent` |
 | `getLastDamageMap()` | Mutable concurrent map of entity UUIDs to their most recently recorded applied damage event |
+| `getLastPlayerDamagerDamageMap()` | Mutable concurrent map of victim UUIDs to the latest applied player damage qualifying for the configured death mode |
+| `isLastPlayerDamagerDamageExpired(customDamageEvent)` | Check whether stored player damage has expired under the configured death mode |
 
 To inflict damage through the addon rather than Bukkit's normal `damage(...)` method:
 
@@ -124,17 +128,46 @@ public final class CustomDamageService {
 
 `DamageService` does not synthesize an attacker or weapon for these custom constructors. If attacker-specific behaviour is needed, use the constructor that accepts a damager. The source must be compatible with the NMS-backed mechanics you intend to use.
 
-The last-damage map is updated only when the event's `applied` flag is set. `DamageCleanupListener` removes entries when entities leave the world; death integration also consumes the matching entry on death.
+Damage history is updated only when the event's `applied` flag is set. `DamageCleanupListener` clears both history maps for an entity when it leaves the world. Death creation consumes the latest applied damage entry and, for player-attribution modes, the stored player damage entry. The scheduler removes expired player attribution every 100 milliseconds; death creation also checks expiry before using it.
+
+## Addon settings
+
+`DamageAddonSettings` supplies defaults for delay and death handling:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `getDelayMode()` | `DelayMode.MODERN` | Select modern or legacy hit delays |
+| `getDeathMode()` | `DeathMode.NORMAL` | Select which damage event supplies death attribution |
+| `getLastPlayerDamagerDamageExpiration()` | `10_000L` | Player attribution lifetime in milliseconds, measured from damage-event creation; reason-based attribution uses the reason's lifetime instead |
+
+Override settings with an Injector component under your plugin's package:
+
+```java
+@Singleton
+public final class CombatDamageAddonSettings implements DamageAddonSettings {
+
+    @Override
+    public DelayMode getDelayMode() {
+        return DelayMode.LEGACY;
+    }
+
+    @Override
+    public DeathMode getDeathMode() {
+        return DeathMode.LAST_PLAYER_DAMAGER;
+    }
+
+    @Override
+    public long getLastPlayerDamagerDamageExpiration() {
+        return 30_000L;
+    }
+}
+```
+
+No settings component is needed to accept the defaults. Settings apply globally through the framework's [addon settings binding](../../Minecraft-Paper-Plugin-Framework/README.md#addon-settings). For duration-based attribution, an expiration of `-1L` disables timed expiry; `0L` expires it immediately. Reason-based attribution follows the reason's lifetime instead.
 
 ## Damage delay modes
 
-`DamageSettings` exposes a global delay mode. The default is `MODERN`:
-
-```java
-DamageSettings.setDelayMode(DelayMode.LEGACY);
-```
-
-Configure the mode through `DamageSettings.getDelayMode()` and `DamageSettings.setDelayMode(...)`. The setting is static and shared by the listeners using that loaded settings class. Set it during plugin initialization so the same mode is used throughout a hit's processing.
+Select the hit-delay mode through `DamageAddonSettings.getDelayMode()`. The default is `MODERN`:
 
 | Mode | Behaviour |
 | --- | --- |
@@ -271,16 +304,32 @@ The Damage addon integrates with the [Death addon](../Minecraft-Paper-Addon-Deat
 
 At the `DEATH` stage, `CustomDeathListener` checks the NMS entity's dying state, invokes totem-death protection, and calls the entity's death handler when appropriate. It preserves and restores the existing `silentDeath` flag, setting it during a non-full hit.
 
-When the Death addon receives `EntityDeathEvent`, `CustomDeathCreator` removes the last recorded damage event for that entity. If present, it creates a `CustomDeathEvent` implementing the Death addon's `DeathEvent` contract:
+When the Death addon receives `EntityDeathEvent`, `CustomDeathCreator` removes the latest applied damage event for that entity. If present, it selects the attribution event according to `DamageAddonSettings.getDeathMode()` and creates a `CustomDeathEvent` implementing the Death addon's `DeathEvent` contract:
 
 | Property | Source |
 | --- | --- |
-| Victim, killer, cause, item | Saved `CustomDamageEvent` |
+| Victim | Tracked entity that died |
+| Killer, cause, item, reason | Selected attribution `CustomDamageEvent` |
 | Drops, dropped experience | Bukkit `EntityDeathEvent` |
 | Death sound | Bukkit death sound, category, volume, and pitch |
-| Reason name | `null` by default |
+| `getOriginalDamageEvent()` | Latest applied damage event, retained even when attribution uses an earlier player hit |
+| `getDamageEvent()` | Selected attribution damage event |
 
-Drops, experience, and the sound stash can be modified on `CustomDeathEvent`. If no saved damage event exists, the creator logs the missing history and returns `null` rather than inventing a damage cause.
+Drops, experience, and the sound stash can be modified on `CustomDeathEvent`. The reason is captured from the selected damage event. Its display name, prefix, suffix, and lifetime come from the Death addon's [Reason API](../Minecraft-Paper-Addon-Death/README.md#reasons-and-colors).
+
+### Death modes
+
+| Mode | Attribution |
+| --- | --- |
+| `NORMAL` | Uses the latest applied damage event, including environmental or non-player damage. This is the default. |
+| `LAST_PLAYER_DAMAGER` | Uses the latest applied player damage, with or without a reason, while its configured lifetime remains active. A later player hit without a reason replaces an earlier hit with one. |
+| `LAST_PLAYER_DAMAGER_WITH_REASON` | Stores only applied player damage with a non-null reason. Later player damage without a reason leaves that stored event in place. Attribution expires when `Reason.hasExpired()` becomes true, independently of the configured player damage lifetime. |
+
+In both player-attribution modes, later environmental or non-player damage leaves the stored player event in place. If that event is absent or expired at death, attribution falls back to the latest applied damage event. The selected event supplies the killer, cause, item, and reason together.
+
+The scheduler and death creator share `isLastPlayerDamagerDamageExpired(...)`, so a death between scheduler runs still rejects expired attribution. In reason mode, an event whose reason has been cleared uses the configured player damage lifetime as a fallback.
+
+If no latest applied damage history exists, the creator logs the missing history and returns `null`. The Death addon stops processing that death without falling back to `VanillaDeathEvent`.
 
 ## Events
 
@@ -362,7 +411,7 @@ The `HEALTH` stage runs after armour, Resistance, protection enchantments, and a
 - `isFullDamage()` describes the delay system's classification and controls subsequent mechanics such as knockback and sweeping. It is not the same as `getFinalDamage()` or `isApplied()`.
 - The addon recreates the combat mechanics implemented by its listeners. It does **not** automatically restore every side effect of the vanilla damage path, which was cancelled by `PreDamageListener`.
 - The implementation uses CraftBukkit and NMS classes, damage-type tags, and reflective access to internal methods. It is tied to the compatible Paper server version and requires corresponding NMS mappings at runtime.
-- The `DamageService` last-damage map is a mutable internal data structure. Prefer reading it rather than changing entries from unrelated plugins.
+- The `DamageService` history maps are mutable internal data structures. Prefer reading them rather than changing entries from unrelated plugins.
 
 ## Installation
 

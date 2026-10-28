@@ -8,6 +8,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
+import java.util.UUID;
+
 @AllArgsConstructor
 @AddonSingleton
 public final class DamageCleanupListener implements Listener {
@@ -16,6 +18,10 @@ public final class DamageCleanupListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemoveFromWorld(final EntityRemoveFromWorldEvent event) {
-        this.damageService.getLastDamageMap().remove(event.getEntity().getUniqueId());
+        final UUID uniqueId = event.getEntity().getUniqueId();
+
+        this.damageService.getLastDamageMap().remove(uniqueId);
+
+        this.damageService.getLastPlayerDamagerDamageMap().remove(uniqueId);
     }
 }

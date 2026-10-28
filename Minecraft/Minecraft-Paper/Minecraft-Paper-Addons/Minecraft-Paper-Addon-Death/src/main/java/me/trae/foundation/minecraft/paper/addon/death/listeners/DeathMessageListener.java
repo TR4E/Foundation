@@ -46,15 +46,17 @@ public final class DeathMessageListener implements Listener {
         if (killer != null) {
             final String formattedKillerName = this.getFormattedKillerName(killer, event.getKillerName());
 
-            if (deathEvent.getReasonName() == null) {
+            final String formattedReasonName = this.getFormattedReasonName(deathEvent);
+
+            if (formattedReasonName == null) {
                 UtilMessage.message(recipient, "Death", "%s was killed by %s.".formatted(UtilMessage.serializeWithReset(entityName), formattedKillerName));
             } else {
-                UtilMessage.message(recipient, "Death", "%s was killed by %s with %s.".formatted(UtilMessage.serializeWithReset(entityName), formattedKillerName, this.getFormattedReasonName(deathEvent)));
+                UtilMessage.message(recipient, "Death", "%s was killed by %s with %s.".formatted(UtilMessage.serializeWithReset(entityName), formattedKillerName, formattedReasonName));
             }
             return;
         }
 
-        UtilMessage.message(recipient, "Death", "%s was killed by %s.".formatted(UtilMessage.serializeWithReset(entityName), UtilMessage.serializeWithReset(deathEvent.getCauseName())));
+        UtilMessage.message(recipient, "Death", "%s was killed by %s.".formatted(UtilMessage.serializeWithReset(entityName), UtilMessage.serializeWithReset(deathEvent.getCauseComponent())));
     }
 
     private String getFormattedKillerName(final Entity killer, final DisplayName killerName) {
@@ -71,13 +73,15 @@ public final class DeathMessageListener implements Listener {
     }
 
     private String getFormattedReasonName(final DeathEvent deathEvent) {
-        final Component reasonName = deathEvent.getReasonName();
-        if (reasonName == null) {
+        final Component reasonComponent = deathEvent.getReasonComponent();
+        if (reasonComponent == null) {
             return null;
         }
 
-        final String indefiniteArticlePrefix = deathEvent.isReasonNameWithIndefiniteArticlePrefix() ? "" : UtilString.getIndefiniteArticlePrefix(PlainTextComponentSerializer.plainText().serialize(reasonName));
+        if (deathEvent.isReasonNameWithIndefiniteArticlePrefix()) {
+            return UtilString.getIndefiniteArticlePrefix(PlainTextComponentSerializer.plainText().serialize(reasonComponent)) + UtilMessage.serializeWithReset(reasonComponent);
+        }
 
-        return indefiniteArticlePrefix + UtilMessage.serializeWithReset(reasonName);
+        return UtilMessage.serializeWithReset(reasonComponent);
     }
 }

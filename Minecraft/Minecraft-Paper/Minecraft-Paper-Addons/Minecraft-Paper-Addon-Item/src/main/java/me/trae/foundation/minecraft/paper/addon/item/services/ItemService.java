@@ -7,6 +7,7 @@ import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.DefaultItem;
 import me.trae.foundation.minecraft.paper.addon.item.events.VanillaItemStackUpdateEvent;
 import me.trae.foundation.minecraft.paper.addon.item.search.types.CustomItemSearchEngine;
+import me.trae.foundation.minecraft.paper.addon.item.settings.ItemAddonSettings;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
@@ -34,6 +35,8 @@ public final class ItemService implements Lifecycle {
     private final Map<Material, DefaultItem> defaultItemMap = new EnumMap<>(Material.class);
 
     private final List<CustomItem> itemList;
+
+    private final ItemAddonSettings settings;
 
     @Override
     public void onLiveDependencyUpdate() {
@@ -93,7 +96,7 @@ public final class ItemService implements Lifecycle {
             }
 
             // Default Item Check
-            final DefaultItem defaultItem = this.defaultItemMap.computeIfAbsent(itemStack.getType(), DefaultItem::new);
+            final DefaultItem defaultItem = this.defaultItemMap.computeIfAbsent(itemStack.getType(), this.settings::createDefaultItem);
 
             final boolean wasCustomItem = UtilItemStack.getPersistentData(itemStack, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING).isPresent() || UtilItemStack.getPersistentData(itemStack, CustomItem.VERSION_KEY, PersistentDataType.STRING).isPresent();
 

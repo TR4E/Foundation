@@ -1,6 +1,7 @@
 package me.trae.foundation.minecraft.paper.addon.team.services;
 
 import lombok.AllArgsConstructor;
+import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.minecraft.paper.addon.team.Team;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilNms;
@@ -8,6 +9,7 @@ import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.List;
@@ -17,11 +19,28 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @AllArgsConstructor
 @AddonSingleton
-public final class TeamService {
+public final class TeamService implements Lifecycle {
 
     private final Set<String> activeTeamSet = ConcurrentHashMap.newKeySet();
 
     private final List<Team> teamList;
+
+    @Override
+    public void onComponentShutdown() {
+        if (Bukkit.getServer().isStopping()) {
+            return;
+        }
+
+        final List<Player> playerList = List.copyOf(Bukkit.getServer().getOnlinePlayers());
+
+        for (final Player player : playerList) {
+            for (final Player viewer : playerList) {
+                this.remove(player, viewer);
+            }
+        }
+
+        this.activeTeamSet.clear();
+    }
 
     public void create(final Player player, final Player viewer, final Team team) {
         final String teamName = this.getTeamName(player, viewer);

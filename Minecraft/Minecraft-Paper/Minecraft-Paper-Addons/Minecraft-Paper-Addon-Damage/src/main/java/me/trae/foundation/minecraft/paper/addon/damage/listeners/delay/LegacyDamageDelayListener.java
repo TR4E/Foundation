@@ -1,13 +1,14 @@
 package me.trae.foundation.minecraft.paper.addon.damage.listeners.delay;
 
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
+import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.damage.enums.DelayMode;
 import me.trae.foundation.minecraft.paper.addon.damage.enums.Stage;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDamageEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDelayEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageAppliedEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageSetupEvent;
-import me.trae.foundation.minecraft.paper.addon.damage.settings.DamageSettings;
+import me.trae.foundation.minecraft.paper.addon.damage.services.DamageService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import org.bukkit.event.EventHandler;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.WeakHashMap;
 
+@AllArgsConstructor
 @AddonSingleton
 public final class LegacyDamageDelayListener implements Listener {
 
@@ -28,9 +30,11 @@ public final class LegacyDamageDelayListener implements Listener {
     private final Map<UUID, Map<DamageCause, Long>> causeMap = new HashMap<>();
     private final Map<UUID, Map<UUID, Long>> damagerMap = new HashMap<>();
 
+    private final DamageService damageService;
+
     @EventHandler(priority = EventPriority.LOWEST)
     public void onCustomDamage(final CustomDamageEvent event) {
-        if (event.isCancelled() || DamageSettings.getDelayMode() != DelayMode.LEGACY) {
+        if (event.isCancelled() || this.damageService.getSettings().getDelayMode() != DelayMode.LEGACY) {
             return;
         }
 
@@ -50,7 +54,7 @@ public final class LegacyDamageDelayListener implements Listener {
 
     @EventHandler
     public void onDamageSetup(final DamageSetupEvent event) {
-        if (event.getStage() != Stage.DELAY || DamageSettings.getDelayMode() != DelayMode.LEGACY) {
+        if (event.getStage() != Stage.DELAY || this.damageService.getSettings().getDelayMode() != DelayMode.LEGACY) {
             return;
         }
 

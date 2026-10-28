@@ -6,6 +6,7 @@ import me.trae.foundation.minecraft.paper.addon.damage.enums.Stage;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDamageEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageAppliedEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageSetupEvent;
+import me.trae.foundation.minecraft.paper.addon.damage.settings.DamageAddonSettings;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 
@@ -13,11 +14,13 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @AllArgsConstructor
+@Getter
 @AddonSingleton
 public final class DamageService {
 
-    @Getter
     private final ConcurrentHashMap<UUID, CustomDamageEvent> lastDamageMap = new ConcurrentHashMap<>();
+
+    private final DamageAddonSettings settings;
 
     public void process(final CustomDamageEvent damageEvent) {
         UtilEvent.dispatch(damageEvent);

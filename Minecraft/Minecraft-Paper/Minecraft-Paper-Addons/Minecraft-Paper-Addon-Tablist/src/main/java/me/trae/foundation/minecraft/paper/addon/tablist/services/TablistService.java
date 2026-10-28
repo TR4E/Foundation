@@ -32,7 +32,7 @@ public final class TablistService implements Lifecycle {
 
     @Override
     public void onComponentShutdown() {
-        if (Bukkit.isStopping()) {
+        if (Bukkit.getServer().isStopping()) {
             return;
         }
 

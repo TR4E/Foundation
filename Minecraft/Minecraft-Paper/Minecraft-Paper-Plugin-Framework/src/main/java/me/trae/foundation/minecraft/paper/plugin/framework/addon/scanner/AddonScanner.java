@@ -2,8 +2,8 @@ package me.trae.foundation.minecraft.paper.plugin.framework.addon.scanner;
 
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.Addon;
-import me.trae.foundation.minecraft.paper.plugin.framework.addon.settings.AddonSettings;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
+import me.trae.foundation.minecraft.paper.plugin.framework.addon.settings.AddonSettings;
 
 import java.io.File;
 import java.io.IOException;

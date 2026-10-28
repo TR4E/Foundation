@@ -1,12 +1,13 @@
 package me.trae.foundation.minecraft.paper.addon.damage.listeners.delay;
 
+import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.damage.enums.DelayMode;
 import me.trae.foundation.minecraft.paper.addon.damage.enums.Stage;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDamageEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDelayEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageAppliedEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageSetupEvent;
-import me.trae.foundation.minecraft.paper.addon.damage.settings.DamageSettings;
+import me.trae.foundation.minecraft.paper.addon.damage.services.DamageService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import org.bukkit.craftbukkit.damage.CraftDamageSource;
@@ -18,6 +19,7 @@ import org.bukkit.event.Listener;
 
 import java.util.WeakHashMap;
 
+@AllArgsConstructor
 @AddonSingleton
 public final class ModernDamageDelayListener implements Listener {
 
@@ -27,9 +29,11 @@ public final class ModernDamageDelayListener implements Listener {
 
     private final WeakHashMap<LivingEntity, Integer> durationMap = new WeakHashMap<>();
 
+    private final DamageService damageService;
+
     @EventHandler(priority = EventPriority.LOWEST)
     public void onCustomDamage(final CustomDamageEvent event) {
-        if (event.isCancelled() || DamageSettings.getDelayMode() != DelayMode.MODERN) {
+        if (event.isCancelled() || this.damageService.getSettings().getDelayMode() != DelayMode.MODERN) {
             return;
         }
 
@@ -46,7 +50,7 @@ public final class ModernDamageDelayListener implements Listener {
 
     @EventHandler
     public void onDamageSetup(final DamageSetupEvent event) {
-        if (event.getStage() != Stage.DELAY || DamageSettings.getDelayMode() != DelayMode.MODERN) {
+        if (event.getStage() != Stage.DELAY || this.damageService.getSettings().getDelayMode() != DelayMode.MODERN) {
             return;
         }
 

@@ -2,6 +2,7 @@ package me.trae.foundation.minecraft.paper.addon.sidebar.services;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.injector.extensions.scheduler.annotation.Scheduler;
 import me.trae.foundation.minecraft.paper.addon.sidebar.Sidebar;
 import me.trae.foundation.minecraft.paper.addon.sidebar.events.SidebarUpdateEvent;
@@ -23,6 +24,7 @@ import org.bukkit.entity.Player;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 
 @AllArgsConstructor
 @AddonSingleton
-public final class SidebarService {
+public final class SidebarService implements Lifecycle {
 
     @Getter
     private final ConcurrentHashMap<UUID, Sidebar> activeSidebarMap = new ConcurrentHashMap<>();
@@ -40,6 +42,22 @@ public final class SidebarService {
     private final ConcurrentHashMap<UUID, List<Component>> cachedLinesMap = new ConcurrentHashMap<>();
 
     private List<Sidebar> sidebarList;
+
+    @Override
+    public void onComponentShutdown() {
+        if (Bukkit.getServer().isStopping()) {
+            return;
+        }
+
+        List.copyOf(this.activeSidebarMap.keySet()).stream()
+                .map(Bukkit::getPlayer)
+                .filter(Objects::nonNull)
+                .forEach(this::clear);
+
+        this.activeSidebarMap.clear();
+        this.cachedTitleMap.clear();
+        this.cachedLinesMap.clear();
+    }
 
     @Scheduler(period = 250, unit = TimeUnit.MILLISECONDS, asynchronous = true)
     public void onScheduler() {

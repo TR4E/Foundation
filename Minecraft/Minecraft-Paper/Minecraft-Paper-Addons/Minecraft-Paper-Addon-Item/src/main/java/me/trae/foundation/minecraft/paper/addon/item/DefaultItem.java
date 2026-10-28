@@ -4,7 +4,7 @@ import org.bukkit.Material;
 
 import java.util.List;
 
-public final class DefaultItem extends Item {
+public class DefaultItem extends Item {
 
     public DefaultItem(final Material material) {
         super(material);

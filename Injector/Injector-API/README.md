@@ -109,7 +109,7 @@ public final class ClockModule {
 
 Exact type matches take priority. `@DependsOn(ClockModule.class)` adds an ordering dependency, including when inherited through a superclass or interface. Provider methods must return a non-null value and cannot return `void`.
 
-Live collections change when applications or components are added and removed. `getAll(type)` returns a list of the current matches; retain an injected live collection when future changes must be visible.
+Live collections change when applications or components are added and removed. `getAll(type)` returns a list of the current matches; retain an injected live collection when future changes must be visible. Both follow application initialization order, including components attached to an older application later. Exact runtime bindings supplied through `provide` are excluded from these collections and have no application lifecycle ownership; remove them with `unprovide` when their owner stops.
 
 ## Container operations
 
@@ -120,6 +120,8 @@ Live collections change when applications or components are added and removed. `
 | `shutdown(application)` | Stop dependent applications, then remove components in dependency order |
 | `get(type)` | Retrieve the exact registered type; throws when absent |
 | `getAll(type)` | Retrieve components assignable to the requested class or interface |
+| `provide(type, instance)` | Set or replace an exact runtime instance binding used by lookups and constructor injection |
+| `unprovide(type)` | Remove an exact runtime instance binding without removing discovered components |
 | `getComponents(applicationClass)` | Return component classes in creation order |
 | `attach(application, componentClassList)` | Add components to an initialized application |
 | `detach(application, componentClassList)` | Remove selected components and affected dependents |

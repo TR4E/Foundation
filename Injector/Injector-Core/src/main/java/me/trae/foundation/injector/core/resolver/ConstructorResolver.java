@@ -22,8 +22,8 @@ import java.util.stream.Stream;
 
 public final class ConstructorResolver extends AbstractResolver {
 
-    private final LinkedHashSet<Class<?>> resolvingSet = new LinkedHashSet<>();
     private final LinkedHashMap<Type, List<Class<?>>> assignableClassCacheMap = new LinkedHashMap<>();
+    private final LinkedHashSet<Class<?>> resolvingSet = new LinkedHashSet<>();
 
     private final ExtensionRegistry extensionRegistry;
     private final ApplicationContext applicationContext;
@@ -78,7 +78,7 @@ public final class ConstructorResolver extends AbstractResolver {
     private void ensure(final Type dependencyType) {
         this.providerResolver.findExactOwner(dependencyType).ifPresent(this::create);
 
-        if (this.getComponentContainer().getInstance(dependencyType).isPresent()) {
+        if (this.getComponentContainer().getInstance(dependencyType).isPresent() && !this.getComponentContainer().isProvided(dependencyType)) {
             return;
         }
 

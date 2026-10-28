@@ -83,6 +83,16 @@ public final class CoreInjector implements Injector {
     }
 
     @Override
+    public <Component> void provide(final Class<Component> type, final Component instance) {
+        this.componentContainer.provide(type, instance);
+    }
+
+    @Override
+    public void unprovide(final Class<?> type) {
+        this.componentContainer.unprovide(type);
+    }
+
+    @Override
     public synchronized List<Class<?>> getComponents(final Class<?> applicationClass) {
         return this.applicationRegistry.getContext(applicationClass)
                 .map(applicationContext -> applicationContext.getComponentTypeList().stream()
@@ -134,6 +144,7 @@ public final class CoreInjector implements Injector {
 
     private void start(final ApplicationContext applicationContext, final List<Class<?>> componentClasses) {
         this.applicationRegistry.register(applicationContext);
+        this.componentContainer.registerApplication(applicationContext);
 
         this.componentContainer.register(applicationContext.getApplicationClass(), applicationContext.getApplication());
 
@@ -170,6 +181,7 @@ public final class CoreInjector implements Injector {
         this.componentContainer.unregister(applicationContext.getApplicationClass());
 
         this.applicationRegistry.unregister(applicationContext.getApplicationClass());
+        this.componentContainer.unregisterApplication(applicationContext);
     }
 
     private void startPending(final PendingApplication pendingApplication) {

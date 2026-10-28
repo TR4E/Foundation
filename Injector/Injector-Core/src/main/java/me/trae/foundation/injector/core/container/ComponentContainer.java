@@ -9,6 +9,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -23,6 +24,34 @@ public final class ComponentContainer {
     private final LinkedHashMap<Type, ComponentRegistration> registrationMap = new LinkedHashMap<>();
     private final Map<Type, List<ComponentRegistration>> assignableRegistrationCacheMap = new HashMap<>();
     private final Map<Class<?>, AssignableCache> assignableCacheMap = new HashMap<>();
+
+    private final List<ApplicationContext> applicationContextList = new ArrayList<>();
+
+    private final RuntimeBindings runtimeBindings = new RuntimeBindings();
+
+    public synchronized void registerApplication(final ApplicationContext applicationContext) {
+        this.applicationContextList.add(applicationContext);
+
+        this.invalidateCaches();
+    }
+
+    public synchronized void unregisterApplication(final ApplicationContext applicationContext) {
+        this.applicationContextList.remove(applicationContext);
+
+        this.invalidateCaches();
+    }
+
+    public synchronized <Component> void provide(final Class<Component> type, final Component instance) {
+        this.runtimeBindings.provide(type, instance);
+    }
+
+    public synchronized void unprovide(final Class<?> type) {
+        this.runtimeBindings.remove(type);
+    }
+
+    public synchronized boolean isProvided(final Type type) {
+        return this.runtimeBindings.getRegistration(type).isPresent();
+    }
 
     public synchronized void register(final Type type, final Object instance) {
         this.register(type, instance, null, null, Set.of());
@@ -47,19 +76,21 @@ public final class ComponentContainer {
     public synchronized void unregister(final Type type) {
         this.registrationMap.remove(type);
 
+        this.runtimeBindings.remove(type);
+
         this.invalidateCaches();
     }
 
     public synchronized boolean isRegistered(final Type type) {
-        return this.registrationMap.containsKey(type);
+        return this.getInstance(type).isPresent();
     }
 
     public synchronized Optional<Object> getInstance(final Type type) {
-        return Optional.ofNullable(this.registrationMap.get(type)).map(ComponentRegistration::getInstance);
+        return this.getRegistration(type).map(ComponentRegistration::getInstance);
     }
 
     public synchronized Optional<Object> getAssignableInstance(final Type type) {
-        final Optional<ComponentRegistration> exact = Optional.ofNullable(this.registrationMap.get(type));
+        final Optional<ComponentRegistration> exact = this.getRegistration(type);
 
         if (exact.isPresent()) {
             return exact.map(ComponentRegistration::getInstance);
@@ -79,7 +110,7 @@ public final class ComponentContainer {
     }
 
     public synchronized Optional<ComponentRegistration> resolve(final Type type) {
-        final Optional<ComponentRegistration> exact = Optional.ofNullable(this.registrationMap.get(type));
+        final Optional<ComponentRegistration> exact = this.getRegistration(type);
 
         if (exact.isPresent()) {
             return exact;
@@ -99,11 +130,11 @@ public final class ComponentContainer {
     }
 
     public synchronized Optional<ComponentRegistration> getRegistration(final Type type) {
-        return Optional.ofNullable(this.registrationMap.get(type));
+        return this.runtimeBindings.getRegistration(type).or(() -> Optional.ofNullable(this.registrationMap.get(type)));
     }
 
     public synchronized AssignableCache getAssignable(final Class<?> type) {
-        return this.assignableCacheMap.computeIfAbsent(type, key -> AssignableCache.of(key, this.registrationMap.values().stream().map(ComponentRegistration::getInstance).toList()));
+        return this.assignableCacheMap.computeIfAbsent(type, key -> AssignableCache.of(key, this.getAssignableRegistrations(key).stream().map(ComponentRegistration::getInstance).toList()));
     }
 
     public synchronized AssignableCache getAssignable(final Type type) {
@@ -160,6 +191,7 @@ public final class ComponentContainer {
     public synchronized List<ComponentRegistration> getAssignableRegistrations(final Type type) {
         return this.assignableRegistrationCacheMap.computeIfAbsent(type, requestedType -> this.registrationMap.values().stream()
                 .filter(registration -> TypeResolver.isAssignable(requestedType, registration.getType()))
+                .sorted(Comparator.comparingInt(registration -> this.applicationContextList.indexOf(registration.getApplicationContext())))
                 .toList());
     }
 

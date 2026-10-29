@@ -1,5 +1,6 @@
 package me.trae.foundation.minecraft.paper.addon.death.listeners;
 
+import io.papermc.paper.event.entity.TameableDeathMessageEvent;
 import me.trae.foundation.minecraft.paper.addon.death.events.CustomDeathMessageEvent;
 import me.trae.foundation.minecraft.paper.addon.death.events.DeathEvent;
 import me.trae.foundation.minecraft.paper.addon.death.reason.Reason;
@@ -23,6 +24,11 @@ public final class DeathMessageListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerDeath(final PlayerDeathEvent event) {
         event.deathMessage(null);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onTameableDeathMessage(final TameableDeathMessageEvent event) {
+        event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

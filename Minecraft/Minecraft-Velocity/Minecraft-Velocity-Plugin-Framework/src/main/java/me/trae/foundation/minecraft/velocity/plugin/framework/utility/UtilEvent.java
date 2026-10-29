@@ -1,9 +1,10 @@
 package me.trae.foundation.minecraft.velocity.plugin.framework.utility;
 
+import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.experimental.UtilityClass;
+import me.trae.foundation.injector.api.Injector;
 import me.trae.foundation.minecraft.velocity.plugin.framework.VelocityPlugin;
 import me.trae.foundation.minecraft.velocity.plugin.framework.event.internal.Event;
-import me.trae.foundation.minecraft.velocity.plugin.framework.utility.registry.PluginRegistry;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -15,7 +16,7 @@ public class UtilEvent {
     }
 
     public static <T extends Event> void dispatch(final T event) {
-        dispatch(PluginRegistry.getSelfPlugin(), event);
+        Injector.INSTANCE.get(ProxyServer.class).getEventManager().fireAndForget(event);
     }
 
     public static <R extends Event> CompletableFuture<R> supply(final VelocityPlugin velocityPlugin, final R event) {
@@ -23,6 +24,6 @@ public class UtilEvent {
     }
 
     public static <R extends Event> CompletableFuture<R> supply(final R event) {
-        return supply(PluginRegistry.getSelfPlugin(), event);
+        return Injector.INSTANCE.get(ProxyServer.class).getEventManager().fire(event);
     }
 }

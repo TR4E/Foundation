@@ -51,10 +51,12 @@ public class PluginRegistry {
     public static VelocityPlugin getSelfPlugin() {
         final String frameworkPackage = VelocityPlugin.class.getPackageName();
 
-        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk(frames -> frames
+        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk((final var frames) -> frames
                         .map(StackWalker.StackFrame::getDeclaringClass)
-                        .filter(type -> !type.getPackageName().startsWith(frameworkPackage))
-                        .map(type -> classLoaderMap.get(type.getClassLoader()))
+                        .filter((final var type) -> !type.getPackageName().startsWith(frameworkPackage))
+                        .map(Class::getClassLoader)
+                        .filter(Objects::nonNull)
+                        .map(classLoaderMap::get)
                         .filter(Objects::nonNull)
                         .findFirst())
                 .orElseThrow(() -> new IllegalStateException("No plugin found for the calling class"));

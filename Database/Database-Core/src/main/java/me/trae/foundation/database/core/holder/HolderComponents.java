@@ -18,7 +18,6 @@ import me.trae.foundation.database.storage.redis.RedisStorage;
 
 import java.time.Duration;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -70,20 +69,19 @@ public final class HolderComponents<E extends Entity> {
 
         final HolderWriter<E> holderWriter = new HolderWriter<>(repository, localStorage, localEntityIndex, redisStorage, changeTracker, new UniqueClaimer<>(repository, holderLookups, redisDriver), redisMode == RedisMode.ENABLED);
 
-        if (instanceMode == InstanceMode.MULTI_INSTANCE && redisStorage != null) {
+        if (instanceMode == InstanceMode.MULTI_INSTANCE) {
             final String channel = redisStorage.getRedisNamespace().getInvalidationChannel();
-            redisDriver.subscribe(channel, message -> invalidateLocal(localStorage, changeTracker, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
+
+            redisDriver.subscribe(channel, (final String message) -> invalidateLocal(localStorage, holderLookups, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
         }
 
         return new HolderComponents<>(localStorage, localEntityIndex, changeTracker, holderLookups, holderWriter);
     }
 
-    private static <E extends Entity> void invalidateLocal(final LocalStorage<UUID, E> localStorage, final ChangeTracker<E> changeTracker, final HolderWriter<E> holderWriter, final BatchQueue batchQueue, final String message) {
+    private static <EntityType extends Entity> void invalidateLocal(final LocalStorage<UUID, EntityType> localStorage, final HolderLookups<EntityType> holderLookups, final HolderWriter<EntityType> holderWriter, final BatchQueue batchQueue, final String message) {
         if (message.equals("*")) {
-            for (final E entity : localStorage.getValues()) {
-                if (flushSafely(entity, changeTracker, holderWriter, batchQueue)) {
-                    holderWriter.evictLocal(entity.getId());
-                }
+            for (final EntityType entity : localStorage.getValues()) {
+                refreshSafely(entity.getId(), holderLookups, holderWriter, batchQueue);
             }
 
             return;
@@ -96,30 +94,16 @@ public final class HolderComponents<E extends Entity> {
         }
 
         try {
-            final UUID id = UUID.fromString(parts[1]);
-
-            final Optional<E> entity = localStorage.get(id);
-
-            final boolean flushed = entity.isEmpty() || flushSafely(entity.get(), changeTracker, holderWriter, batchQueue);
-
-            if (flushed && !localStorage.isPinned(id)) {
-                holderWriter.evictLocal(id);
-                changeTracker.forget(id);
-            }
+            refreshSafely(UUID.fromString(parts[1]), holderLookups, holderWriter, batchQueue);
         } catch (final IllegalArgumentException ignored) {
         }
     }
 
-    private static <E extends Entity> boolean flushSafely(final E entity, final ChangeTracker<E> changeTracker, final HolderWriter<E> holderWriter, final BatchQueue batchQueue) {
+    private static <EntityType extends Entity> void refreshSafely(final UUID id, final HolderLookups<EntityType> holderLookups, final HolderWriter<EntityType> holderWriter, final BatchQueue batchQueue) {
         try {
-            if (changeTracker.isTracked(entity.getId())) {
-                holderWriter.writeChanged(entity);
-            }
-            changeTracker.forget(entity.getId());
-            return true;
-        } catch (final RuntimeException ignored) {
-            batchQueue.reportFailure(new DatabaseException("Failed to flush local changes before invalidating %s".formatted(entity.getId()), ignored));
-            return false;
+            holderWriter.refreshLocal(id, holderLookups);
+        } catch (final RuntimeException exception) {
+            batchQueue.reportFailure(new DatabaseException("Failed to refresh invalidated local entity %s".formatted(id), exception));
         }
     }
 }

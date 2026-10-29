@@ -1185,7 +1185,7 @@ final class DatabaseTest {
     }
 
     @Test
-    void multiInstanceInvalidationEvictsPinnedLocalCopies() throws InterruptedException {
+    void multiInstanceInvalidationRefreshesPinnedLocalCopies() throws InterruptedException {
         final CoreDatabase database = this.openDatabase(null);
 
         final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
@@ -1199,6 +1199,7 @@ final class DatabaseTest {
         database.getBatchQueue().flush();
 
         final Account localAccount = reader.getById(account.getId()).orElseThrow();
+        localAccount.setSession("reader-session");
         reader.pin(localAccount);
 
         account.setName("updated-value");
@@ -1207,15 +1208,15 @@ final class DatabaseTest {
 
         final long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
 
-        while (!reader.getPinned().isEmpty() && System.nanoTime() < deadline) {
+        while (reader.getById(account.getId(), EnumSet.of(LookupTier.LOCAL)).map(Account::getName).filter("updated-value"::equals).isEmpty() && System.nanoTime() < deadline) {
             database.getBatchQueue().flush();
             Thread.sleep(10L);
         }
 
-        assertTrue(reader.getPinned().isEmpty());
-        final Account refreshedAccount = reader.getById(account.getId()).orElseThrow();
+        final Account refreshedAccount = reader.getById(account.getId(), EnumSet.of(LookupTier.LOCAL)).orElseThrow();
 
         assertEquals("updated-value", refreshedAccount.getName());
+        assertEquals("reader-session", refreshedAccount.getSession());
         assertEquals(List.of(refreshedAccount), reader.getPinned());
 
         localAccount.setCoins(999L);

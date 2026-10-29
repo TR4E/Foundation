@@ -3,6 +3,7 @@ package me.trae.foundation.database.core.holder;
 import lombok.AllArgsConstructor;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.DatabaseException;
+import me.trae.foundation.database.api.holder.LookupTier;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.core.holder.change.ChangeTracker;
 import me.trae.foundation.database.core.holder.claim.UniqueClaimer;
@@ -11,6 +12,7 @@ import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -189,6 +191,47 @@ public final class HolderWriter<E extends Entity> {
         if (this.localStorage != null) {
             this.localEntityIndex.evict(id, this.localStorage);
         }
+    }
+
+    public void refreshLocal(final UUID id, final HolderLookups<E> holderLookups) {
+        synchronized (this.getLock(id)) {
+            final E localEntity = this.localStorage.get(id).orElse(null);
+            if (localEntity == null) {
+                return;
+            }
+
+            final List<EntityProperty<?, ?>> changedPropertyList = this.changeTracker.isTracked(localEntity) ? this.changeTracker.diff(localEntity) : List.of();
+
+            if (this.changeTracker.isTracked(localEntity)) {
+                this.writeChangedLocked(localEntity);
+            }
+
+            final E refreshedEntity = holderLookups.getIdLookup().lookup(id, EnumSet.of(LookupTier.REDIS, LookupTier.DATABASE)).orElse(null);
+            if (refreshedEntity == null) {
+                this.evictLocal(id);
+
+                this.changeTracker.forget(id);
+                return;
+            }
+
+            for (final EntityProperty<?, ?> entityProperty : this.repository.getProperties()) {
+                if (!entityProperty.isPersistent() || changedPropertyList.contains(entityProperty)) {
+                    this.copyProperty(entityProperty, localEntity, refreshedEntity);
+                }
+            }
+
+            this.changeTracker.snapshot(refreshedEntity);
+
+            if (this.localStorage.isPinned(id)) {
+                this.localEntityIndex.pin(refreshedEntity, this.localStorage);
+            } else {
+                this.localEntityIndex.put(refreshedEntity, this.localStorage);
+            }
+        }
+    }
+
+    private <Owner extends Entity, Value> void copyProperty(final EntityProperty<Owner, Value> entityProperty, final E sourceEntity, final E targetEntity) {
+        entityProperty.setValue(entityProperty.getEntityType().cast(targetEntity), entityProperty.getValue(entityProperty.getEntityType().cast(sourceEntity)));
     }
 
     private <Owner extends Entity, Amount extends Number> void apply(final EntityProperty<Owner, Amount> entityProperty, final Entity entity, final long value) {

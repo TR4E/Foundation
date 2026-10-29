@@ -11,6 +11,7 @@ import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.Addo
 import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
@@ -47,6 +48,8 @@ public final class DeathListener implements Listener {
 
         entityDeathEvent.setDroppedExp(deathEvent.getDropExp());
 
+        final LivingEntity entity = entityDeathEvent.getEntity();
+
         if (entityDeathEvent.shouldPlayDeathSound()) {
             final SoundStash soundStash = deathEvent.getSoundStash();
             if (soundStash != null) {
@@ -57,15 +60,17 @@ public final class DeathListener implements Listener {
                     entityDeathEvent.setDeathSoundPitch(soundStash.getPitch());
                 }, () -> {
                     entityDeathEvent.setShouldPlayDeathSound(false);
-                    soundStash.play(entityDeathEvent.getEntity().getLocation());
+                    soundStash.play(entity.getLocation());
                 });
             } else {
                 entityDeathEvent.setShouldPlayDeathSound(false);
             }
         }
 
-        for (final Player recipient : UtilServer.getOnlinePlayers()) {
-            UtilEvent.dispatch(new CustomDeathMessageEvent(deathEvent, recipient));
+        if (settings.showDeathMessagesFor(entity)) {
+            for (final Player recipient : UtilServer.getOnlinePlayers()) {
+                UtilEvent.dispatch(new CustomDeathMessageEvent(deathEvent, recipient));
+            }
         }
     }
 }

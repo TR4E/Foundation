@@ -78,6 +78,8 @@ public abstract class Npc<Entity extends org.bukkit.entity.Entity> {
 
         this.entityMap.put(entity.getUniqueId(), new NpcEntity<>(entity, location));
 
+        this.setupSpawn(entity);
+
         this.onSpawn(entity);
 
         UtilEvent.dispatch(new NpcPostSpawnEvent(this, entity));
@@ -99,6 +101,8 @@ public abstract class Npc<Entity extends org.bukkit.entity.Entity> {
             return;
         }
 
+        this.setupRemove(entity);
+
         this.onDespawn(entity);
 
         entity.remove();
@@ -109,6 +113,8 @@ public abstract class Npc<Entity extends org.bukkit.entity.Entity> {
     }
 
     public final void discard(final UUID entityId) {
+        this.getEntityById(entityId).ifPresent(this::setupRemove);
+
         this.entityMap.remove(entityId);
     }
 
@@ -138,6 +144,8 @@ public abstract class Npc<Entity extends org.bukkit.entity.Entity> {
             npcEntity.setSnapshot(this.createSnapshot(livingEntity));
         }
 
+        this.setupRemove(npcEntity.getEntity());
+
         this.pendingList.add(npcEntity);
 
         UtilEvent.dispatch(new NpcUnloadEvent(this, npcEntity.getEntity()));
@@ -155,6 +163,8 @@ public abstract class Npc<Entity extends org.bukkit.entity.Entity> {
     }
 
     public final void purge(final Entity entity) {
+        this.setupRemove(entity);
+
         entity.remove();
 
         this.entityMap.remove(entity.getUniqueId());
@@ -168,6 +178,12 @@ public abstract class Npc<Entity extends org.bukkit.entity.Entity> {
 
     protected NpcSnapshot createSnapshot(final LivingEntity livingEntity) {
         return new NpcSnapshot(livingEntity);
+    }
+
+    protected void setupSpawn(final Entity entity) {
+    }
+
+    protected void setupRemove(final Entity entity) {
     }
 
     public void onSetup(final Entity entity) {
@@ -230,15 +246,17 @@ public abstract class Npc<Entity extends org.bukkit.entity.Entity> {
 
         final Entity entity = this.create(location);
 
+        npcEntity.setEntity(entity);
+
+        this.entityMap.put(entity.getUniqueId(), npcEntity);
+
+        this.setupSpawn(entity);
+
         if (npcEntity.getSnapshot() != null && entity instanceof final LivingEntity livingEntity) {
             npcEntity.getSnapshot().apply(livingEntity);
 
             npcEntity.setSnapshot(null);
         }
-
-        npcEntity.setEntity(entity);
-
-        this.entityMap.put(entity.getUniqueId(), npcEntity);
 
         this.onSpawn(entity);
 

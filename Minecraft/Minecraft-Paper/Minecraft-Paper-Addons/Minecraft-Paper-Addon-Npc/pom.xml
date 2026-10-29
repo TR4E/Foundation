@@ -12,12 +12,28 @@
 
     <artifactId>Minecraft-Paper-Addon-Npc</artifactId>
 
+    <repositories>
+        <repository>
+            <id>nexus</id>
+            <name>Lumine Public</name>
+            <url>https://mvn.lumine.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- Paper NMS -->
         <dependency>
             <groupId>ca.bkaw</groupId>
             <artifactId>paper-nms</artifactId>
             <version>${paper.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- ModelEngine -->
+        <dependency>
+            <groupId>com.ticxo.modelengine</groupId>
+            <artifactId>ModelEngine</artifactId>
+            <version>R4.2.0</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>

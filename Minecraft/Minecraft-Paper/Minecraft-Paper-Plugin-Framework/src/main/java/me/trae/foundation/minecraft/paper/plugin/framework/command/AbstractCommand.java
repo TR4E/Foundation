@@ -97,6 +97,10 @@ public abstract class AbstractCommand<Parent, Sender extends CommandSender> {
     public abstract void execute(final Sender sender, final String[] args);
 
     public List<String> getTabComplete(final Sender sender, final String[] args) {
+        if (args.length == 1 && !this.getChildCommandMap().isEmpty()) {
+            return Suggestions.childCommands(this, sender, args[0]);
+        }
+
         return Collections.emptyList();
     }
 }

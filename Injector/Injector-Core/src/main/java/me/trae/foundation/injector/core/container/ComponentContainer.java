@@ -23,7 +23,7 @@ public final class ComponentContainer {
 
     private final LinkedHashMap<Type, ComponentRegistration> registrationMap = new LinkedHashMap<>();
     private final Map<Type, List<ComponentRegistration>> assignableRegistrationCacheMap = new HashMap<>();
-    private final Map<Class<?>, AssignableCache> assignableCacheMap = new HashMap<>();
+    private final Map<Type, AssignableCache> assignableCacheMap = new HashMap<>();
 
     private final List<ApplicationContext> applicationContextList = new ArrayList<>();
 
@@ -134,7 +134,7 @@ public final class ComponentContainer {
     }
 
     public synchronized AssignableCache getAssignable(final Class<?> type) {
-        return this.assignableCacheMap.computeIfAbsent(type, key -> AssignableCache.of(key, this.getAssignableRegistrations(key).stream().map(ComponentRegistration::getInstance).toList()));
+        return this.assignableCacheMap.computeIfAbsent(type, key -> AssignableCache.of(type, this.getAssignableRegistrations(key).stream().map(ComponentRegistration::getInstance).toList()));
     }
 
     public synchronized AssignableCache getAssignable(final Type type) {
@@ -142,11 +142,7 @@ public final class ComponentContainer {
             return this.getAssignable(clazz);
         }
 
-        final Class<?> rawType = TypeResolver.rawType(type);
-
-        final List<Object> instances = this.getAssignableRegistrations(type).stream().map(ComponentRegistration::getInstance).toList();
-
-        return AssignableCache.of(rawType, instances);
+        return this.assignableCacheMap.computeIfAbsent(type, key -> AssignableCache.of(TypeResolver.rawType(key), this.getAssignableRegistrations(key).stream().map(ComponentRegistration::getInstance).toList()));
     }
 
     public synchronized List<ComponentRegistration> getRemovalOrder(final Collection<Type> rootTypeList) {

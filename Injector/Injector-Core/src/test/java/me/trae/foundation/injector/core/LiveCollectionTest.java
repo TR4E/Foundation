@@ -4,8 +4,14 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import me.trae.foundation.injector.api.annotation.Application;
+import me.trae.foundation.injector.core.container.AssignableCache;
+import me.trae.foundation.injector.core.container.ComponentContainer;
+import me.trae.foundation.injector.core.container.collection.LiveList;
+import me.trae.foundation.injector.core.container.collection.LiveMap;
+import me.trae.foundation.injector.core.container.collection.LiveSet;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -14,6 +20,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,6 +28,51 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class LiveCollectionTest {
 
     private final CoreInjector injector = new CoreInjector();
+
+    @Test
+    void parameterizedCollectionsReuseSnapshotsUntilRegistrationsChange() throws NoSuchFieldException {
+        final ComponentContainer componentContainer = new ComponentContainer();
+        final Type type = FeatureLookup.class.getDeclaredField("featureList").getGenericType();
+        final AssignableCache emptyAssignableCache = componentContainer.getAssignable(type);
+        assertSame(emptyAssignableCache, componentContainer.getAssignable(type));
+
+        final List<List<Feature>> featureListList = new LiveList<>(componentContainer, type);
+        final Set<List<Feature>> featureListSet = new LiveSet<>(componentContainer, type);
+        final Map<Class<? extends List<Feature>>, List<Feature>> featureListMap = new LiveMap<>(componentContainer, type);
+        final Iterator<List<Feature>> emptyFeatureListIterator = featureListList.iterator();
+        final List<Feature> featureList = List.of(new FirstFeature());
+        componentContainer.register(type, featureList);
+
+        final AssignableCache populatedAssignableCache = componentContainer.getAssignable(type);
+        assertNotSame(emptyAssignableCache, populatedAssignableCache);
+        assertSame(populatedAssignableCache, componentContainer.getAssignable(type));
+        assertSame(featureList, featureListList.getFirst());
+        assertSame(featureList, featureListSet.iterator().next());
+        assertSame(featureList, featureListMap.values().iterator().next());
+        assertFalse(emptyFeatureListIterator.hasNext());
+
+        final Iterator<List<Feature>> populatedFeatureListIterator = featureListList.iterator();
+        componentContainer.unregister(type);
+
+        assertNotSame(populatedAssignableCache, componentContainer.getAssignable(type));
+        assertTrue(featureListList.isEmpty());
+        assertTrue(featureListSet.isEmpty());
+        assertTrue(featureListMap.isEmpty());
+        assertSame(featureList, populatedFeatureListIterator.next());
+        assertFalse(populatedFeatureListIterator.hasNext());
+    }
+
+    @Test
+    void liveSetMembershipUsesIdentityRatherThanEquality() {
+        final ComponentContainer componentContainer = new ComponentContainer();
+        final String string = new String("feature");
+        componentContainer.register(String.class, string);
+
+        final Set<String> stringSet = new LiveSet<>(componentContainer, String.class);
+        assertTrue(stringSet.contains(string));
+        assertFalse(stringSet.contains(new String("feature")));
+        assertFalse(stringSet.contains(null));
+    }
 
     @Test
     void emptyInjectedCollectionsRejectMutationEvenWhenNothingWouldChange() {
@@ -111,6 +163,8 @@ final class LiveCollectionTest {
         assertEquals(1, featureCollection.size());
 
         final Iterator<Feature> featureIterator = featureLookup.getFeatureList().iterator();
+        final Iterator<Feature> setFeatureIterator = featureLookup.getFeatureSet().iterator();
+        final Iterator<Map.Entry<Class<? extends Feature>, Feature>> mapEntryIterator = mapEntrySet.iterator();
         this.injector.initialize(new AddonApplication(), List.of(SecondFeature.class));
 
         assertEquals(2, featureLookup.getFeatureList().size());
@@ -122,6 +176,15 @@ final class LiveCollectionTest {
         assertTrue(featureCollection.contains(this.injector.get(SecondFeature.class)));
         assertSame(this.injector.get(FirstFeature.class), featureIterator.next());
         assertFalse(featureIterator.hasNext());
+        assertSame(this.injector.get(FirstFeature.class), setFeatureIterator.next());
+        assertFalse(setFeatureIterator.hasNext());
+        assertEquals(Map.entry(FirstFeature.class, this.injector.get(FirstFeature.class)), mapEntryIterator.next());
+        assertFalse(mapEntryIterator.hasNext());
+
+        final Iterator<Feature> retainedSetFeatureIterator = featureLookup.getFeatureSet().iterator();
+        final Iterator<Map.Entry<Class<? extends Feature>, Feature>> retainedMapEntryIterator = mapEntrySet.iterator();
+        final FirstFeature firstFeature = this.injector.get(FirstFeature.class);
+        final SecondFeature secondFeature = this.injector.get(SecondFeature.class);
 
         this.injector.shutdown(new AddonApplication());
 
@@ -131,6 +194,13 @@ final class LiveCollectionTest {
         assertEquals(1, mapEntrySet.size());
         assertEquals(Set.of(FirstFeature.class), featureClassSet);
         assertEquals(1, featureCollection.size());
+
+        assertSame(firstFeature, retainedSetFeatureIterator.next());
+        assertSame(secondFeature, retainedSetFeatureIterator.next());
+        assertFalse(retainedSetFeatureIterator.hasNext());
+        assertEquals(Map.entry(FirstFeature.class, firstFeature), retainedMapEntryIterator.next());
+        assertEquals(Map.entry(SecondFeature.class, secondFeature), retainedMapEntryIterator.next());
+        assertFalse(retainedMapEntryIterator.hasNext());
     }
 
     @AllArgsConstructor

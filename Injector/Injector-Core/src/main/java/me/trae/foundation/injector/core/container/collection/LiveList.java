@@ -4,20 +4,21 @@ import lombok.AllArgsConstructor;
 import lombok.NonNull;
 import me.trae.foundation.injector.core.container.ComponentContainer;
 
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.AbstractList;
 import java.util.Iterator;
 
 @AllArgsConstructor
-public final class LiveList<T> extends AbstractList<T> {
+public final class LiveList<Component> extends AbstractList<Component> {
 
     private final ComponentContainer componentContainer;
     private final Type type;
 
     @Override
-    public T get(final int index) {
-        return this.rawType().cast(this.componentContainer.getAssignable(this.type).getList().get(index));
+    @SuppressWarnings("unchecked")
+    public Component get(final int index) {
+        // AssignableCache already validates element types.
+        return (Component) this.componentContainer.getAssignable(this.type).getList().get(index);
     }
 
     @Override
@@ -26,12 +27,9 @@ public final class LiveList<T> extends AbstractList<T> {
     }
 
     @Override
-    public @NonNull Iterator<T> iterator() {
-        return this.componentContainer.getAssignable(this.type).getList().stream().map(this.rawType()::cast).iterator();
-    }
-
     @SuppressWarnings("unchecked")
-    private Class<T> rawType() {
-        return (Class<T>) (this.type instanceof final Class<?> clazz ? clazz : ((ParameterizedType) this.type).getRawType());
+    public @NonNull Iterator<Component> iterator() {
+        // AssignableCache already validates element types; its immutable list preserves the iteration snapshot.
+        return (Iterator<Component>) this.componentContainer.getAssignable(this.type).getList().iterator();
     }
 }

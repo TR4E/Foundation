@@ -6,6 +6,10 @@ import org.bukkit.Material;
 
 public interface ItemAddonSettings extends AddonSettings {
 
+    default boolean enableSwordBlocking() {
+        return false;
+    }
+
     default DefaultItem createDefaultItem(final Material material) {
         return new DefaultItem(material);
     }

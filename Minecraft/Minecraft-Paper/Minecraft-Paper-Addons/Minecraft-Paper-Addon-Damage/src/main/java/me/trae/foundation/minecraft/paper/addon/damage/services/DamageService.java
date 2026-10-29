@@ -57,7 +57,9 @@ public final class DamageService {
             damageEvent.setDamage(0.0D);
         }
 
-        if (CraftLivingEntity.class.isInstance(damageEvent.getDamagee()) && CraftDamageSource.class.isInstance(damageEvent.getSource()) && !this.isDamageable(CraftLivingEntity.class.cast(damageEvent.getDamagee()).getHandle(), CraftDamageSource.class.cast(damageEvent.getSource()).getHandle())) {
+        final Entity damagee = damageEvent.getDamagee();
+
+        if (CraftLivingEntity.class.isInstance(damagee) && CraftDamageSource.class.isInstance(damageEvent.getSource()) && !this.isDamageable(CraftLivingEntity.class.cast(damagee).getHandle(), CraftDamageSource.class.cast(damageEvent.getSource()).getHandle())) {
             return;
         }
 
@@ -99,8 +101,6 @@ public final class DamageService {
         UtilEvent.dispatch(new DamageSetupEvent(damageEvent, Stage.KNOCKBACK));
 
         if (damageEvent.isApplied()) {
-            final Entity damagee = damageEvent.getDamagee();
-
             this.lastDamageMap.put(damagee.getUniqueId(), damageEvent);
 
             if (damageEvent.getDamager() instanceof Player) {

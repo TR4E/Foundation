@@ -94,7 +94,7 @@ public final class BrigadierCommandWrapper {
             return false;
         }
 
-        if (UtilEvent.supply(new CommandExecuteEvent(abstractCommand, commandSource)).isCancelled()) {
+        if (!UtilEvent.supply(new CommandExecuteEvent(abstractCommand, commandSource)).join().getResult().isAllowed()) {
             return false;
         }
 
@@ -112,7 +112,7 @@ public final class BrigadierCommandWrapper {
             return Collections.emptyList();
         }
 
-        if (UtilEvent.supply(new CommandTabCompleteEvent(abstractCommand, commandSource)).isCancelled()) {
+        if (!UtilEvent.supply(new CommandTabCompleteEvent(abstractCommand, commandSource)).join().getResult().isAllowed()) {
             return Collections.emptyList();
         }
 

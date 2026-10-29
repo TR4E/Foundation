@@ -61,7 +61,7 @@ public final class ButtonClickListener implements Listener {
 
         button.onClick(player, clickType);
 
-        UtilJava.runIfNotNull(button.getClickSound(player, clickType), soundStash -> soundStash.play(player));
+        UtilJava.runIfNotNull(button.getClickSoundStash(player, clickType), soundStash -> soundStash.play(player));
 
         UtilEvent.dispatch(new ButtonPostClickEvent(window, button, player, clickType));
     }

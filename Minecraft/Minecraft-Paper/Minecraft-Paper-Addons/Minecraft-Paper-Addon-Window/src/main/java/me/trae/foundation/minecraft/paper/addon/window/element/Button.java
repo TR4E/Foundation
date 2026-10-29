@@ -11,7 +11,7 @@ public abstract class Button<Window extends me.trae.foundation.minecraft.paper.a
         super(window, itemStack);
     }
 
-    public SoundStash getClickSound(final Player player, final ClickType clickType) {
+    public SoundStash getClickSoundStash(final Player player, final ClickType clickType) {
         return null;
     }
 

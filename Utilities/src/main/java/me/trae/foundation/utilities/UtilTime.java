@@ -38,11 +38,11 @@ public class UtilTime {
         return getTime(duration, timeUnit, trim, unitFormat, useMilliseconds, Function.identity());
     }
 
-    public static String getBestTime(final long duration, final UnitFormat unitFormat, final int trim, final boolean useMilliseconds, final Function<String, String> function) {
+    public static String getBestTime(final long duration, final int trim, final UnitFormat unitFormat, final boolean useMilliseconds, final Function<String, String> function) {
         return getTime(duration, TimeUnit.getByDuration(duration), trim, unitFormat, useMilliseconds, function);
     }
 
-    public static String getBestTime(final long duration, final UnitFormat unitFormat, final int trim, final boolean useMilliseconds) {
+    public static String getBestTime(final long duration, final int trim, final UnitFormat unitFormat, final boolean useMilliseconds) {
         return getTime(duration, TimeUnit.getByDuration(duration), trim, unitFormat, useMilliseconds);
     }
 
@@ -52,6 +52,14 @@ public class UtilTime {
 
     public static String getReadableTime(final long duration, final TimeUnit timeUnit, final int trim) {
         return getTime(duration, timeUnit, trim, UnitFormat.NORMALIZED, false);
+    }
+
+    public static String getBestReadableTime(final long duration, final int trim, final Function<String, String> function) {
+        return getBestTime(duration, trim, UnitFormat.NORMALIZED, false, function);
+    }
+
+    public static String getBestReadableTime(final long duration, final int trim) {
+        return getBestTime(duration, trim, UnitFormat.NORMALIZED, false);
     }
 
     public static String getReadableShortTime(final long duration, final TimeUnit timeUnit, final int trim, final Function<String, String> function) {

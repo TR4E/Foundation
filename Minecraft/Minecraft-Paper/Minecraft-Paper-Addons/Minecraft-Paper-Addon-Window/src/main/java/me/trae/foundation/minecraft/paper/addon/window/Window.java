@@ -2,6 +2,7 @@ package me.trae.foundation.minecraft.paper.addon.window;
 
 import lombok.Getter;
 import me.trae.foundation.minecraft.paper.addon.window.events.WindowOpenEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
@@ -144,13 +145,15 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
         });
     }
 
-    protected abstract Inventory createInventory();
-
-    protected abstract Component getTitle();
-
-    protected abstract void registerElements(final Layout layout);
-
     protected void build() {
+    }
+
+    public SoundStash getOpenSoundStash() {
+        return null;
+    }
+
+    public SoundStash getCloseSoundStash() {
+        return null;
     }
 
     public boolean canOpen(final Player player) {
@@ -166,4 +169,10 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
 
     public void onClose(final Player player) {
     }
+
+    protected abstract Inventory createInventory();
+
+    protected abstract Component getTitle();
+
+    protected abstract void registerElements(final Layout layout);
 }

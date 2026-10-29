@@ -6,6 +6,7 @@ import me.trae.foundation.minecraft.paper.addon.window.events.ButtonPostClickEve
 import me.trae.foundation.minecraft.paper.addon.window.events.ButtonPreClickEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
+import me.trae.foundation.utilities.UtilJava;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -59,6 +60,8 @@ public final class ButtonClickListener implements Listener {
         }
 
         button.onClick(player, clickType);
+
+        UtilJava.runIfNotNull(button.getClickSound(player, clickType), soundStash -> soundStash.play(player));
 
         UtilEvent.dispatch(new ButtonPostClickEvent(window, button, player, clickType));
     }

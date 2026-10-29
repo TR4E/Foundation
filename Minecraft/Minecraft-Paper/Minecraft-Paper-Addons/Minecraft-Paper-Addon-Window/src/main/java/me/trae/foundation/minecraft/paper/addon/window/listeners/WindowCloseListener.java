@@ -8,6 +8,7 @@ import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.Addo
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
+import me.trae.foundation.utilities.UtilJava;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -79,6 +80,8 @@ public final class WindowCloseListener implements Listener {
             }
             return;
         }
+
+        UtilJava.runIfNotNull(window.getCloseSoundStash(), soundStash -> soundStash.play(player));
 
         window.onClose(player);
     }

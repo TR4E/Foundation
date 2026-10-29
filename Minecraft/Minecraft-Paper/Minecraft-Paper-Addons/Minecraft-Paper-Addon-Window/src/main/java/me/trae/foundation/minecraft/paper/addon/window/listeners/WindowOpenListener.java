@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.window.Window;
 import me.trae.foundation.minecraft.paper.addon.window.services.WindowService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
+import me.trae.foundation.utilities.UtilJava;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -48,6 +49,8 @@ public final class WindowOpenListener implements Listener {
             this.windowService.getReopeningMap().remove(viewerId, inventory);
             return;
         }
+
+        UtilJava.runIfNotNull(window.getOpenSoundStash(), soundStash -> soundStash.play(player));
 
         window.onOpen(player);
     }

@@ -9,6 +9,7 @@ import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.Addo
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.equipment.Equippable;
@@ -23,6 +24,9 @@ import org.bukkit.tag.DamageTypeTags;
 @AddonSingleton
 public final class ArmourDurabilityListener implements Listener {
 
+    private static final float HARD_HAT_MULTIPLIER = 0.75F;
+
+    @SuppressWarnings("UnstableApiUsage")
     @EventHandler(priority = EventPriority.LOWEST)
     public void onDamageSetup(final DamageSetupEvent event) {
         if (event.getStage() != Stage.ARMOUR) {
@@ -31,27 +35,34 @@ public final class ArmourDurabilityListener implements Listener {
 
         final CustomDamageEvent damageEvent = event.getDamageEvent();
 
-        if (damageEvent.isCancelled() || !damageEvent.hasDamage() || DamageTypeTags.BYPASSES_ARMOR.isTagged(damageEvent.getSource().getDamageType())) {
-            return;
-        }
-
-        if (!CraftPlayer.class.isInstance(damageEvent.getDamagee()) || !CraftDamageSource.class.isInstance(damageEvent.getSource())) {
+        if (damageEvent.isCancelled() || !damageEvent.hasDamage() || !CraftPlayer.class.isInstance(damageEvent.getDamagee()) || !CraftDamageSource.class.isInstance(damageEvent.getSource())) {
             return;
         }
 
         final ServerPlayer serverPlayer = CraftPlayer.class.cast(damageEvent.getDamagee()).getHandle();
 
-        final net.minecraft.world.damagesource.DamageSource damageSource = CraftDamageSource.class.cast(damageEvent.getSource()).getHandle();
+        final DamageSource damageSource = CraftDamageSource.class.cast(damageEvent.getSource()).getHandle();
 
-        final int amount = Math.max(1, (int) (damageEvent.getDamage() / 4.0D));
+        final float damage = (float) damageEvent.getDamage();
 
-        for (final ArmourSlot armourSlot : ArmourSlot.values()) {
+        if (DamageTypeTags.DAMAGES_HELMET.isTagged(damageEvent.getSource().getDamageType()) && !serverPlayer.getItemBySlot(EquipmentSlot.HEAD).isEmpty()) {
+            this.hurtEquipment(damageEvent, serverPlayer, damageSource, damage / HARD_HAT_MULTIPLIER, ArmourSlot.HELMET);
+        }
+
+        if (!DamageTypeTags.BYPASSES_ARMOR.isTagged(damageEvent.getSource().getDamageType())) {
+            this.hurtEquipment(damageEvent, serverPlayer, damageSource, damage, ArmourSlot.values());
+        }
+    }
+
+    private void hurtEquipment(final CustomDamageEvent damageEvent, final ServerPlayer serverPlayer, final DamageSource damageSource, final float damage, final ArmourSlot... armourSlots) {
+        final int amount = (int) Math.max(1.0F, damage / 4.0F);
+
+        for (final ArmourSlot armourSlot : armourSlots) {
             final EquipmentSlot equipmentSlot = switch (armourSlot) {
                 case BOOTS -> EquipmentSlot.FEET;
                 case LEGGINGS -> EquipmentSlot.LEGS;
                 case CHESTPLATE -> EquipmentSlot.CHEST;
                 case HELMET -> EquipmentSlot.HEAD;
-                default -> throw new IllegalStateException("Unsupported armour slot: " + armourSlot);
             };
 
             final ItemStack itemStack = serverPlayer.getItemBySlot(equipmentSlot);

@@ -8,6 +8,7 @@ import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDamageEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDelayEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageAppliedEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageSetupEvent;
+import me.trae.foundation.minecraft.paper.addon.damage.listeners.delay.state.LegacyDelayState;
 import me.trae.foundation.minecraft.paper.addon.damage.services.DamageService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
@@ -60,9 +61,10 @@ public final class LegacyDamageDelayListener implements Listener {
 
         final CustomDamageEvent damageEvent = event.getDamageEvent();
 
-        final LegacyDelayState state = this.stateMap.get(damageEvent);
+        final LegacyDelayState legacyDelayState = this.stateMap.get(damageEvent);
 
-        if (state == null || damageEvent.isCancelled() || !damageEvent.hasDamage()) {
+        if (legacyDelayState == null || damageEvent.isCancelled() || !damageEvent.hasDamage()) {
+            this.stateMap.remove(damageEvent);
             return;
         }
 
@@ -74,7 +76,7 @@ public final class LegacyDamageDelayListener implements Listener {
             return;
         }
 
-        state.setDurationMillis(Math.max(0L, delayEvent.getDurationMillis()));
+        legacyDelayState.setDurationMillis(Math.max(0L, delayEvent.getDurationMillis()));
 
         damageEvent.setFullDamage(true);
     }

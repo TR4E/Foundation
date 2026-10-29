@@ -1,4 +1,4 @@
-package me.trae.foundation.minecraft.paper.addon.damage.listeners.delay;
+package me.trae.foundation.minecraft.paper.addon.damage.listeners.delay.state;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

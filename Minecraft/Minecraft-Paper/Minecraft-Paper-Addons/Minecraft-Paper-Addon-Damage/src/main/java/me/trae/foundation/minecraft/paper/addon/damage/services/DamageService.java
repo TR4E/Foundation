@@ -13,6 +13,13 @@ import me.trae.foundation.minecraft.paper.addon.death.reason.Reason;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.utilities.UtilTime;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import org.bukkit.craftbukkit.damage.CraftDamageSource;
+import org.bukkit.craftbukkit.entity.CraftLivingEntity;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
@@ -36,6 +43,24 @@ public final class DamageService {
     }
 
     public void process(final CustomDamageEvent damageEvent) {
+        this.resolve(damageEvent);
+
+        UtilEvent.dispatch(new DamageSetupEvent(damageEvent, Stage.LUNGE));
+    }
+
+    private void resolve(final CustomDamageEvent damageEvent) {
+        if (Double.isNaN(damageEvent.getDamage()) || Double.isInfinite(damageEvent.getDamage())) {
+            damageEvent.setDamage(Float.MAX_VALUE);
+        }
+
+        if (damageEvent.getDamage() < 0.0D) {
+            damageEvent.setDamage(0.0D);
+        }
+
+        if (CraftLivingEntity.class.isInstance(damageEvent.getDamagee()) && CraftDamageSource.class.isInstance(damageEvent.getSource()) && !this.isDamageable(CraftLivingEntity.class.cast(damageEvent.getDamagee()).getHandle(), CraftDamageSource.class.cast(damageEvent.getSource()).getHandle())) {
+            return;
+        }
+
         UtilEvent.dispatch(damageEvent);
 
         if (damageEvent.isCancelled()) {
@@ -60,6 +85,8 @@ public final class DamageService {
         if (damageEvent.isCancelled()) {
             return;
         }
+
+        UtilEvent.dispatch(new DamageSetupEvent(damageEvent, Stage.BLOCKING_EFFECTS));
 
         UtilEvent.dispatch(new DamageSetupEvent(damageEvent, Stage.HEALTH));
 
@@ -105,5 +132,21 @@ public final class DamageService {
         }
 
         return UtilTime.elapsed(customDamageEvent.getSystemTime(), this.settings.getLastPlayerDamagerDamageExpiration());
+    }
+
+    private boolean isDamageable(final LivingEntity entity, final DamageSource damageSource) {
+        if (entity.isRemoved() || entity.isDeadOrDying()) {
+            return false;
+        }
+
+        if (entity.isInvulnerableTo(ServerLevel.class.cast(entity.level()), damageSource)) {
+            return false;
+        }
+
+        if (damageSource.is(DamageTypeTags.IS_FIRE) && entity.hasEffect(MobEffects.FIRE_RESISTANCE)) {
+            return false;
+        }
+
+        return true;
     }
 }

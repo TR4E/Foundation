@@ -17,6 +17,8 @@ import java.util.List;
 
 public interface DeathEvent {
 
+    long getSystemTime();
+
     DeathAddonSettings getSettings();
 
     LivingEntity getEntity();
@@ -53,11 +55,5 @@ public interface DeathEvent {
         }
 
         return UtilAdventure.joinWithEmpty(reason.getPrefix(), reason.getName().colorIfAbsent(UtilColor.toTextColor(this.getSettings().getDefaultReasonNameColor())), reason.getSuffix());
-    }
-
-    default boolean isReasonNameWithIndefiniteArticlePrefix() {
-        final Reason reason = this.getReason();
-
-        return reason == null || (reason.getPrefix() == null && reason.getName() != null);
     }
 }

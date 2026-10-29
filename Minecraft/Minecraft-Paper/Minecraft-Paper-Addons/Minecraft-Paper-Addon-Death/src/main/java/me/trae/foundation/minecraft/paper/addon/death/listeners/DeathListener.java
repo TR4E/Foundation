@@ -67,7 +67,7 @@ public final class DeathListener implements Listener {
             }
         }
 
-        if (settings.showDeathMessagesFor(entity)) {
+        if (settings.showDeathMessagesForEntity(entity, deathEvent.getKiller())) {
             for (final Player recipient : UtilServer.getOnlinePlayers()) {
                 UtilEvent.dispatch(new CustomDeathMessageEvent(deathEvent, recipient));
             }

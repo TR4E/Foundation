@@ -11,6 +11,7 @@ import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
 import org.bukkit.craftbukkit.entity.CraftLivingEntity;
 import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -33,7 +34,7 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
     private final ItemStack[] armourContents;
     private final double originalDamage;
 
-    private double damage, blockedDamage;
+    private double damage, blockedDamage, resistedDamage, absorbedDamage;
     private boolean critical, fullDamage, applied;
 
     private SoundStash soundStash;
@@ -49,12 +50,14 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 entity,
                 null,
                 null,
-                entityDamageEvent.getDamageSource(),
+                getDamageSource(entityDamageEvent.getDamageSource()),
                 entityDamageEvent.getCause(),
                 null,
                 UtilItemStack.getArmourContents(entity),
                 damage,
                 damage,
+                0.0D,
+                0.0D,
                 0.0D,
                 false,
                 false,
@@ -85,12 +88,14 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 entity,
                 damager,
                 projectile,
-                entityDamageByEntityEvent.getDamageSource(),
+                getDamageSource(entityDamageByEntityEvent.getDamageSource()),
                 entityDamageByEntityEvent.getCause(),
                 UtilItemStack.getItemInMainHand(damager).orElse(null),
                 UtilItemStack.getArmourContents(entity),
                 damage,
                 damage,
+                0.0D,
+                0.0D,
                 0.0D,
                 entityDamageByEntityEvent.isCritical(),
                 false,
@@ -106,12 +111,14 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 damagee,
                 damager,
                 null,
-                source,
+                getDamageSource(source),
                 cause,
                 null,
                 UtilItemStack.getArmourContents(damagee),
                 damage,
                 damage,
+                0.0D,
+                0.0D,
                 0.0D,
                 false,
                 false,
@@ -127,12 +134,14 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
                 damagee,
                 null,
                 null,
-                source,
+                getDamageSource(source),
                 cause,
                 null,
                 UtilItemStack.getArmourContents(damagee),
                 damage,
                 damage,
+                0.0D,
+                0.0D,
                 0.0D,
                 false,
                 false,
@@ -166,6 +175,9 @@ public final class CustomDamageEvent extends CustomCancellableEvent {
         return this.cause == DamageCause.ENTITY_ATTACK || this.cause == DamageCause.ENTITY_SWEEP_ATTACK;
     }
 
+    private static DamageSource getDamageSource(final DamageSource source) {
+        return source != null ? source : DamageSource.builder(DamageType.GENERIC).build();
+    }
 
     private static SoundStash getHurtSound(final Entity entity) {
         if (!(entity instanceof final CraftLivingEntity craftLivingEntity)) {

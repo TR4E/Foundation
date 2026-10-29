@@ -7,6 +7,7 @@ import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDamageEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDelayEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageAppliedEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.DamageSetupEvent;
+import me.trae.foundation.minecraft.paper.addon.damage.listeners.delay.state.ModernDelayState;
 import me.trae.foundation.minecraft.paper.addon.damage.services.DamageService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
@@ -79,7 +80,7 @@ public final class ModernDamageDelayListener implements Listener {
 
         final float damage = (float) damageEvent.getDamage();
 
-        final boolean bypassCooldown = CraftDamageSource.class.cast(damageEvent.getSource()).getHandle().is(net.minecraft.tags.DamageTypeTags.BYPASSES_COOLDOWN);
+        final boolean bypassCooldown = CraftDamageSource.class.isInstance(damageEvent.getSource()) && CraftDamageSource.class.cast(damageEvent.getSource()).getHandle().is(net.minecraft.tags.DamageTypeTags.BYPASSES_COOLDOWN);
 
         if (modernDelayState.getRemainingTicks() > (float) modernDelayState.getPreviousDuration() / 2.0F && !bypassCooldown) {
             if (damage <= modernDelayState.getLastDamage()) {
@@ -123,11 +124,5 @@ public final class ModernDamageDelayListener implements Listener {
         entity.setNoDamageTicks(state.getDurationTicks());
 
         this.durationMap.put(entity, state.getDurationTicks());
-
-        final net.minecraft.world.entity.LivingEntity handle = entity.getHandle();
-
-        handle.hurtDuration = 10;
-
-        handle.hurtTime = handle.hurtDuration;
     }
 }

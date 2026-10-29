@@ -26,7 +26,7 @@ public final class CustomDeathListener implements Listener {
 
         final CustomDamageEvent damageEvent = event.getDamageEvent();
 
-        if (damageEvent.isCancelled() || !CraftLivingEntity.class.isInstance(damageEvent.getDamagee()) || !CraftDamageSource.class.isInstance(damageEvent.getSource())) {
+        if (damageEvent.isCancelled() || !CraftLivingEntity.class.isInstance(damageEvent.getDamagee())) {
             return;
         }
 
@@ -36,7 +36,7 @@ public final class CustomDeathListener implements Listener {
             return;
         }
 
-        final DamageSource damageSource = CraftDamageSource.class.cast(damageEvent.getSource()).getHandle();
+        final DamageSource damageSource = CraftDamageSource.class.isInstance(damageEvent.getSource()) ? CraftDamageSource.class.cast(damageEvent.getSource()).getHandle() : entity.level().damageSources().generic();
 
         try {
             if (Boolean.TRUE.equals(TOTEM_METHOD.invoke(entity, damageSource))) {

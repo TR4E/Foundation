@@ -2,6 +2,7 @@ package me.trae.foundation.minecraft.paper.addon.death.listeners;
 
 import me.trae.foundation.minecraft.paper.addon.death.events.CustomDeathMessageEvent;
 import me.trae.foundation.minecraft.paper.addon.death.events.DeathEvent;
+import me.trae.foundation.minecraft.paper.addon.death.reason.Reason;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.displayname.DisplayName;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMessage;
@@ -78,7 +79,9 @@ public final class DeathMessageListener implements Listener {
             return null;
         }
 
-        if (deathEvent.isReasonNameWithIndefiniteArticlePrefix()) {
+        final Reason reason = deathEvent.getReason();
+
+        if (reason == null || (reason.getPrefix() == null && reason.getName() != null)) {
             return UtilString.getIndefiniteArticlePrefix(PlainTextComponentSerializer.plainText().serialize(reasonComponent)) + UtilMessage.serializeWithReset(reasonComponent);
         }
 

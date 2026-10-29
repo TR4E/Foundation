@@ -1,5 +1,6 @@
 package me.trae.foundation.minecraft.paper.addon.damage.listeners.vanilla.damager;
 
+import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import me.trae.foundation.minecraft.paper.addon.damage.events.CustomDamageEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
@@ -19,6 +20,10 @@ public final class AttackSnapshotListener implements Listener {
 
     private static final Method SWEEP_METHOD = getSweepMethod();
 
+    private static final long MAXIMUM_AGE = 50L;
+
+    private static final float STRONG_STRENGTH = 0.9F;
+
     private final WeakHashMap<CustomDamageEvent, AttackSnapshot> snapshotMap = new WeakHashMap<>();
 
     private final HashMap<UUID, PendingAttack> pendingMap = new HashMap<>();
@@ -33,7 +38,7 @@ public final class AttackSnapshotListener implements Listener {
 
         final float strength = CraftPlayer.class.cast(player).getHandle().getAttackStrengthScale(0.5F);
 
-        this.pendingMap.put(player.getUniqueId(), new PendingAttack(event.getAttacked().getUniqueId(), new AttackSnapshot(strength, player.isSprinting(), player.isOnGround(), false)));
+        this.pendingMap.put(player.getUniqueId(), new PendingAttack(event.getAttacked().getUniqueId(), new AttackSnapshot(strength, player.isSprinting(), player.isOnGround(), false), System.currentTimeMillis()));
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -44,7 +49,12 @@ public final class AttackSnapshotListener implements Listener {
 
         final PendingAttack pendingAttack = this.pendingMap.get(event.getDamager().getUniqueId());
 
-        if (pendingAttack == null || !pendingAttack.targetId().equals(event.getDamagee().getUniqueId())) {
+        if (pendingAttack == null) {
+            return;
+        }
+
+        if (!pendingAttack.targetId().equals(event.getDamagee().getUniqueId()) || event.getSystemTime() - pendingAttack.systemTime() > MAXIMUM_AGE) {
+            this.pendingMap.remove(event.getDamager().getUniqueId());
             return;
         }
 
@@ -55,12 +65,21 @@ public final class AttackSnapshotListener implements Listener {
         final Player player = CraftPlayer.class.cast(event.getDamager()).getHandle();
 
         try {
-            final boolean sweeping = Boolean.TRUE.equals(SWEEP_METHOD.invoke(player, attackSnapshot.strength() > 0.9F, event.isCritical(), attackSnapshot.sprinting() && attackSnapshot.strength() > 0.9F));
+            final boolean sweeping = Boolean.TRUE.equals(SWEEP_METHOD.invoke(player, attackSnapshot.strength() > STRONG_STRENGTH, event.isCritical(), attackSnapshot.sprinting() && attackSnapshot.strength() > STRONG_STRENGTH));
 
             this.snapshotMap.put(event, new AttackSnapshot(attackSnapshot.strength(), attackSnapshot.sprinting(), attackSnapshot.onGround(), sweeping));
         } catch (final ReflectiveOperationException exception) {
             throw new IllegalStateException("Failed to check sweeping attack eligibility", exception);
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityRemove(final EntityRemoveFromWorldEvent event) {
+        final UUID entityId = event.getEntity().getUniqueId();
+
+        this.pendingMap.remove(entityId);
+
+        this.pendingMap.values().removeIf(pendingAttack -> entityId.equals(pendingAttack.targetId()));
     }
 
     public AttackSnapshot getSnapshot(final CustomDamageEvent damageEvent) {
@@ -82,6 +101,6 @@ public final class AttackSnapshotListener implements Listener {
     public record AttackSnapshot(float strength, boolean sprinting, boolean onGround, boolean sweeping) {
     }
 
-    private record PendingAttack(UUID targetId, AttackSnapshot snapshot) {
+    private record PendingAttack(UUID targetId, AttackSnapshot snapshot, long systemTime) {
     }
 }

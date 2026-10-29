@@ -52,6 +52,8 @@ public final class AbsorptionReductionListener implements Listener {
 
         this.pendingAbsorptionMap.put(damageEvent, finalAbsorbedDamage);
 
+        damageEvent.setAbsorbedDamage(finalAbsorbedDamage);
+
         damageEvent.subtractDamage(finalAbsorbedDamage);
     }
 

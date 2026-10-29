@@ -24,6 +24,8 @@ import java.util.List;
 @Setter
 public final class VanillaDeathEvent extends CustomEvent implements DeathEvent {
 
+    private final long systemTime = System.currentTimeMillis();
+
     private final DeathAddonSettings settings;
 
     private final LivingEntity entity;
@@ -51,10 +53,5 @@ public final class VanillaDeathEvent extends CustomEvent implements DeathEvent {
                 entityDeathEvent.getDroppedExp(),
                 SoundStash.of(entityDeathEvent.getDeathSound(), entityDeathEvent.getDeathSoundCategory(), entityDeathEvent.getDeathSoundVolume(), entityDeathEvent.getDeathSoundPitch())
         );
-    }
-
-    @Override
-    public boolean isReasonNameWithIndefiniteArticlePrefix() {
-        return true;
     }
 }

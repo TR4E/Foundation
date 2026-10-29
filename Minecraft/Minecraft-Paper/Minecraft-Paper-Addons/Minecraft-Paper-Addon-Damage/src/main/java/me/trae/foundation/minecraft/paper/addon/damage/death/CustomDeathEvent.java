@@ -24,6 +24,8 @@ import java.util.List;
 @Setter
 public final class CustomDeathEvent extends CustomEvent implements DeathEvent {
 
+    private final long systemTime = System.currentTimeMillis();
+
     private final DeathAddonSettings settings;
 
     private final CustomDamageEvent originalDamageEvent, damageEvent;
@@ -63,10 +65,5 @@ public final class CustomDeathEvent extends CustomEvent implements DeathEvent {
     @Override
     public ItemStack getItemStack() {
         return this.damageEvent.getItemStack();
-    }
-
-    @Override
-    public boolean isReasonNameWithIndefiniteArticlePrefix() {
-        return false;
     }
 }

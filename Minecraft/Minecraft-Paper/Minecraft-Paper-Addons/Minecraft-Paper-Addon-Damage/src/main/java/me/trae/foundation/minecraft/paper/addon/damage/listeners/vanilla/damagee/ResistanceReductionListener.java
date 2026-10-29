@@ -16,6 +16,7 @@ import org.bukkit.tag.DamageTypeTags;
 @AddonSingleton
 public final class ResistanceReductionListener implements Listener {
 
+    @SuppressWarnings("UnstableApiUsage")
     @EventHandler
     public void onDamageSetup(final DamageSetupEvent event) {
         if (event.getStage() != Stage.RESISTANCE) {
@@ -51,6 +52,10 @@ public final class ResistanceReductionListener implements Listener {
             return;
         }
 
-        damageEvent.setDamage(Math.max(0.0D, resistanceReductionEvent.getReducedDamage()));
+        final double finalReducedDamage = Math.max(0.0D, resistanceReductionEvent.getReducedDamage());
+
+        damageEvent.setResistedDamage(Math.max(0.0D, damage - finalReducedDamage));
+
+        damageEvent.setDamage(finalReducedDamage);
     }
 }

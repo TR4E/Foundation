@@ -5,6 +5,7 @@ import lombok.experimental.UtilityClass;
 import java.util.Collection;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 @UtilityClass
 public class UtilJava {
@@ -39,5 +40,30 @@ public class UtilJava {
 
     public static <T extends Map<?, ?>> void updateMap(final T map, final Consumer<T> consumer) {
         consumer.accept(map);
+    }
+
+    public static <T> void runIfNotNull(final T object, final Consumer<T> consumer) {
+        if (object == null) {
+            return;
+        }
+
+        consumer.accept(object);
+    }
+
+    public static <T> void runOrElse(final T object, final Consumer<T> consumer, final Runnable runnable) {
+        if (object == null) {
+            runnable.run();
+            return;
+        }
+
+        consumer.accept(object);
+    }
+
+    public static <T> T getOrElse(final T object, final Supplier<T> supplier) {
+        if (object == null) {
+            return supplier.get();
+        }
+
+        return object;
     }
 }

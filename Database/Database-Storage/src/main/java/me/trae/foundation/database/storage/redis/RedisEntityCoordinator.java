@@ -72,17 +72,21 @@ public final class RedisEntityCoordinator {
             """);
 
     private static final RedisScript NOTIFY_SCRIPT = new RedisScript("""
-            if ARGV[1] == '1' then redis.call('DEL', KEYS[1], KEYS[6]) end
-            redis.call('DEL', KEYS[2])
-            if ARGV[2] == '1' then redis.call('DEL', KEYS[3]) end
-            for index = 10, #ARGV, 2 do
-                if ARGV[9] == '1' then
-                    redis.call('HSETNX', KEYS[3], ARGV[index], ARGV[index + 1])
-                else
-                    redis.call('HSET', KEYS[3], ARGV[index], ARGV[index + 1])
+            if redis.call('EXISTS', KEYS[7]) == 0 then
+                if ARGV[1] == '1' then redis.call('DEL', KEYS[1], KEYS[6]) end
+                redis.call('DEL', KEYS[2])
+                if ARGV[2] == '1' then redis.call('DEL', KEYS[3]) end
+                for index = 10, #ARGV, 2 do
+                    if ARGV[9] == '1' then
+                        redis.call('HSETNX', KEYS[3], ARGV[index], ARGV[index + 1])
+                    else
+                        redis.call('HSET', KEYS[3], ARGV[index], ARGV[index + 1])
+                    end
                 end
+                redis.call('INCR', KEYS[5])
+                redis.call('PSETEX', KEYS[7], 300000, '1')
             end
-            local generation = redis.call('INCR', KEYS[5])
+            local generation = redis.call('GET', KEYS[5]) or '0'
             local owners = redis.call('HGETALL', KEYS[4])
             local result = {}
             local groups = {}
@@ -307,7 +311,8 @@ public final class RedisEntityCoordinator {
                             "%scache:shared:%s".formatted(namespace, redisInvalidation.getEntityId()),
                             this.ownerKey(namespace, redisInvalidation.getEntityId()),
                             this.generationKey(namespace, redisInvalidation.getEntityId()),
-                            redisInvalidation.getLockKey()
+                            redisInvalidation.getLockKey(),
+                            "%scache:notification:%s".formatted(namespace, notification)
                     },
                     argumentList.toArray(String[]::new)
             );

@@ -910,22 +910,26 @@ final class OwnerSynchronizationTest {
 
             if (source.contains("local generation")) {
                 synchronized (this) {
-                    if (valueArray[0].equals("1")) {
-                        this.hashMap.remove(keyArray[0]);
-                    }
-                    if (valueArray[1].equals("1")) {
-                        this.hashMap.remove(keyArray[2]);
-                    }
-                    for (int index = 9; index < valueArray.length; index += 2) {
-                        final Map<String, String> sharedMap = this.hashMap.computeIfAbsent(keyArray[2], _ -> new ConcurrentHashMap<>());
-                        if (valueArray[8].equals("1")) {
-                            sharedMap.putIfAbsent(valueArray[index], valueArray[index + 1]);
-                        } else {
-                            sharedMap.put(valueArray[index], valueArray[index + 1]);
+                    if (!this.stringMap.containsKey(keyArray[6])) {
+                        if (valueArray[0].equals("1")) {
+                            this.hashMap.remove(keyArray[0]);
                         }
+                        if (valueArray[1].equals("1")) {
+                            this.hashMap.remove(keyArray[2]);
+                        }
+                        for (int index = 9; index < valueArray.length; index += 2) {
+                            final Map<String, String> sharedMap = this.hashMap.computeIfAbsent(keyArray[2], _ -> new ConcurrentHashMap<>());
+                            if (valueArray[8].equals("1")) {
+                                sharedMap.putIfAbsent(valueArray[index], valueArray[index + 1]);
+                            } else {
+                                sharedMap.put(valueArray[index], valueArray[index + 1]);
+                            }
+                        }
+                        final long nextGeneration = Long.parseLong(this.stringMap.getOrDefault(keyArray[4], "0")) + 1L;
+                        this.stringMap.put(keyArray[4], Long.toString(nextGeneration));
+                        this.stringMap.put(keyArray[6], "1");
                     }
-                    final long generation = Long.parseLong(this.stringMap.getOrDefault(keyArray[4], "0")) + 1L;
-                    this.stringMap.put(keyArray[4], Long.toString(generation));
+                    final long generation = Long.parseLong(this.stringMap.getOrDefault(keyArray[4], "0"));
                     final Map<String, List<String>> groupMap = new HashMap<>();
                     final List<String> ownerList = new ArrayList<>();
                     this.hashMap.getOrDefault(keyArray[3], Map.of()).forEach((holder, registration) -> {

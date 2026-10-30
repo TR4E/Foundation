@@ -168,9 +168,7 @@ public abstract class Item {
     }
 
     public final ItemStack refresh(final ItemStack itemStack) {
-        UtilEvent.dispatch(new ItemStackUpdateEvent(this, itemStack));
-
-        return itemStack;
+        return UtilEvent.supply(new ItemStackUpdateEvent(this, itemStack)).getItemStack();
     }
 
     public final Optional<String> getDynamicLoreValue(final ItemStack itemStack, final String key) {

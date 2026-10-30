@@ -3,7 +3,7 @@ package me.trae.foundation.minecraft.paper.addon.item.blocking;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.BlocksAttacks;
 import lombok.AllArgsConstructor;
-import me.trae.foundation.minecraft.paper.addon.item.events.VanillaItemStackUpdateEvent;
+import me.trae.foundation.minecraft.paper.addon.item.events.ItemStackUpdateEvent;
 import me.trae.foundation.minecraft.paper.addon.item.services.ItemService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import org.bukkit.Material;
@@ -28,7 +28,7 @@ public final class SwordBlockingListener implements Listener {
 
     @SuppressWarnings("UnstableApiUsage")
     @EventHandler
-    public void onVanillaItemStackUpdate(final VanillaItemStackUpdateEvent event) {
+    public void onItemStackUpdate(final ItemStackUpdateEvent event) {
         final ItemStack itemStack = event.getItemStack();
 
         if (!MATERIAL_SET.contains(itemStack.getType())) {

@@ -5,11 +5,9 @@ import lombok.Getter;
 import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.DefaultItem;
-import me.trae.foundation.minecraft.paper.addon.item.events.VanillaItemStackUpdateEvent;
 import me.trae.foundation.minecraft.paper.addon.item.search.types.CustomItemSearchEngine;
 import me.trae.foundation.minecraft.paper.addon.item.settings.ItemAddonSettings;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
-import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
@@ -81,13 +79,13 @@ public final class ItemService implements Lifecycle {
             // Unique ID Check
             final CustomItem customItem = this.getItemByItemStack(itemStack).orElse(null);
             if (customItem != null) {
-                return this.touch(customItem.isOutdatedByItemStack(itemStack) ? customItem.update(itemStack) : customItem.refresh(itemStack));
+                return customItem.isOutdatedByItemStack(itemStack) ? customItem.update(itemStack) : customItem.refresh(itemStack);
             }
 
             // Obtainable Check
             final CustomItem obtainableItem = this.getObtainableItemByMaterial(itemStack.getType()).orElse(null);
             if (obtainableItem != null) {
-                return this.touch(obtainableItem.create(itemStack));
+                return obtainableItem.create(itemStack);
             }
 
             // Deletable Check
@@ -100,7 +98,7 @@ public final class ItemService implements Lifecycle {
 
             final boolean wasCustomItem = UtilItemStack.getPersistentData(itemStack, UtilItemStack.UNIQUE_ID_KEY, PersistentDataType.STRING).isPresent() || UtilItemStack.getPersistentData(itemStack, CustomItem.VERSION_KEY, PersistentDataType.STRING).isPresent();
 
-            return this.touch(wasCustomItem ? defaultItem.create(itemStack) : defaultItem.refresh(itemStack));
+            return wasCustomItem ? defaultItem.create(itemStack) : defaultItem.refresh(itemStack);
         }
 
         return itemStack;
@@ -112,9 +110,5 @@ public final class ItemService implements Lifecycle {
 
     public Optional<CustomItem> searchCustomItem(final CommandSender commandSender, final String input, final boolean inform) {
         return this.searchCustomItem(commandSender, input, inform, null);
-    }
-
-    private ItemStack touch(final ItemStack itemStack) {
-        return UtilEvent.supply(new VanillaItemStackUpdateEvent(itemStack)).getItemStack();
     }
 }

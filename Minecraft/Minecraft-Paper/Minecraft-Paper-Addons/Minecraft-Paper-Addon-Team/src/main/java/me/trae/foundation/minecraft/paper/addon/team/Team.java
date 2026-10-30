@@ -2,6 +2,9 @@ package me.trae.foundation.minecraft.paper.addon.team;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import me.trae.foundation.minecraft.paper.addon.team.events.TeamUpdateEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import net.kyori.adventure.text.Component;
 import net.minecraft.ChatFormatting;
 import org.bukkit.entity.Player;
@@ -12,6 +15,14 @@ public abstract class Team {
 
     private final String identifier;
     private final int priority;
+
+    public final void updatePlayer(final Player player) {
+        UtilEvent.dispatchSynchronously(new TeamUpdateEvent(this.identifier, player));
+    }
+
+    public final void updateAllPlayers() {
+        UtilServer.getOnlinePlayers().forEach(this::updatePlayer);
+    }
 
     public boolean canDisplay() {
         return true;

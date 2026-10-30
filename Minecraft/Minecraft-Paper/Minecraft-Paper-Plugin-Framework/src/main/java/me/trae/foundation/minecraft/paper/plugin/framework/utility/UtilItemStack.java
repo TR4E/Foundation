@@ -2,6 +2,7 @@ package me.trae.foundation.minecraft.paper.plugin.framework.utility;
 
 import lombok.experimental.UtilityClass;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -157,7 +158,11 @@ public class UtilItemStack {
             return null;
         }
 
-        final Component effectiveName = itemStack.effectiveName();
+        Component effectiveName = itemStack.effectiveName();
+
+        if (effectiveName.color() == NamedTextColor.WHITE) {
+            effectiveName = effectiveName.color(null);
+        }
 
         return hoverable ? effectiveName.hoverEvent(itemStack.asHoverEvent()) : effectiveName;
     }

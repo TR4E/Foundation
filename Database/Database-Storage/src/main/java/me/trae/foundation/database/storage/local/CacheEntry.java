@@ -18,10 +18,6 @@ public final class CacheEntry<Value> {
     @Setter
     private volatile boolean pinned;
 
-    public CacheEntry(final Value value, final Duration expiry, final boolean pinned) {
-        this(value, expiry, pinned, expiry);
-    }
-
     public CacheEntry(final Value value, final Duration expiry, final boolean pinned, final Duration maximumAge) {
         this.value = value;
         this.expiryNanos = expiry == null ? -1L : Math.max(0L, expiry.toNanos());
@@ -30,6 +26,10 @@ public final class CacheEntry<Value> {
         this.expiresAt = expiry == null ? NEVER_EXPIRES : now + this.expiryNanos;
         this.expiresAt = this.clampExpiry(this.expiresAt);
         this.pinned = pinned;
+    }
+
+    public CacheEntry(final Value value, final Duration expiry, final boolean pinned) {
+        this(value, expiry, pinned, expiry);
     }
 
     public void refreshExpiry() {

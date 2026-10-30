@@ -6,7 +6,9 @@ import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.redis.RedisInvalidation;
 import org.jooq.DSLContext;
 import org.jooq.Field;
+import org.jooq.Query;
 import org.jooq.Record;
+import org.jooq.Result;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
@@ -58,7 +60,7 @@ public final class CacheInvalidationOutbox {
     }
 
     public static void insertInvalidations(final DSLContext dslContext, final List<RedisInvalidation> invalidationList) {
-        final List<org.jooq.Query> queryList = new ArrayList<>();
+        final List<Query> queryList = new ArrayList<>();
 
         for (final RedisInvalidation invalidation : invalidationList) {
             if (invalidation == null) {
@@ -80,14 +82,6 @@ public final class CacheInvalidationOutbox {
         if (!queryList.isEmpty()) {
             dslContext.batch(queryList).execute();
         }
-    }
-
-    public void dispatch() {
-        this.dispatch(false);
-    }
-
-    public void dispatchNow() {
-        this.dispatch(true);
     }
 
     private void dispatch(final boolean force) {
@@ -115,7 +109,7 @@ public final class CacheInvalidationOutbox {
         }
 
         try {
-            final org.jooq.Result<? extends Record> recordList = dslContext.select(ID, CACHE_KEY, MISSING_KEY, LOCK_KEY, CHANNEL, ENTITY_ID, INSTANCE_ID, INVALIDATE_CACHE)
+            final Result<? extends Record> recordList = dslContext.select(ID, CACHE_KEY, MISSING_KEY, LOCK_KEY, CHANNEL, ENTITY_ID, INSTANCE_ID, INVALIDATE_CACHE)
                     .from(TABLE)
                     .orderBy(CREATED_AT)
                     .limit(BATCH_SIZE)
@@ -139,5 +133,13 @@ public final class CacheInvalidationOutbox {
         } finally {
             this.redisDriver.releaseLock(dispatchLock, owner);
         }
+    }
+
+    public void dispatchNow() {
+        this.dispatch(true);
+    }
+
+    public void dispatch() {
+        this.dispatch(false);
     }
 }

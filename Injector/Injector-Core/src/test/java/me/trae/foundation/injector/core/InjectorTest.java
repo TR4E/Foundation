@@ -943,10 +943,10 @@ final class InjectorTest {
 
     private static final class TwoConstructors {
 
-        private TwoConstructors() {
+        private TwoConstructors(final String value) {
         }
 
-        private TwoConstructors(final String value) {
+        private TwoConstructors() {
         }
     }
 

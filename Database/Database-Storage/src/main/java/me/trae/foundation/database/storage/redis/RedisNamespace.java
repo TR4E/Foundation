@@ -36,10 +36,6 @@ public final class RedisNamespace {
         return Optional.ofNullable(this.tenantId);
     }
 
-    public String getKey(final UUID id) {
-        return this.getKey(id.toString());
-    }
-
     public String getKey(final String suffix) {
         if (this.tenantId == null) {
             return "%s:%s".formatted(this.table, suffix);
@@ -48,12 +44,12 @@ public final class RedisNamespace {
         return "%s:%s:%s".formatted(this.table, this.tenantId, suffix);
     }
 
-    public String getInvalidationChannel() {
-        return this.getKey("cache:invalidate");
+    public String getKey(final UUID id) {
+        return this.getKey(id.toString());
     }
 
-    public RedisInvalidation getInvalidation(final UUID id, final String instanceId) {
-        return this.getInvalidation(id, instanceId, true);
+    public String getInvalidationChannel() {
+        return this.getKey("cache:invalidate");
     }
 
     public RedisInvalidation getInvalidation(final UUID id, final String instanceId, final boolean invalidateCache) {
@@ -66,5 +62,9 @@ public final class RedisNamespace {
                 instanceId,
                 invalidateCache
         );
+    }
+
+    public RedisInvalidation getInvalidation(final UUID id, final String instanceId) {
+        return this.getInvalidation(id, instanceId, true);
     }
 }

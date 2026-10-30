@@ -4,6 +4,7 @@ import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.api.tenant.TenantScope;
 import me.trae.foundation.database.core.schema.TableSchema;
+import me.trae.foundation.database.storage.redis.RedisNamespace;
 import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 import me.trae.foundation.database.storage.revision.RevisionState;
 import org.jooq.Field;
@@ -11,6 +12,7 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class PendingWriteStoreTest {
 
@@ -216,6 +219,57 @@ final class PendingWriteStoreTest {
 
     private Map<Field<?>, Object> value(final String value) {
         return Map.of(VALUE_FIELD, value);
+    }
+
+    @Test
+    void coalescedWritesKeepTheirOriginOnlyWhenEveryWriteHasTheSameSource() {
+        final PendingWriteStore pendingWriteStore = new PendingWriteStore();
+        final UUID id = UUID.randomUUID();
+        final RedisNamespace redisNamespace = RedisNamespace.of(TABLE_SCHEMA.getTableName());
+        pendingWriteStore.queueUpdate(TABLE_SCHEMA, null, id, this.value("first"), List.of(), redisNamespace.getInvalidation(id, "holder-a"));
+        pendingWriteStore.queueUpdate(TABLE_SCHEMA, null, id, this.value("second"), List.of(), redisNamespace.getInvalidation(id, "holder-a"));
+
+        final PendingWrite firstWrite = pendingWriteStore.drain().getFirst();
+        assertEquals("holder-a", firstWrite.getInvalidation().getInstanceId());
+
+        pendingWriteStore.queueUpdate(TABLE_SCHEMA, null, id, this.value("third"), List.of(), redisNamespace.getInvalidation(id, "holder-b"));
+        pendingWriteStore.requeue(firstWrite);
+
+        final PendingWrite mergedWrite = pendingWriteStore.drain().getFirst();
+        assertEquals("mixed", mergedWrite.getInvalidation().getInstanceId());
+        assertEquals("third", mergedWrite.getValueMap().get(VALUE_FIELD));
+    }
+
+    @Test
+    void mergingAnUnattributedWriteDoesNotSkipAnyHolder() {
+        final PendingWriteStore pendingWriteStore = new PendingWriteStore();
+        final UUID id = UUID.randomUUID();
+        pendingWriteStore.queueUpdate(TABLE_SCHEMA, null, id, this.value("first"), List.of());
+        pendingWriteStore.queueUpdate(TABLE_SCHEMA, null, id, this.value("second"), List.of(), RedisNamespace.of(TABLE_SCHEMA.getTableName()).getInvalidation(id, "holder-a"));
+
+        assertEquals("mixed", pendingWriteStore.drain().getFirst().getInvalidation().getInstanceId());
+    }
+
+    @Test
+    void pendingValuesIncludeInFlightWritesAndNewerNullsWithoutCrossingTenants() {
+        final PendingWriteStore pendingWriteStore = new PendingWriteStore();
+        final UUID id = UUID.randomUUID();
+        pendingWriteStore.queueUpdate(TABLE_SCHEMA, "tenant-a", id, this.value("in-flight"), List.of());
+
+        final PendingWrite pendingWrite = pendingWriteStore.drain().getFirst();
+        assertEquals("in-flight", pendingWriteStore.getPendingValues(TABLE_SCHEMA, "tenant-a", id).get(VALUE_FIELD));
+
+        final Map<Field<?>, Object> valueMap = new HashMap<>();
+        valueMap.put(VALUE_FIELD, null);
+        pendingWriteStore.queueUpdate(TABLE_SCHEMA, "tenant-a", id, valueMap, List.of());
+
+        final Map<Field<?>, Object> pendingValueMap = pendingWriteStore.getPendingValues(TABLE_SCHEMA, "tenant-a", id);
+        assertTrue(pendingValueMap.containsKey(VALUE_FIELD));
+        assertNull(pendingValueMap.get(VALUE_FIELD));
+        assertTrue(pendingWriteStore.getPendingValues(TABLE_SCHEMA, "tenant-b", id).isEmpty());
+        assertThrows(UnsupportedOperationException.class, () -> pendingValueMap.put(VALUE_FIELD, "modified"));
+        pendingWriteStore.complete(pendingWrite);
+        assertTrue(pendingWriteStore.getPendingValues(TABLE_SCHEMA, "tenant-a", id).containsKey(VALUE_FIELD));
     }
 
     private static final class TestEntity implements Entity {

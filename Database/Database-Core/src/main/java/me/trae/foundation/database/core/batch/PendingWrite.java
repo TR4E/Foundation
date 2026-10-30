@@ -34,14 +34,6 @@ public final class PendingWrite {
     @Setter
     private volatile DatabaseException failureException;
 
-    public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback) {
-        this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, invalidation, expectedRevision, revisionCallback, null);
-    }
-
-    public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback, final RevisionState revisionState) {
-        this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, invalidation, expectedRevision, revisionCallback, revisionState);
-    }
-
     public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final long sequence, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback, final RevisionState revisionState) {
         this.tableSchema = tableSchema;
         this.tenantId = tenantId;
@@ -57,12 +49,20 @@ public final class PendingWrite {
         this.revisionState = revisionState;
     }
 
-    public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence) {
-        this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, null, null, null, null);
+    public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback, final RevisionState revisionState) {
+        this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, invalidation, expectedRevision, revisionCallback, revisionState);
+    }
+
+    public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback) {
+        this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, invalidation, expectedRevision, revisionCallback, null);
     }
 
     public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence, final RedisInvalidation invalidation) {
         this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, invalidation, null, null, null);
+    }
+
+    public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence) {
+        this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, null, null, null, null);
     }
 
     public String getKey() {
@@ -99,22 +99,54 @@ public final class PendingWrite {
 
     private PendingWrite mergeWrite(final PendingWrite newer, final WriteType writeType, final Map<Field<?>, Object> mergedMap) {
         final List<Runnable> callbackList = new ArrayList<>(this.commitCallbackList);
+
         callbackList.addAll(newer.getCommitCallbackList());
+
         final List<Runnable> failureCallbackList = new ArrayList<>(this.failureCallbackList);
+
         failureCallbackList.addAll(newer.getFailureCallbackList());
+
         final Runnable revisionCallback = writeType == WriteType.DELETE ? null : newer.getRevisionCallback() == null ? this.revisionCallback : newer.getRevisionCallback();
 
-        return new PendingWrite(this.tableSchema, this.tenantId, this.id, writeType, mergedMap, callbackList, failureCallbackList, newer.getSequence(), newer.getInvalidation() == null ? this.invalidation : newer.getInvalidation(), newer.getExpectedRevision() == null ? this.expectedRevision : newer.getExpectedRevision(), revisionCallback, newer.getRevisionState() == null ? this.revisionState : newer.getRevisionState());
+        return new PendingWrite(
+                this.tableSchema,
+                this.tenantId,
+                this.id,
+                writeType,
+                mergedMap,
+                callbackList,
+                failureCallbackList,
+                newer.getSequence(),
+                this.mergeInvalidation(newer),
+                newer.getExpectedRevision() == null ? this.expectedRevision : newer.getExpectedRevision(),
+                revisionCallback,
+                newer.getRevisionState() == null ? this.revisionState : newer.getRevisionState()
+        );
+    }
+
+    private RedisInvalidation mergeInvalidation(final PendingWrite newer) {
+        final RedisInvalidation redisInvalidation = newer.getInvalidation() == null ? this.invalidation : newer.getInvalidation();
+        if (redisInvalidation == null) {
+            return null;
+        }
+
+        if (this.invalidation == null || newer.getInvalidation() == null || !this.invalidation.getInstanceId().equals(newer.getInvalidation().getInstanceId())) {
+            return redisInvalidation.withInstanceId("mixed");
+        }
+
+        return redisInvalidation;
     }
 
     public PendingWrite withExpectedRevision(final long expectedRevision) {
         final Map<Field<?>, Object> revisedValueMap = new LinkedHashMap<>(this.valueMap);
 
         final long nextRevision = expectedRevision + 1L;
+
         Runnable revisedCallback = null;
 
         if (this.writeType != WriteType.DELETE) {
             revisedValueMap.put(TableSchema.REVISION_FIELD, nextRevision);
+
             revisedCallback = () -> this.revisionState.setRevision(nextRevision);
         }
 

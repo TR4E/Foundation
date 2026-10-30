@@ -53,10 +53,6 @@ public final class ComponentContainer {
         return this.runtimeBindings.getRegistration(type).isPresent();
     }
 
-    public synchronized void register(final Type type, final Object instance) {
-        this.register(type, instance, null, null, Set.of());
-    }
-
     public synchronized void register(final Type type, final Object instance, final ApplicationContext applicationContext, final Type ownerType, final Collection<Type> dependencyTypeList) {
         final ComponentRegistration componentRegistration = new ComponentRegistration(
                 type,
@@ -71,6 +67,10 @@ public final class ComponentContainer {
         }
 
         this.invalidateCaches();
+    }
+
+    public synchronized void register(final Type type, final Object instance) {
+        this.register(type, instance, null, null, Set.of());
     }
 
     public synchronized void unregister(final Type type) {

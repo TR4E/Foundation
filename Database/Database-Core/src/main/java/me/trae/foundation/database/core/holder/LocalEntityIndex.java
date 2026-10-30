@@ -50,9 +50,12 @@ public final class LocalEntityIndex<E extends Entity> {
         this.keysByIdMap.put(entity.getId(), keyList);
     }
 
-    public synchronized void remove(final UUID id, final LocalStorage<UUID, E> localStorage) {
-        this.remove(id);
-        localStorage.remove(id);
+    private synchronized void remove(final UUID id) {
+        final List<String> keyList = this.keysByIdMap.remove(id);
+
+        if (keyList != null) {
+            keyList.forEach(key -> this.idByKeyMap.remove(key, id));
+        }
     }
 
     public synchronized void evict(final UUID id, final LocalStorage<UUID, E> localStorage) {
@@ -84,12 +87,9 @@ public final class LocalEntityIndex<E extends Entity> {
         return entity;
     }
 
-    private synchronized void remove(final UUID id) {
-        final List<String> keyList = this.keysByIdMap.remove(id);
-
-        if (keyList != null) {
-            keyList.forEach(key -> this.idByKeyMap.remove(key, id));
-        }
+    public synchronized void remove(final UUID id, final LocalStorage<UUID, E> localStorage) {
+        this.remove(id);
+        localStorage.remove(id);
     }
 
     private boolean sameIndex(final EntityIndex<E> first, final EntityIndex<?> second) {

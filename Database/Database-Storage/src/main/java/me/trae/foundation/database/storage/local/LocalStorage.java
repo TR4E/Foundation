@@ -23,22 +23,22 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     private final boolean refreshOnRead;
     private final Duration maximumAge;
 
-    public LocalStorage() {
-        this(null, false);
-    }
-
-    public LocalStorage(final Duration expiry) {
-        this(expiry, false);
+    public LocalStorage(final Duration expiry, final boolean refreshOnRead, final Duration maximumAge) {
+        this.expiry = expiry;
+        this.refreshOnRead = refreshOnRead;
+        this.maximumAge = maximumAge;
     }
 
     public LocalStorage(final Duration expiry, final boolean refreshOnRead) {
         this(expiry, refreshOnRead, refreshOnRead ? DEFAULT_MAXIMUM_AGE : expiry);
     }
 
-    public LocalStorage(final Duration expiry, final boolean refreshOnRead, final Duration maximumAge) {
-        this.expiry = expiry;
-        this.refreshOnRead = refreshOnRead;
-        this.maximumAge = maximumAge;
+    public LocalStorage(final Duration expiry) {
+        this(expiry, false);
+    }
+
+    public LocalStorage() {
+        this(null, false);
     }
 
     public void put(final Key key, final Value value, final Duration expiry) {

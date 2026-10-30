@@ -45,13 +45,13 @@ public final class ChangeTracker<E extends Entity> {
         this.snapshotStorage.put(id, new HashMap<>(encodedMap));
     }
 
-    public void snapshot(final E entity) {
-        this.snapshot(entity, this.encode(entity));
-    }
-
     public void snapshot(final E entity, final Map<String, String> encodedMap) {
         this.snapshotStorage.put(entity.getId(), new HashMap<>(encodedMap));
         this.entityReferenceMap.put(entity.getId(), new WeakReference<>(entity));
+    }
+
+    public void snapshot(final E entity) {
+        this.snapshot(entity, this.encode(entity));
     }
 
     public void snapshotIfAbsent(final E entity) {

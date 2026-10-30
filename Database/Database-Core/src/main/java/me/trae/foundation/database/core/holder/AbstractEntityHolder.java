@@ -102,13 +102,43 @@ public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractE
     }
 
     @Override
+    public final void save(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        this.holderComponents.getHolderWriter().save(entity, commitRunnable, failureRunnable);
+    }
+
+    @Override
+    public final void save(final E entity, final Runnable commitRunnable) {
+        this.holderComponents.getHolderWriter().save(entity, commitRunnable);
+    }
+
+    @Override
     public final void save(final E entity) {
         this.holderComponents.getHolderWriter().save(entity);
     }
 
     @Override
+    public final void update(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        this.holderComponents.getHolderWriter().update(entity, commitRunnable, failureRunnable);
+    }
+
+    @Override
+    public final void update(final E entity, final Runnable commitRunnable) {
+        this.holderComponents.getHolderWriter().update(entity, commitRunnable);
+    }
+
+    @Override
     public final void update(final E entity) {
         this.holderComponents.getHolderWriter().update(entity);
+    }
+
+    @Override
+    public final void delete(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        this.holderComponents.getHolderWriter().delete(entity, commitRunnable, failureRunnable);
+    }
+
+    @Override
+    public final void delete(final E entity, final Runnable commitRunnable) {
+        this.holderComponents.getHolderWriter().delete(entity, commitRunnable);
     }
 
     @Override

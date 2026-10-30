@@ -1,6 +1,7 @@
 package me.trae.foundation.database.core.holder;
 
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.api.holder.LookupTier;
@@ -8,8 +9,10 @@ import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.core.holder.change.ChangeTracker;
 import me.trae.foundation.database.core.holder.claim.UniqueClaimer;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
+import me.trae.foundation.database.core.value.ColumnValueMapper;
 import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisStorage;
+import org.jooq.Field;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -21,7 +24,12 @@ import java.util.stream.Stream;
 @AllArgsConstructor
 public final class HolderWriter<E extends Entity> {
 
+    private static final Runnable EMPTY_CALLBACK = () -> {};
+
     private final Object[] lockArray = Stream.generate(Object::new).limit(64).toArray();
+
+    @Getter
+    private final String sourceId = UUID.randomUUID().toString();
 
     private final AbstractEntityRepository<E> repository;
     private final LocalStorage<UUID, E> localStorage;
@@ -31,7 +39,7 @@ public final class HolderWriter<E extends Entity> {
     private final UniqueClaimer<E> uniqueClaimer;
     private final boolean redisEnabled;
 
-    public void save(final E entity) {
+    private void saveWithCallbacks(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
         synchronized (this.getLock(entity.getId())) {
             if (this.changeTracker.isTracked(entity.getId()) || this.localStorage != null && this.localStorage.contains(entity.getId())) {
                 throw new DatabaseException("Cannot save existing or already tracked %s %s".formatted(entity.getClass().getSimpleName(), entity.getId()));
@@ -46,14 +54,19 @@ public final class HolderWriter<E extends Entity> {
                     callbackList.add(() -> this.cacheRedisEntity(entity.getId()));
                 }
                 callbackList.add(idClaim::release);
+                callbackList.addAll(this.callbackList(commitRunnable));
 
-                this.repository.save(entity, callbackList, List.of(() -> {
+                final List<Runnable> failureCallbackList = new ArrayList<>();
+                failureCallbackList.add(() -> {
                     try {
                         this.handleFailedWrite(entity, true);
                     } finally {
                         idClaim.release();
                     }
-                }), this.redisEnabled);
+                });
+                failureCallbackList.addAll(this.callbackList(failureRunnable));
+
+                this.repository.save(entity, callbackList, failureCallbackList, this.redisEnabled, this.sourceId);
             } catch (final RuntimeException exception) {
                 this.uniqueClaimer.release(entity);
                 idClaim.release();
@@ -68,7 +81,24 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
-    public void update(final E entity) {
+    public void save(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        try {
+            this.saveWithCallbacks(entity, commitRunnable, failureRunnable);
+        } catch (final RuntimeException | Error exception) {
+            this.runCallback(failureRunnable, entity.getId());
+            throw exception;
+        }
+    }
+
+    public void save(final E entity, final Runnable commitRunnable) {
+        this.save(entity, commitRunnable, EMPTY_CALLBACK);
+    }
+
+    public void save(final E entity) {
+        this.save(entity, EMPTY_CALLBACK, EMPTY_CALLBACK);
+    }
+
+    private boolean updateWithCallbacks(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
         synchronized (this.getLock(entity.getId())) {
             if (!this.changeTracker.isTracked(entity)) {
                 final E baseline = this.repository.findById(entity.getId()).orElseThrow(() -> new DatabaseException("Cannot update missing %s %s".formatted(entity.getClass().getSimpleName(), entity.getId())));
@@ -79,12 +109,36 @@ public final class HolderWriter<E extends Entity> {
                 this.changeTracker.snapshot(entity, this.changeTracker.encode(baseline));
             }
 
-            this.writeChangedLocked(entity);
+            final boolean writeQueued = this.writeChangedLocked(entity, commitRunnable, failureRunnable);
 
             if (this.localStorage != null) {
                 this.localEntityIndex.put(entity, this.localStorage);
             }
+
+            return writeQueued;
         }
+    }
+
+    public void update(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        final boolean writeQueued;
+        try {
+            writeQueued = this.updateWithCallbacks(entity, commitRunnable, failureRunnable);
+        } catch (final RuntimeException | Error exception) {
+            this.runCallback(failureRunnable, entity.getId());
+            throw exception;
+        }
+
+        if (!writeQueued) {
+            this.runCallback(commitRunnable, entity.getId());
+        }
+    }
+
+    public void update(final E entity, final Runnable commitRunnable) {
+        this.update(entity, commitRunnable, EMPTY_CALLBACK);
+    }
+
+    public void update(final E entity) {
+        this.update(entity, EMPTY_CALLBACK, EMPTY_CALLBACK);
     }
 
     public void writeChanged(final E entity) {
@@ -93,31 +147,60 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
-    private void writeChangedLocked(final E entity) {
+    private boolean writeChangedLocked(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
         final Map<String, String> encodedMap = this.changeTracker.encode(entity);
 
         final List<EntityProperty<?, ?>> changedList = this.changeTracker.diff(entity.getId(), encodedMap);
         if (changedList.isEmpty()) {
-            return;
+            return false;
         }
 
         final List<EntityProperty<?, ?>> persistentChangedList = changedList.stream().filter(EntityProperty::isPersistent).toList();
         if (persistentChangedList.isEmpty()) {
             this.changeTracker.commit(entity.getId(), encodedMap, changedList);
-            return;
+            return false;
         }
 
-        final List<Runnable> callbackList = this.uniqueClaimer.claim(entity, persistentChangedList);
+        final List<Runnable> callbackList = new ArrayList<>(this.uniqueClaimer.claim(entity, persistentChangedList));
+        callbackList.addAll(this.callbackList(commitRunnable));
 
-        this.repository.update(entity, persistentChangedList, callbackList, List.of(() -> this.handleFailedWrite(entity, false)), this.redisEnabled);
+        final List<Runnable> failureCallbackList = new ArrayList<>();
+        failureCallbackList.add(() -> this.handleFailedWrite(entity, false));
+        failureCallbackList.addAll(this.callbackList(failureRunnable));
+
+        this.repository.update(
+                entity,
+                persistentChangedList,
+                callbackList,
+                failureCallbackList,
+                this.redisEnabled,
+                this.sourceId
+        );
 
         this.changeTracker.commit(entity, changedList);
+
         this.localEntityIndex.index(entity);
+
+        return true;
     }
 
-    public void delete(final E entity) {
+    private void writeChangedLocked(final E entity) {
+        this.writeChangedLocked(entity, EMPTY_CALLBACK, EMPTY_CALLBACK);
+    }
+
+    private void deleteWithCallbacks(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
         synchronized (this.getLock(entity.getId())) {
-            this.repository.delete(entity, List.of(() -> this.uniqueClaimer.release(entity)), this.redisEnabled);
+            final List<Runnable> callbackList = new ArrayList<>();
+            callbackList.add(() -> this.uniqueClaimer.release(entity));
+            callbackList.addAll(this.callbackList(commitRunnable));
+
+            this.repository.delete(
+                    entity,
+                    callbackList,
+                    this.callbackList(failureRunnable),
+                    this.redisEnabled,
+                    this.sourceId
+            );
 
             if (this.localStorage != null) {
                 this.localEntityIndex.remove(entity.getId(), this.localStorage);
@@ -127,9 +210,38 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
+    public void delete(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        try {
+            this.deleteWithCallbacks(entity, commitRunnable, failureRunnable);
+        } catch (final RuntimeException | Error exception) {
+            this.runCallback(failureRunnable, entity.getId());
+            throw exception;
+        }
+    }
+
+    public void delete(final E entity, final Runnable commitRunnable) {
+        this.delete(entity, commitRunnable, EMPTY_CALLBACK);
+    }
+
+    public void delete(final E entity) {
+        this.delete(entity, EMPTY_CALLBACK, EMPTY_CALLBACK);
+    }
+
+    private List<Runnable> callbackList(final Runnable runnable) {
+        return runnable == EMPTY_CALLBACK ? List.of() : List.of(runnable);
+    }
+
+    private void runCallback(final Runnable runnable, final UUID id) {
+        try {
+            runnable.run();
+        } catch (final RuntimeException exception) {
+            this.repository.getCoreDatabase().getBatchQueue().reportFailure(new DatabaseException("Holder callback failed for %s".formatted(id), exception));
+        }
+    }
+
     public long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta) {
         synchronized (this.getLock(entity.getId())) {
-            final long value = this.repository.increment(entity, entityProperty, delta, this.redisEnabled);
+            final long value = this.repository.increment(entity, entityProperty, delta, this.redisEnabled, this.sourceId);
 
             this.apply(entityProperty, entity, value);
 
@@ -176,8 +288,18 @@ public final class HolderWriter<E extends Entity> {
     public synchronized <Value> void transferUniqueProperty(final E claimant, final E currentOwner, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue) {
         final Value claimantPreviousValue = entityProperty.getValue(claimant);
 
-        this.repository.transferUniqueProperty(claimant, currentOwner, entityProperty, claimedValue, replacementValue, this.redisEnabled);
+        this.repository.transferUniqueProperty(
+                claimant,
+                currentOwner,
+                entityProperty,
+                claimedValue,
+                replacementValue,
+                this.redisEnabled,
+                this.sourceId
+        );
+
         this.uniqueClaimer.transferProperty(entityProperty, claimantPreviousValue, claimedValue, claimant.getId(), currentOwner.getId());
+
         this.changeTracker.snapshot(claimant);
         this.changeTracker.snapshot(currentOwner);
 
@@ -206,6 +328,9 @@ public final class HolderWriter<E extends Entity> {
                 this.writeChangedLocked(localEntity);
             }
 
+            final Map<Field<?>, Object> pendingValueMap = this.repository.getCoreDatabase().getBatchQueue().getPendingWriteStore()
+                    .getPendingValues(this.repository.getTableSchema(), this.repository.getTenantId().orElse(null), id);
+
             final E refreshedEntity = holderLookups.getIdLookup().lookup(id, EnumSet.of(LookupTier.REDIS, LookupTier.DATABASE)).orElse(null);
             if (refreshedEntity == null) {
                 this.evictLocal(id);
@@ -217,6 +342,10 @@ public final class HolderWriter<E extends Entity> {
             for (final EntityProperty<?, ?> entityProperty : this.repository.getProperties()) {
                 if (!entityProperty.isPersistent() || changedPropertyList.contains(entityProperty)) {
                     this.copyProperty(entityProperty, localEntity, refreshedEntity);
+                }
+
+                if (entityProperty.isPersistent() && pendingValueMap.containsKey(this.repository.getTableSchema().getField(entityProperty))) {
+                    ColumnValueMapper.writeStored(entityProperty, refreshedEntity, pendingValueMap.get(this.repository.getTableSchema().getField(entityProperty)));
                 }
             }
 

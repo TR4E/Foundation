@@ -6,6 +6,7 @@ import io.lettuce.core.pubsub.RedisPubSubAdapter;
 import io.lettuce.core.pubsub.RedisPubSubListener;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 
+import java.net.SocketAddress;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -84,7 +85,7 @@ public final class RedisSubscriptionDispatcher extends RedisPubSubAdapter<String
     }
 
     @Override
-    public void onRedisConnected(final RedisChannelHandler<?, ?> connection, final java.net.SocketAddress socketAddress) {
+    public void onRedisConnected(final RedisChannelHandler<?, ?> connection, final SocketAddress socketAddress) {
         this.onRedisConnected(connection);
     }
 

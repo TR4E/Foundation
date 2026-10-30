@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @AllArgsConstructor
 public final class RepositoryWriter<E extends Entity> {
@@ -28,7 +29,7 @@ public final class RepositoryWriter<E extends Entity> {
     private final String redisInstanceId;
     private final EntityRevisionStore entityRevisionStore;
 
-    public void insert(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+    public void insert(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled, final String sourceId) {
         final Map<Field<?>, Object> valueMap = new LinkedHashMap<>();
 
         for (final EntityProperty<?, ?> entityProperty : this.tableSchema.getPersistentProperties()) {
@@ -37,13 +38,26 @@ public final class RepositoryWriter<E extends Entity> {
 
         if (this.tableSchema.isOptimisticLocking()) {
             final RevisionState revisionState = this.entityRevisionStore.getState(entity);
+
             valueMap.put(TableSchema.REVISION_FIELD, revisionState.getRevision());
         }
 
-        this.pendingWriteStore.queueInsert(this.tableSchema, this.tenantId, entity.getId(), valueMap, new ArrayList<>(commitCallbackList), new ArrayList<>(failureCallbackList), this.createInvalidation(entity.getId(), redisEnabled, false));
+        this.pendingWriteStore.queueInsert(
+                this.tableSchema,
+                this.tenantId,
+                entity.getId(),
+                valueMap,
+                new ArrayList<>(commitCallbackList),
+                new ArrayList<>(failureCallbackList),
+                this.createInvalidation(entity.getId(), redisEnabled, false, sourceId)
+        );
     }
 
-    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+    public void insert(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+        this.insert(entity, commitCallbackList, failureCallbackList, redisEnabled, this.redisInstanceId);
+    }
+
+    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled, final String sourceId) {
         final Map<Field<?>, Object> valueMap = new LinkedHashMap<>();
 
         for (final EntityProperty<?, ?> entityProperty : entityProperties) {
@@ -60,6 +74,7 @@ public final class RepositoryWriter<E extends Entity> {
         final RevisionState revisionState = this.tableSchema.isOptimisticLocking() ? this.entityRevisionStore.getState(entity) : null;
 
         final Long expectedRevision = revisionState == null ? null : revisionState.getRevision();
+
         Runnable revisionCallback = null;
 
         if (expectedRevision != null) {
@@ -68,29 +83,67 @@ public final class RepositoryWriter<E extends Entity> {
             }
 
             valueMap.put(TableSchema.REVISION_FIELD, expectedRevision + 1L);
+
             revisionCallback = () -> revisionState.setRevision(expectedRevision + 1L);
         }
 
-        this.pendingWriteStore.queueUpdate(this.tableSchema, this.tenantId, entity.getId(), valueMap, new ArrayList<>(commitCallbackList), new ArrayList<>(failureCallbackList), this.createInvalidation(entity.getId(), redisEnabled), expectedRevision, revisionCallback, revisionState);
+        this.pendingWriteStore.queueUpdate(
+                this.tableSchema,
+                this.tenantId,
+                entity.getId(),
+                valueMap,
+                new ArrayList<>(commitCallbackList),
+                new ArrayList<>(failureCallbackList),
+                this.createInvalidation(entity.getId(), redisEnabled, sourceId),
+                expectedRevision,
+                revisionCallback,
+                revisionState
+        );
+    }
+
+    public void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+        this.update(entity, entityProperties, commitCallbackList, failureCallbackList, redisEnabled, this.redisInstanceId);
+    }
+
+    public void delete(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled, final String sourceId) {
+        final RevisionState revisionState = this.tableSchema.isOptimisticLocking() ? this.entityRevisionStore.getState(entity) : null;
+
+        final Long expectedRevision = revisionState == null ? null : revisionState.getRevision();
+
+        this.pendingWriteStore.queueDelete(
+                this.tableSchema,
+                this.tenantId,
+                entity.getId(),
+                commitCallbackList,
+                failureCallbackList,
+                this.createInvalidation(entity.getId(), redisEnabled, sourceId),
+                expectedRevision,
+                revisionState
+        );
+    }
+
+    public void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled, final String sourceId) {
+        this.delete(entity, commitCallbackList, List.of(), redisEnabled, sourceId);
+    }
+
+    public void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
+        this.delete(entity, commitCallbackList, redisEnabled, this.redisInstanceId);
     }
 
     public void delete(final E entity, final boolean redisEnabled) {
         this.delete(entity, List.of(), redisEnabled);
     }
 
-    public void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
-        final RevisionState revisionState = this.tableSchema.isOptimisticLocking() ? this.entityRevisionStore.getState(entity) : null;
-
-        final Long expectedRevision = revisionState == null ? null : revisionState.getRevision();
-        this.pendingWriteStore.queueDelete(this.tableSchema, this.tenantId, entity.getId(), commitCallbackList, this.createInvalidation(entity.getId(), redisEnabled), expectedRevision, revisionState);
+    private RedisInvalidation createInvalidation(final UUID id, final boolean redisEnabled, final boolean invalidateCache, final String sourceId) {
+        return !redisEnabled || this.redisNamespace == null ? null : this.redisNamespace.getInvalidation(id, sourceId, invalidateCache);
     }
 
-    public RedisInvalidation createInvalidation(final java.util.UUID id, final boolean redisEnabled) {
-        return this.createInvalidation(id, redisEnabled, true);
+    public RedisInvalidation createInvalidation(final UUID id, final boolean redisEnabled, final String sourceId) {
+        return this.createInvalidation(id, redisEnabled, true, sourceId == null ? this.redisInstanceId : sourceId);
     }
 
-    private RedisInvalidation createInvalidation(final java.util.UUID id, final boolean redisEnabled, final boolean invalidateCache) {
-        return !redisEnabled || this.redisNamespace == null ? null : this.redisNamespace.getInvalidation(id, this.redisInstanceId, invalidateCache);
+    public RedisInvalidation createInvalidation(final UUID id, final boolean redisEnabled) {
+        return this.createInvalidation(id, redisEnabled, this.redisInstanceId);
     }
 
 }

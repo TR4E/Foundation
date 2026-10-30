@@ -16,16 +16,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @UtilityClass
 public class IndexSynchronizer {
 
     private final String PREFIX = "fdx_";
     private final int MAXIMUM_NAME_LENGTH = 63;
-
-    public void synchronize(final DSLContext dslContext, final TableSchema<?> tableSchema, final Map<? extends EntityProperty<?, ?>, IndexType> indexMap) {
-        synchronize(dslContext, tableSchema, indexMap, List.of());
-    }
 
     public void synchronize(final DSLContext dslContext, final TableSchema<?> tableSchema, final Map<? extends EntityProperty<?, ?>, IndexType> indexMap, final List<? extends EntityIndex<?>> compositeIndexList) {
         if (indexMap.containsValue(IndexType.GIN_TRGM)) {
@@ -60,6 +57,10 @@ public class IndexSynchronizer {
                 dslContext.dropIndexIfExists(DSL.name(existing)).execute();
             }
         }
+    }
+
+    public void synchronize(final DSLContext dslContext, final TableSchema<?> tableSchema, final Map<? extends EntityProperty<?, ?>, IndexType> indexMap) {
+        synchronize(dslContext, tableSchema, indexMap, List.of());
     }
 
     private void create(final DSLContext dslContext, final TableSchema<?> tableSchema, final String name, final EntityProperty<?, ?> entityProperty, final IndexType indexType) {
@@ -98,7 +99,7 @@ public class IndexSynchronizer {
     }
 
     private String getIndexName(final TableSchema<?> tableSchema, final EntityIndex<?> entityIndex) {
-        final String propertyNames = entityIndex.getProperties().stream().map(EntityProperty::getName).collect(java.util.stream.Collectors.joining("_"));
+        final String propertyNames = entityIndex.getProperties().stream().map(EntityProperty::getName).collect(Collectors.joining("_"));
         final String name = "%s%s_%s_unique".formatted(PREFIX, tableSchema.getTableName(), propertyNames);
 
         if (name.length() <= MAXIMUM_NAME_LENGTH) {

@@ -26,12 +26,14 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -295,8 +297,8 @@ final class StorageTest {
 
         final CountDownLatch start = new CountDownLatch(1);
 
-        try (ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            final List<Future<Optional<Wallet>>> futureList = new java.util.ArrayList<>();
+        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+            final List<Future<Optional<Wallet>>> futureList = new ArrayList<>();
             for (int index = 0; index < requestCount; index++) {
                 final RedisStorage<Wallet> redisStorage = index % 2 == 0 ? firstStorage : secondStorage;
                 futureList.add(executorService.submit(() -> {
@@ -351,7 +353,7 @@ final class StorageTest {
 
         final CountDownLatch loaderCalled = new CountDownLatch(1);
 
-        try (final ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+        try (final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
             redisDriver.getCommands().set(claimKey, UUID.randomUUID().toString(), SetArgs.Builder.px(30_000L));
             redisDriver.getCommands().set(missingKey, "missing", SetArgs.Builder.px(10_000L));
 
@@ -403,7 +405,7 @@ final class StorageTest {
 
         final CountDownLatch staleLoadStarted = new CountDownLatch(1);
 
-        try (final ExecutorService executorService = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+        try (final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
             final Future<Optional<Wallet>> staleFuture = executorService.submit(() -> firstStorage.getOrLoad(id, () -> {
                 loadCount.incrementAndGet();
                 staleLoadStarted.countDown();

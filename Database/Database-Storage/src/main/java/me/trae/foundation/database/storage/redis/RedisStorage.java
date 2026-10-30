@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -56,16 +57,16 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     private final boolean revisioned;
     private final EntityRevisionStore entityRevisionStore;
 
-    public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry) {
-        this(redisDriver, redisNamespace, entityType, expiry, false);
+    public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry, final boolean revisioned, final EntityRevisionStore entityRevisionStore) {
+        this(redisDriver, redisNamespace, new EntityCodec<>(entityType), new RedisHashWriter(redisDriver, expiry), revisioned, entityRevisionStore);
     }
 
     public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry, final boolean revisioned) {
         this(redisDriver, redisNamespace, entityType, expiry, revisioned, new EntityRevisionStore());
     }
 
-    public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry, final boolean revisioned, final EntityRevisionStore entityRevisionStore) {
-        this(redisDriver, redisNamespace, new EntityCodec<>(entityType), new RedisHashWriter(redisDriver, expiry), revisioned, entityRevisionStore);
+    public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry) {
+        this(redisDriver, redisNamespace, entityType, expiry, false);
     }
 
     public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType) {
@@ -410,10 +411,6 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         }
     }
 
-    private Map<String, String> encode(final E entity) {
-        return this.encode(entity, this.entityCodec.getProperties());
-    }
-
     private Map<String, String> encode(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
         final Map<String, String> fieldMap = this.entityCodec.encode(entity, entityProperties);
 
@@ -422,6 +419,10 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         }
 
         return fieldMap;
+    }
+
+    private Map<String, String> encode(final E entity) {
+        return this.encode(entity, this.entityCodec.getProperties());
     }
 
     private boolean acquireLockIfAvailable(final String lockKey, final String owner) {
@@ -502,7 +503,7 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         }
 
         try {
-            Thread.sleep(Math.min(25L, Math.max(1L, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
+            Thread.sleep(Math.min(25L, Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
         } catch (final InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for a Redis cache fill", exception);

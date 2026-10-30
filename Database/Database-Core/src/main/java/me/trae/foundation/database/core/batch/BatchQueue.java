@@ -36,10 +36,6 @@ public final class BatchQueue {
 
     private ScheduledExecutorService scheduledExecutorService;
 
-    public BatchQueue(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Duration flushInterval, final int chunkSize) {
-        this(postgresDriver, redisDriver, flushInterval, chunkSize, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
-    }
-
     public BatchQueue(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
         this.pendingWriteStore = new PendingWriteStore(maximumPendingWrites);
         this.postgresDriver = postgresDriver;
@@ -47,6 +43,10 @@ public final class BatchQueue {
         this.cacheInvalidationOutbox = redisDriver == null ? null : new CacheInvalidationOutbox(postgresDriver, redisDriver);
         this.flushInterval = flushInterval;
         this.chunkSize = chunkSize;
+    }
+
+    public BatchQueue(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Duration flushInterval, final int chunkSize) {
+        this(postgresDriver, redisDriver, flushInterval, chunkSize, PendingWriteStore.DEFAULT_MAX_PENDING_WRITES);
     }
 
     public void synchronizeOutbox() {

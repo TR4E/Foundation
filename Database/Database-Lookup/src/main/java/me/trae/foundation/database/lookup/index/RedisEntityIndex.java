@@ -1,7 +1,9 @@
 package me.trae.foundation.database.lookup.index;
 
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.SetArgs;
 import lombok.AllArgsConstructor;
+import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.repository.index.EntityIndex;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
@@ -12,7 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @AllArgsConstructor
-public final class RedisEntityIndex<E extends me.trae.foundation.database.api.entity.Entity> {
+public final class RedisEntityIndex<E extends Entity> {
 
     private static final String REMOVE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
 
@@ -30,7 +32,7 @@ public final class RedisEntityIndex<E extends me.trae.foundation.database.api.en
     }
 
     public void remove(final List<Object> values, final UUID id) {
-        this.redisDriver.getCommands().eval(REMOVE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER, new String[]{this.getKey(values)}, id.toString());
+        this.redisDriver.getCommands().eval(REMOVE_SCRIPT, ScriptOutputType.INTEGER, new String[]{this.getKey(values)}, id.toString());
     }
 
     public String getKey(final List<Object> values) {

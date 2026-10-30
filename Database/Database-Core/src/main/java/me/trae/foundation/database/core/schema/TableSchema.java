@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Getter
 public final class TableSchema<E extends Entity> {
@@ -35,10 +36,6 @@ public final class TableSchema<E extends Entity> {
     private final boolean optimisticLocking;
     private final List<EntityProperty<?, ?>> persistentProperties;
     private final Map<String, Field<?>> fieldMap = new LinkedHashMap<>();
-
-    public TableSchema(final Class<E> entityType, final String tableName, final TenantScope tenantScope, final List<EntityProperty<?, ?>> entityProperties) {
-        this(entityType, tableName, tenantScope, entityProperties, false);
-    }
 
     public TableSchema(final Class<E> entityType, final String tableName, final TenantScope tenantScope, final List<EntityProperty<?, ?>> entityProperties, final boolean optimisticLocking) {
         this.entityType = entityType;
@@ -57,6 +54,10 @@ public final class TableSchema<E extends Entity> {
         }
     }
 
+    public TableSchema(final Class<E> entityType, final String tableName, final TenantScope tenantScope, final List<EntityProperty<?, ?>> entityProperties) {
+        this(entityType, tableName, tenantScope, entityProperties, false);
+    }
+
     public String getTableName() {
         return this.table.getName();
     }
@@ -70,7 +71,7 @@ public final class TableSchema<E extends Entity> {
     }
 
     public Collection<Field<?>> getColumnFields() {
-        return this.optimisticLocking ? java.util.stream.Stream.concat(this.fieldMap.values().stream(), java.util.stream.Stream.of(REVISION_FIELD)).toList() : this.fieldMap.values();
+        return this.optimisticLocking ? Stream.concat(this.fieldMap.values().stream(), Stream.of(REVISION_FIELD)).toList() : this.fieldMap.values();
     }
 
     public Field<?> getField(final EntityProperty<?, ?> entityProperty) {

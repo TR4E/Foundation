@@ -30,14 +30,6 @@ public final class HolderComponents<E extends Entity> {
     private final HolderLookups<E> holderLookups;
     private final HolderWriter<E> holderWriter;
 
-    public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry) {
-        return create(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry, LocalStorage.DEFAULT_MAXIMUM_AGE);
-    }
-
-    public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry, final Duration localMaximumAge) {
-        return create(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry, localMaximumAge);
-    }
-
     public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final RedisMode redisMode, final Duration localExpiry, final Duration redisExpiry, final Duration localMaximumAge) {
         Objects.requireNonNull(redisMode, "redisMode");
 
@@ -72,10 +64,18 @@ public final class HolderComponents<E extends Entity> {
         if (instanceMode == InstanceMode.MULTI_INSTANCE) {
             final String channel = redisStorage.getRedisNamespace().getInvalidationChannel();
 
-            redisDriver.subscribe(channel, (final String message) -> invalidateLocal(localStorage, holderLookups, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
+            redisDriver.subscribe(channel, message -> invalidateLocal(localStorage, holderLookups, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
         }
 
         return new HolderComponents<>(localStorage, localEntityIndex, changeTracker, holderLookups, holderWriter);
+    }
+
+    public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry, final Duration localMaximumAge) {
+        return create(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry, localMaximumAge);
+    }
+
+    public static <E extends Entity> HolderComponents<E> create(final AbstractEntityRepository<E> repository, final InstanceMode instanceMode, final Duration localExpiry, final Duration redisExpiry) {
+        return create(repository, instanceMode, RedisMode.ENABLED, localExpiry, redisExpiry, LocalStorage.DEFAULT_MAXIMUM_AGE);
     }
 
     private static <EntityType extends Entity> void invalidateLocal(final LocalStorage<UUID, EntityType> localStorage, final HolderLookups<EntityType> holderLookups, final HolderWriter<EntityType> holderWriter, final BatchQueue batchQueue, final String message) {
@@ -89,7 +89,7 @@ public final class HolderComponents<E extends Entity> {
 
         final String[] parts = message.split("\\|", 2);
 
-        if (parts.length != 2) {
+        if (parts.length != 2 || holderWriter.getSourceId().equals(parts[0])) {
             return;
         }
 

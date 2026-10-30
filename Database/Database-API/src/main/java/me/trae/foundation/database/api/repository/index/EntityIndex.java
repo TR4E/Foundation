@@ -44,7 +44,7 @@ public final class EntityIndex<E extends Entity> {
             throw new IllegalArgumentException("Index %s requires %s values".formatted(this.name, this.properties.size()));
         }
 
-        final java.util.ArrayList<Object> normalizedList = new java.util.ArrayList<>(values.length);
+        final List<Object> normalizedList = new ArrayList<>(values.length);
 
         for (int index = 0; index < values.length; index++) {
             final EntityProperty<? super E, ?> property = this.properties.get(index);

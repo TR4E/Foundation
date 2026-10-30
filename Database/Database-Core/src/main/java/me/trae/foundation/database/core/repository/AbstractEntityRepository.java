@@ -26,15 +26,19 @@ import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record;
+import org.jooq.Result;
 import org.jooq.UpdateSetMoreStep;
 import org.jooq.impl.DSL;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Getter
@@ -93,7 +97,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
     }
 
     public final List<EntityIndex<E>> getEntityIndexes() {
-        final List<EntityIndex<E>> entityIndexList = new java.util.ArrayList<>();
+        final List<EntityIndex<E>> entityIndexList = new ArrayList<>();
 
         for (final EntityProperty<? super E, ?> entityProperty : this.getUniqueProperties()) {
             entityIndexList.add(EntityIndex.of(entityProperty.getName(), entityProperty));
@@ -101,7 +105,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
 
         entityIndexList.addAll(this.getCompositeIndexes());
 
-        final java.util.Set<String> nameSet = new java.util.HashSet<>();
+        final Set<String> nameSet = new HashSet<>();
 
         for (final EntityIndex<E> entityIndex : entityIndexList) {
             if (!nameSet.add(entityIndex.getName())) {
@@ -157,16 +161,20 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         return this.repositoryReader.findPage(query, page, size);
     }
 
-    public final void save(final E entity, final List<Runnable> commitCallbackList) {
-        this.repositoryWriter.insert(entity, commitCallbackList, List.of(), false);
+    public final void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled, final String sourceId) {
+        this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, redisEnabled, sourceId);
+    }
+
+    public final void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+        this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, redisEnabled);
     }
 
     public final void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
         this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, false);
     }
 
-    public final void save(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
-        this.repositoryWriter.insert(entity, commitCallbackList, failureCallbackList, redisEnabled);
+    public final void save(final E entity, final List<Runnable> commitCallbackList) {
+        this.repositoryWriter.insert(entity, commitCallbackList, List.of(), false);
     }
 
     @Override
@@ -174,16 +182,20 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         this.save(entity, Collections.emptyList());
     }
 
-    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList) {
-        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, List.of(), false);
+    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled, final String sourceId) {
+        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, redisEnabled, sourceId);
+    }
+
+    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
+        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, redisEnabled);
     }
 
     public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
         this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, false);
     }
 
-    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled) {
-        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, failureCallbackList, redisEnabled);
+    public final void update(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties, final List<Runnable> commitCallbackList) {
+        this.repositoryWriter.update(entity, entityProperties, commitCallbackList, List.of(), false);
     }
 
     @Override
@@ -211,17 +223,25 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         }
     }
 
-    @Override
-    public final void delete(final E entity) {
-        this.repositoryWriter.delete(entity, false);
+    public final void delete(final E entity, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final boolean redisEnabled, final String sourceId) {
+        this.repositoryWriter.delete(entity, commitCallbackList, failureCallbackList, redisEnabled, sourceId);
+    }
+
+    public final void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled, final String sourceId) {
+        this.repositoryWriter.delete(entity, commitCallbackList, redisEnabled, sourceId);
+    }
+
+    public final void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
+        this.repositoryWriter.delete(entity, commitCallbackList, redisEnabled);
     }
 
     public final void delete(final E entity, final List<Runnable> commitCallbackList) {
         this.repositoryWriter.delete(entity, commitCallbackList, false);
     }
 
-    public final void delete(final E entity, final List<Runnable> commitCallbackList, final boolean redisEnabled) {
-        this.repositoryWriter.delete(entity, commitCallbackList, redisEnabled);
+    @Override
+    public final void delete(final E entity) {
+        this.repositoryWriter.delete(entity, false);
     }
 
     public final void inheritRevision(final E entity, final E baseline) {
@@ -230,7 +250,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         }
     }
 
-    public final long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta, final boolean redisEnabled) {
+    public final long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta, final boolean redisEnabled, final String sourceId) {
         if (!entityProperty.isPersistent() || entityProperty.getValueConverter().isPresent()) {
             throw new SchemaException("Property %s cannot be incremented because it is not a persistent primitive number".formatted(entityProperty.getName()));
         }
@@ -264,7 +284,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
                 result[0] = this.incrementValue(dslContext, entity, field, 0L, delta, expectedRevision[0]);
             }
 
-            CacheInvalidationOutbox.insertInvalidations(dslContext, List.of(this.repositoryWriter.createInvalidation(entity.getId(), redisEnabled)));
+            CacheInvalidationOutbox.insertInvalidations(dslContext, List.of(this.repositoryWriter.createInvalidation(entity.getId(), redisEnabled, sourceId)));
         });
 
         if (expectedRevision[0] != null) {
@@ -272,6 +292,10 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         }
 
         return result[0];
+    }
+
+    public final long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta, final boolean redisEnabled) {
+        return this.increment(entity, entityProperty, delta, redisEnabled, null);
     }
 
     private <NumberType extends Number> NumberType incrementValue(final DSLContext dslContext, final E entity, final Field<NumberType> field, final NumberType zero, final NumberType increment, final Long expectedRevision) {
@@ -296,7 +320,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         return record.get(field);
     }
 
-    public final <Value> void transferUniqueProperty(final E claimant, final E currentOwner, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue, final boolean redisEnabled) {
+    public final <Value> void transferUniqueProperty(final E claimant, final E currentOwner, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue, final boolean redisEnabled, final String sourceId) {
         if (claimant.getId().equals(currentOwner.getId())) {
             throw new IllegalArgumentException("Claimant and current owner must be different entities");
         }
@@ -320,8 +344,8 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
 
         final Field<?> propertyField = this.tableSchema.getField(entityProperty);
 
-        final RedisInvalidation claimantInvalidation = this.repositoryWriter.createInvalidation(claimant.getId(), redisEnabled);
-        final RedisInvalidation ownerInvalidation = this.repositoryWriter.createInvalidation(currentOwner.getId(), redisEnabled);
+        final RedisInvalidation claimantInvalidation = this.repositoryWriter.createInvalidation(claimant.getId(), redisEnabled, sourceId);
+        final RedisInvalidation ownerInvalidation = this.repositoryWriter.createInvalidation(currentOwner.getId(), redisEnabled, sourceId);
         final Long claimantRevision = this.getExpectedRevision(claimant);
         final Long ownerRevision = this.getExpectedRevision(currentOwner);
         final long[] nextRevision = new long[2];
@@ -329,7 +353,7 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         this.coreDatabase.getBatchQueue().executeAtomically(dslContext -> {
             final Condition condition = TableSchema.ID_FIELD.in(claimant.getId(), currentOwner.getId());
             final Condition tenantCondition = this.tableSchema.isTenantScoped() ? condition.and(TableSchema.TENANT_FIELD.eq(this.tenantId)) : condition;
-            final org.jooq.Result<? extends Record> recordList;
+            final Result<? extends Record> recordList;
 
             if (this.tableSchema.isOptimisticLocking()) {
                 recordList = dslContext.select(TableSchema.ID_FIELD, propertyField, TableSchema.REVISION_FIELD)
@@ -388,9 +412,13 @@ public abstract class AbstractEntityRepository<E extends Entity> implements Enti
         }
     }
 
+    public final <Value> void transferUniqueProperty(final E claimant, final E currentOwner, final EntityProperty<? super E, Value> entityProperty, final Value claimedValue, final Value replacementValue, final boolean redisEnabled) {
+        this.transferUniqueProperty(claimant, currentOwner, entityProperty, claimedValue, replacementValue, redisEnabled, null);
+    }
+
     private <Value> void updateUniqueProperty(final DSLContext dslContext, final E entity, final EntityProperty<? super E, Value> entityProperty, final Value value, final long expectedRevision) {
         final Field<Object> field = this.tableSchema.getField(entityProperty).coerce(Object.class);
-        final org.jooq.UpdateSetMoreStep<Record> updateStep = dslContext.update(this.tableSchema.getTable()).set(field, ColumnValueMapper.toStoredObject(entityProperty, value));
+        final UpdateSetMoreStep<Record> updateStep = dslContext.update(this.tableSchema.getTable()).set(field, ColumnValueMapper.toStoredObject(entityProperty, value));
 
         if (!this.tableSchema.isOptimisticLocking()) {
             if (updateStep.where(this.tableSchema.getKeyCondition(this.tenantId, entity.getId())).execute() != 1) {

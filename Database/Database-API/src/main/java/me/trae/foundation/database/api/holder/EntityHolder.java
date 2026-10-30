@@ -60,10 +60,39 @@ public interface EntityHolder<E extends Entity, R extends EntityRepository<E>> {
 
     void unpin(final E entity);
 
+    default void save(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        throw new UnsupportedOperationException("This holder does not support save callbacks");
+    }
+
+    default void save(final E entity, final Runnable commitRunnable) {
+        this.save(entity, commitRunnable, () -> {});
+    }
+
     void save(final E entity);
+
+    /**
+     * Runs the commit callback immediately when no write is needed, or after the database commit.
+     * Callbacks run on the calling thread for immediate completion, or on the batch processing thread.
+     * A commit does not acknowledge cache refreshes in other instances.
+     */
+    default void update(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        throw new UnsupportedOperationException("This holder does not support update callbacks");
+    }
+
+    default void update(final E entity, final Runnable commitRunnable) {
+        this.update(entity, commitRunnable, () -> {});
+    }
 
     default void update(final E entity) {
         throw new UnsupportedOperationException("This holder does not support entity updates");
+    }
+
+    default void delete(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        throw new UnsupportedOperationException("This holder does not support delete callbacks");
+    }
+
+    default void delete(final E entity, final Runnable commitRunnable) {
+        this.delete(entity, commitRunnable, () -> {});
     }
 
     void delete(final E entity);

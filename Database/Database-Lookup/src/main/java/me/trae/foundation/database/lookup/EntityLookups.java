@@ -18,6 +18,7 @@ import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,13 +28,10 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 @UtilityClass
 public final class EntityLookups {
-
-    public static <E extends Entity> TieredLookup<UUID, E> byId(final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository) {
-        return byId(localStorage, redisStorage, entityRepository, entity -> localStorage.put(entity.getId(), entity));
-    }
 
     public static <E extends Entity> TieredLookup<UUID, E> byId(final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository, final Consumer<E> localWriter) {
         final List<LookupStep<UUID, E>> stepList = new ArrayList<>();
@@ -55,7 +53,11 @@ public final class EntityLookups {
         return new TieredLookup<>(stepList);
     }
 
-    public static <E extends Entity> TieredLookup<List<Object>, E> byIndex(final EntityIndex<E> entityIndex, final LocalStorage<UUID, E> localStorage, final java.util.function.Function<List<Object>, Optional<E>> localReader, final java.util.function.Consumer<E> localWriter, final RedisStorage<E> redisStorage, final RedisEntityIndex<E> redisEntityIndex, final EntityRepository<E> entityRepository) {
+    public static <E extends Entity> TieredLookup<UUID, E> byId(final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository) {
+        return byId(localStorage, redisStorage, entityRepository, entity -> localStorage.put(entity.getId(), entity));
+    }
+
+    public static <E extends Entity> TieredLookup<List<Object>, E> byIndex(final EntityIndex<E> entityIndex, final LocalStorage<UUID, E> localStorage, final Function<List<Object>, Optional<E>> localReader, final Consumer<E> localWriter, final RedisStorage<E> redisStorage, final RedisEntityIndex<E> redisEntityIndex, final EntityRepository<E> entityRepository) {
         final List<LookupStep<List<Object>, E>> stepList = new ArrayList<>();
 
         if (localStorage != null) {
@@ -69,10 +71,6 @@ public final class EntityLookups {
         stepList.add(LookupStep.of(LookupTier.DATABASE, values -> findByIndex(entityRepository, entityIndex, values)));
 
         return new TieredLookup<>(stepList);
-    }
-
-    public static <E extends Entity, Value> TieredLookup<Value, E> byProperty(final EntityProperty<? super E, Value> entityProperty, final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityRepository<E> entityRepository) {
-        return byProperty(entityProperty, localStorage, redisStorage, propertyIndex, entityRepository, entity -> localStorage.put(entity.getId(), entity));
     }
 
     public static <E extends Entity, Value> TieredLookup<Value, E> byProperty(final EntityProperty<? super E, Value> entityProperty, final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityRepository<E> entityRepository, final Consumer<E> localWriter) {
@@ -89,6 +87,10 @@ public final class EntityLookups {
         stepList.add(LookupStep.of(LookupTier.DATABASE, value -> entityRepository.findOne(Query.where(entityProperty, Operator.EQUALS, value))));
 
         return new TieredLookup<>(stepList);
+    }
+
+    public static <E extends Entity, Value> TieredLookup<Value, E> byProperty(final EntityProperty<? super E, Value> entityProperty, final LocalStorage<UUID, E> localStorage, final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityRepository<E> entityRepository) {
+        return byProperty(entityProperty, localStorage, redisStorage, propertyIndex, entityRepository, entity -> localStorage.put(entity.getId(), entity));
     }
 
     private static <E extends Entity, Value> Optional<E> findLocal(final LocalStorage<UUID, E> localStorage, final EntityProperty<? super E, Value> entityProperty, final Value value) {
@@ -149,7 +151,7 @@ public final class EntityLookups {
         }
     }
 
-    private static <E extends Entity> Map<UUID, E> loadManyById(final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository, final java.util.Collection<UUID> ids) {
+    private static <E extends Entity> Map<UUID, E> loadManyById(final RedisStorage<E> redisStorage, final EntityRepository<E> entityRepository, final Collection<UUID> ids) {
         if (redisStorage == null) {
             return mapById(entityRepository.findManyById(ids));
         }

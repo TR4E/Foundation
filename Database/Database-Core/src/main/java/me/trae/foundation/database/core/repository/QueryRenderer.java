@@ -18,6 +18,7 @@ import org.jooq.impl.DSL;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 @UtilityClass
 public class QueryRenderer {
@@ -64,7 +65,7 @@ public class QueryRenderer {
         return switch (operator) {
             case IN -> toCollection(value).stream().map(element -> ColumnValueMapper.toStoredObject(entityProperty, entityProperty.normalizeIndexValue(element))).toList();
             case LIKE, IS_NULL, IS_NOT_NULL -> value;
-            case EQUALS, NOT_EQUALS -> ColumnValueMapper.toStoredObject(entityProperty, entityProperty.isCaseInsensitive() && value instanceof final String string ? string.toLowerCase(java.util.Locale.ROOT) : value);
+            case EQUALS, NOT_EQUALS -> ColumnValueMapper.toStoredObject(entityProperty, entityProperty.isCaseInsensitive() && value instanceof final String string ? string.toLowerCase(Locale.ROOT) : value);
             default -> ColumnValueMapper.toStoredObject(entityProperty, value);
         };
     }

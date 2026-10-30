@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.LongConsumer;
@@ -126,7 +127,7 @@ final class DatabasePipelineBenchmarkTest {
         }
 
         final long totalNanos = System.nanoTime() - totalStartNanos;
-        java.util.Arrays.sort(latencyArray);
+        Arrays.sort(latencyArray);
         final double operationsPerSecond = iterationCount / (totalNanos / 1_000_000_000.0);
         System.out.println("BENCHMARK|%s|ops=%s|opsPerSecond=%.2f|p50Micros=%.2f|p95Micros=%.2f|p99Micros=%.2f".formatted(
                 name,

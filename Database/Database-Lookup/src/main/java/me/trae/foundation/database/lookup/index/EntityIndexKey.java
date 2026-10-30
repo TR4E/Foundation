@@ -10,6 +10,14 @@ import java.util.List;
 @UtilityClass
 public final class EntityIndexKey {
 
+    private String encode(final EntityProperty<?, ?> entityProperty, final Object value) {
+        return encodeUnchecked(entityProperty, entityProperty.normalizeIndexValue(value));
+    }
+
+    public static String encodeValue(final EntityProperty<?, ?> entityProperty, final Object value) {
+        return encode(entityProperty, value);
+    }
+
     public static String encode(final EntityIndex<?> entityIndex, final List<Object> values) {
         if (values.size() != entityIndex.getProperties().size()) {
             throw new IllegalArgumentException("Index %s requires %s values".formatted(entityIndex.getName(), entityIndex.getProperties().size()));
@@ -23,14 +31,6 @@ public final class EntityIndexKey {
         }
 
         return keyBuilder.toString();
-    }
-
-    public static String encodeValue(final EntityProperty<?, ?> entityProperty, final Object value) {
-        return encode(entityProperty, value);
-    }
-
-    private String encode(final EntityProperty<?, ?> entityProperty, final Object value) {
-        return encodeUnchecked(entityProperty, entityProperty.normalizeIndexValue(value));
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

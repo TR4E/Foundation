@@ -218,19 +218,19 @@ public final class BatchExecutor {
     }
 
     private void complete(final PendingWrite pendingWrite, final boolean changed) {
-        for (final Runnable callback : pendingWrite.getCommitCallbackList()) {
-            try {
-                callback.run();
-            } catch (final RuntimeException exception) {
-                this.failureHandler.accept(new DatabaseException("Commit callback failed for %s".formatted(pendingWrite.getId()), exception));
-            }
-        }
-
         if (changed && pendingWrite.getRevisionCallback() != null) {
             try {
                 pendingWrite.getRevisionCallback().run();
             } catch (final RuntimeException exception) {
                 this.failureHandler.accept(new DatabaseException("Revision callback failed for %s".formatted(pendingWrite.getId()), exception));
+            }
+        }
+
+        for (final Runnable callback : pendingWrite.getCommitCallbackList()) {
+            try {
+                callback.run();
+            } catch (final RuntimeException exception) {
+                this.failureHandler.accept(new DatabaseException("Commit callback failed for %s".formatted(pendingWrite.getId()), exception));
             }
         }
     }

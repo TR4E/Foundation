@@ -37,10 +37,6 @@ public final class EntityCodec<E extends Entity> {
         return this.propertyList;
     }
 
-    public Map<String, String> encode(final E entity) {
-        return this.encode(entity, this.getProperties());
-    }
-
     public Map<String, String> encode(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
         final Map<String, String> fieldMap = new LinkedHashMap<>();
 
@@ -49,6 +45,10 @@ public final class EntityCodec<E extends Entity> {
         }
 
         return fieldMap;
+    }
+
+    public Map<String, String> encode(final E entity) {
+        return this.encode(entity, this.getProperties());
     }
 
     public E decode(final UUID id, final Map<String, String> fieldMap) {

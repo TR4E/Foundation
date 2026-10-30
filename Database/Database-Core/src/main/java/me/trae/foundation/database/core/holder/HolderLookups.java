@@ -50,8 +50,8 @@ public final class HolderLookups<E extends Entity> {
         this.idLookup = EntityLookups.byId(localStorage, redisStorage, repository, this::cache);
     }
 
-    public <Value> Optional<E> lookup(final EntityProperty<? super E, Value> entityProperty, final Value value) {
-        return this.lookup(entityProperty, value, EnumSet.allOf(LookupTier.class));
+    public Optional<E> lookup(final EntityIndex<? super E> entityIndex, final Set<LookupTier> lookupTiers, final Object... values) {
+        return this.getEntityIndexLookup(entityIndex).lookup(entityIndex.getValues(values), lookupTiers);
     }
 
     public <Value> Optional<E> lookup(final EntityProperty<? super E, Value> entityProperty, final Value value, final Set<LookupTier> lookupTiers) {
@@ -64,12 +64,12 @@ public final class HolderLookups<E extends Entity> {
         return this.getPropertyLookup(entityProperty).lookup(value, lookupTiers);
     }
 
-    public Optional<E> lookup(final EntityIndex<? super E> entityIndex, final Object... values) {
-        return this.lookup(entityIndex, EnumSet.allOf(LookupTier.class), values);
+    public <Value> Optional<E> lookup(final EntityProperty<? super E, Value> entityProperty, final Value value) {
+        return this.lookup(entityProperty, value, EnumSet.allOf(LookupTier.class));
     }
 
-    public Optional<E> lookup(final EntityIndex<? super E> entityIndex, final Set<LookupTier> lookupTiers, final Object... values) {
-        return this.getEntityIndexLookup(entityIndex).lookup(entityIndex.getValues(values), lookupTiers);
+    public Optional<E> lookup(final EntityIndex<? super E> entityIndex, final Object... values) {
+        return this.lookup(entityIndex, EnumSet.allOf(LookupTier.class), values);
     }
 
     public void cache(final E entity) {

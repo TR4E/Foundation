@@ -3,6 +3,7 @@ package me.trae.foundation.injector.core.resolver;
 import me.trae.foundation.injector.api.annotation.Provider;
 import me.trae.foundation.injector.api.exception.AmbiguousDependencyException;
 import me.trae.foundation.injector.api.exception.ComponentCreationException;
+import me.trae.foundation.injector.api.exception.DuplicateComponentException;
 import me.trae.foundation.injector.api.exception.UnsupportedDependencyTypeException;
 import me.trae.foundation.injector.core.application.ApplicationContext;
 import me.trae.foundation.injector.core.container.ComponentContainer;
@@ -48,7 +49,7 @@ public final class ProviderResolver extends AbstractResolver {
                 final Class<?> previous = this.ownerMap.putIfAbsent(returnType, pendingClass);
 
                 if (previous != null && previous != pendingClass) {
-                    throw new me.trae.foundation.injector.api.exception.DuplicateComponentException("Multiple @Provider methods return %s".formatted(returnType.getTypeName()));
+                    throw new DuplicateComponentException("Multiple @Provider methods return %s".formatted(returnType.getTypeName()));
                 }
             }
         }

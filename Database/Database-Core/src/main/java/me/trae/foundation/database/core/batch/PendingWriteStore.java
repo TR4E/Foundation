@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,19 +24,13 @@ public final class PendingWriteStore {
 
     private final Map<String, PendingWrite> pendingMap = new HashMap<>();
     private final Map<String, PendingWrite> inFlightMap = new HashMap<>();
+
     private final int maximumPendingWrites;
     private final int maximumPendingCallbacks;
 
     private final AtomicLong sequence = new AtomicLong();
+
     private int pendingCallbackCount;
-
-    public PendingWriteStore() {
-        this(DEFAULT_MAX_PENDING_WRITES, DEFAULT_MAX_PENDING_CALLBACKS);
-    }
-
-    public PendingWriteStore(final int maximumPendingWrites) {
-        this(maximumPendingWrites, DEFAULT_MAX_PENDING_CALLBACKS);
-    }
 
     PendingWriteStore(final int maximumPendingWrites, final int maximumPendingCallbacks) {
         if (maximumPendingWrites < 1) {
@@ -50,6 +45,14 @@ public final class PendingWriteStore {
         this.maximumPendingCallbacks = maximumPendingCallbacks;
     }
 
+    public PendingWriteStore(final int maximumPendingWrites) {
+        this(maximumPendingWrites, DEFAULT_MAX_PENDING_CALLBACKS);
+    }
+
+    public PendingWriteStore() {
+        this(DEFAULT_MAX_PENDING_WRITES, DEFAULT_MAX_PENDING_CALLBACKS);
+    }
+
     public void queueInsert(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final RedisInvalidation invalidation) {
         this.queue(new PendingWrite(tableSchema, tenantId, id, WriteType.INSERT, valueMap, commitCallbackList, failureCallbackList, this.sequence.incrementAndGet(), invalidation, null, null, null));
     }
@@ -58,20 +61,20 @@ public final class PendingWriteStore {
         this.queue(new PendingWrite(tableSchema, tenantId, id, WriteType.UPDATE, valueMap, commitCallbackList, failureCallbackList, this.sequence.incrementAndGet(), invalidation, expectedRevision, revisionCallback, revisionState));
     }
 
-    public void queueUpdate(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList) {
-        this.queueUpdate(tableSchema, tenantId, id, valueMap, commitCallbackList, List.of(), null, null, null, null);
-    }
-
-    public void queueUpdate(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation) {
-        this.queueUpdate(tableSchema, tenantId, id, valueMap, commitCallbackList, List.of(), invalidation, null, null, null);
+    public void queueUpdate(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback, final RevisionState revisionState) {
+        this.queueUpdate(tableSchema, tenantId, id, valueMap, commitCallbackList, List.of(), invalidation, expectedRevision, revisionCallback, revisionState);
     }
 
     public void queueUpdate(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback) {
         this.queueUpdate(tableSchema, tenantId, id, valueMap, commitCallbackList, List.of(), invalidation, expectedRevision, revisionCallback, null);
     }
 
-    public void queueUpdate(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback, final RevisionState revisionState) {
-        this.queueUpdate(tableSchema, tenantId, id, valueMap, commitCallbackList, List.of(), invalidation, expectedRevision, revisionCallback, revisionState);
+    public void queueUpdate(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation) {
+        this.queueUpdate(tableSchema, tenantId, id, valueMap, commitCallbackList, List.of(), invalidation, null, null, null);
+    }
+
+    public void queueUpdate(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList) {
+        this.queueUpdate(tableSchema, tenantId, id, valueMap, commitCallbackList, List.of(), null, null, null, null);
     }
 
     public void queueInsert(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation) {
@@ -79,24 +82,41 @@ public final class PendingWriteStore {
     }
 
 
-    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id) {
-        this.queueDelete(tableSchema, tenantId, id, Collections.emptyList());
+    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final RedisInvalidation invalidation, final Long expectedRevision, final RevisionState revisionState) {
+        this.queue(new PendingWrite(
+                tableSchema,
+                tenantId,
+                id,
+                WriteType.DELETE,
+                Collections.emptyMap(),
+                commitCallbackList,
+                failureCallbackList,
+                this.sequence.incrementAndGet(),
+                invalidation,
+                expectedRevision,
+                null,
+                revisionState
+        ));
     }
 
-    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList) {
-        this.queueDelete(tableSchema, tenantId, id, commitCallbackList, null);
-    }
-
-    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation) {
-        this.queue(new PendingWrite(tableSchema, tenantId, id, WriteType.DELETE, Collections.emptyMap(), commitCallbackList, this.sequence.incrementAndGet(), invalidation));
+    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation, final Long expectedRevision, final RevisionState revisionState) {
+        this.queueDelete(tableSchema, tenantId, id, commitCallbackList, List.of(), invalidation, expectedRevision, revisionState);
     }
 
     public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation, final Long expectedRevision) {
         this.queueDelete(tableSchema, tenantId, id, commitCallbackList, invalidation, expectedRevision, null);
     }
 
-    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation, final Long expectedRevision, final RevisionState revisionState) {
-        this.queue(new PendingWrite(tableSchema, tenantId, id, WriteType.DELETE, Collections.emptyMap(), commitCallbackList, this.sequence.incrementAndGet(), invalidation, expectedRevision, null, revisionState));
+    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList, final RedisInvalidation invalidation) {
+        this.queue(new PendingWrite(tableSchema, tenantId, id, WriteType.DELETE, Collections.emptyMap(), commitCallbackList, this.sequence.incrementAndGet(), invalidation));
+    }
+
+    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList) {
+        this.queueDelete(tableSchema, tenantId, id, commitCallbackList, null);
+    }
+
+    public void queueDelete(final TableSchema<?> tableSchema, final String tenantId, final UUID id) {
+        this.queueDelete(tableSchema, tenantId, id, Collections.emptyList());
     }
 
     public synchronized void requeue(final PendingWrite failed) {
@@ -168,6 +188,24 @@ public final class PendingWriteStore {
         return this.pendingMap.size();
     }
 
+    public synchronized Map<Field<?>, Object> getPendingValues(final TableSchema<?> tableSchema, final String tenantId, final UUID id) {
+        final String key = "%s|%s|%s".formatted(tableSchema.getTableName(), tenantId, id);
+
+        final Map<Field<?>, Object> valueMap = new LinkedHashMap<>();
+
+        final PendingWrite inFlightWrite = this.inFlightMap.get(key);
+        if (inFlightWrite != null) {
+            valueMap.putAll(inFlightWrite.getValueMap());
+        }
+
+        final PendingWrite pendingWrite = this.pendingMap.get(key);
+        if (pendingWrite != null) {
+            valueMap.putAll(pendingWrite.getValueMap());
+        }
+
+        return Collections.unmodifiableMap(valueMap);
+    }
+
     synchronized int getPendingCallbackCount() {
         return this.pendingCallbackCount;
     }
@@ -194,7 +232,9 @@ public final class PendingWriteStore {
         }
 
         final PendingWrite merged = current == null ? pendingWrite : current.merge(pendingWrite);
+
         this.pendingMap.put(key, merged);
+
         this.pendingCallbackCount += callbackCount;
     }
 
@@ -216,6 +256,7 @@ public final class PendingWriteStore {
 
     private int getOutstandingSize() {
         final HashSet<String> keySet = new HashSet<>(this.inFlightMap.keySet());
+
         keySet.addAll(this.pendingMap.keySet());
 
         return keySet.size();

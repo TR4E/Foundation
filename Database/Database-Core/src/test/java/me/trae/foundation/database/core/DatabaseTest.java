@@ -90,6 +90,45 @@ final class DatabaseTest {
     private RedisDriver redisDriver;
 
     @Test
+    void holderCallbacksObserveCommittedRowsAndUnchangedUpdatesCompleteImmediately() {
+        final CoreDatabase coreDatabase = this.openDatabase(null);
+        final AccountRepository accountRepository = new AccountRepository(coreDatabase, this.table, TenantScope.NONE);
+        final AccountHolder accountHolder = new AccountHolder(accountRepository);
+        final AtomicInteger commitCount = new AtomicInteger();
+        final AtomicInteger failureCount = new AtomicInteger();
+        coreDatabase.start();
+
+        final Account account = this.createAccount("initial");
+        accountHolder.save(account, () -> {
+            assertEquals("initial", accountRepository.findById(account.getId()).orElseThrow().getName());
+            commitCount.incrementAndGet();
+        }, failureCount::incrementAndGet);
+        assertEquals(0, commitCount.get());
+        coreDatabase.getBatchQueue().flush();
+
+        account.setName("updated");
+        accountHolder.update(account, () -> {
+            assertEquals("updated", accountRepository.findById(account.getId()).orElseThrow().getName());
+            commitCount.incrementAndGet();
+        }, failureCount::incrementAndGet);
+        assertEquals(1, commitCount.get());
+        coreDatabase.getBatchQueue().flush();
+
+        accountHolder.update(account, commitCount::incrementAndGet, failureCount::incrementAndGet);
+        assertEquals(3, commitCount.get());
+
+        accountHolder.delete(account, () -> {
+            assertTrue(accountRepository.findById(account.getId()).isEmpty());
+            commitCount.incrementAndGet();
+        }, failureCount::incrementAndGet);
+        assertEquals(3, commitCount.get());
+        coreDatabase.getBatchQueue().flush();
+
+        assertEquals(4, commitCount.get());
+        assertEquals(0, failureCount.get());
+    }
+
+    @Test
     void pendingWritesCoalescePerEntity() {
         final TableSchema<Account> tableSchema = new TableSchema<>(Account.class, "accounts", TenantScope.NONE, EntityPropertyRegistry.getProperties(Account.class));
 
@@ -1453,12 +1492,12 @@ final class DatabaseTest {
 
     private static final class AccountRepository extends AbstractEntityRepository<Account> {
 
-        private AccountRepository(final CoreDatabase coreDatabase, final String table, final TenantScope tenantScope) {
-            this(coreDatabase, table, tenantScope, false);
-        }
-
         private AccountRepository(final CoreDatabase coreDatabase, final String table, final TenantScope tenantScope, final boolean optimisticLocking) {
             super(coreDatabase, Account.class, table, tenantScope, optimisticLocking);
+        }
+
+        private AccountRepository(final CoreDatabase coreDatabase, final String table, final TenantScope tenantScope) {
+            this(coreDatabase, table, tenantScope, false);
         }
 
         @Override

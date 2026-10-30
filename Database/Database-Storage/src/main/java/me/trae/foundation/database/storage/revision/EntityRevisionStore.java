@@ -52,13 +52,13 @@ public final class EntityRevisionStore {
 
         private final int identityHashCode;
 
-        private IdentityReference(final Entity entity) {
-            super(entity);
+        private IdentityReference(final Entity entity, final ReferenceQueue<Entity> referenceQueue) {
+            super(entity, referenceQueue);
             this.identityHashCode = System.identityHashCode(entity);
         }
 
-        private IdentityReference(final Entity entity, final ReferenceQueue<Entity> referenceQueue) {
-            super(entity, referenceQueue);
+        private IdentityReference(final Entity entity) {
+            super(entity);
             this.identityHashCode = System.identityHashCode(entity);
         }
 

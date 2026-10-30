@@ -70,7 +70,7 @@ public final class CacheInvalidationOutbox {
             }
 
             queryList.add(dslContext.insertInto(TABLE)
-                    .set(ID, UUID.randomUUID())
+                    .set(ID, invalidation.getNotificationId())
                     .set(CACHE_KEY, invalidation.getCacheKey())
                     .set(MISSING_KEY, invalidation.getMissingKey())
                     .set(LOCK_KEY, invalidation.getLockKey())
@@ -131,7 +131,7 @@ public final class CacheInvalidationOutbox {
                         record.get(INSTANCE_ID),
                         record.get(INVALIDATE_CACHE),
                         record.get(REMOVE_SHARED_STATE)
-                ).dispatch(this.redisDriver);
+                ).dispatch(this.redisDriver, record.get(ID));
             }
 
             if (!recordList.isEmpty()) {

@@ -12,6 +12,7 @@ import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.tenant.TenantScope;
 import me.trae.foundation.database.core.CoreDatabase;
 import me.trae.foundation.database.core.batch.BatchQueue;
+import me.trae.foundation.database.core.batch.PendingWrite;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.storage.revision.EntityRevisionStore;
@@ -27,13 +28,16 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,7 +58,7 @@ final class HolderCallbackTest {
 
     private final AtomicInteger sqlStatementCount = new AtomicInteger();
 
-    private final List<DatabaseException> failureList = new ArrayList<>();
+    private final CopyOnWriteArrayList<DatabaseException> failureList = new CopyOnWriteArrayList<>();
 
     private final Connection connection = spy(new MockConnection(this::execute));
 
@@ -87,9 +91,53 @@ final class HolderCallbackTest {
 
         this.testHolder.update(testEntity, commitCount::incrementAndGet, failureCount::incrementAndGet);
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
         assertEquals(0, failureCount.get());
         assertEquals(0, this.sqlStatementCount.get());
+        assertTrue(this.batchQueue.getPendingWriteStore().isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void throwingUserCallbackAndFailureHandlerDoNotPreventOtherCallbacks(final boolean error) throws Exception {
+        final CountDownLatch reported = new CountDownLatch(1);
+        this.batchQueue.setFailureHandler(exception -> {
+            reported.countDown();
+            throw new AssertionError("application failure handler threw");
+        });
+        final AtomicInteger writeFailureCount = new AtomicInteger();
+        final TestEntity entity = this.cachedEntity();
+        this.testHolder.update(entity, () -> {
+            if (error) {
+                throw new AssertionError("user callback threw");
+            }
+            throw new IllegalStateException("user callback threw");
+        }, writeFailureCount::incrementAndGet);
+        final CountDownLatch followingCallback = new CountDownLatch(1);
+        this.testHolder.update(entity, followingCallback::countDown);
+
+        assertTrue(reported.await(2L, TimeUnit.SECONDS));
+        assertTrue(followingCallback.await(2L, TimeUnit.SECONDS));
+        assertEquals(0, writeFailureCount.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"save", "update", "delete"})
+    void throwingApplicationReporterCannotPreventTheWriteFailureCallback(final String operation) throws Exception {
+        this.batchQueue.setFailureHandler(exception -> {
+            throw new AssertionError("reporting failed");
+        });
+        this.sqlExceptionReference.set(new SQLException("constraint failed", "23514"));
+        final TestEntity entity = operation.equals("save") ? new TestEntity(UUID.randomUUID()) : this.cachedEntity();
+        entity.setName("rejected");
+        final CompletableFuture<Thread> failureThread = new CompletableFuture<>();
+        this.write(operation, entity, () -> failureThread.completeExceptionally(new AssertionError("Unexpected success")), () -> failureThread.complete(Thread.currentThread()));
+        this.batchQueue.flush();
+
+        final Thread callbackThread = failureThread.get(2L, TimeUnit.SECONDS);
+        assertTrue(callbackThread.isVirtual());
+        assertEquals("database-callback", callbackThread.getName());
         assertTrue(this.batchQueue.getPendingWriteStore().isEmpty());
     }
 
@@ -102,6 +150,7 @@ final class HolderCallbackTest {
         this.testHolder.update(testEntity, commitCount::incrementAndGet);
         this.batchQueue.flush();
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
         assertEquals(0, this.sqlStatementCount.get());
         assertTrue(this.batchQueue.getPendingWriteStore().isEmpty());
@@ -126,6 +175,7 @@ final class HolderCallbackTest {
 
         this.batchQueue.flush();
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
         assertEquals(0, failureCount.get());
         assertTrue(this.failureList.isEmpty());
@@ -133,6 +183,7 @@ final class HolderCallbackTest {
 
         this.batchQueue.flush();
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
     }
 
@@ -150,7 +201,9 @@ final class HolderCallbackTest {
         this.batchQueue.flush();
 
         assertEquals(0, commitCount.get());
+        this.await(() -> failureCount.get() == 1);
         assertEquals(1, failureCount.get());
+        this.await(() -> !this.failureList.isEmpty());
         assertFalse(this.failureList.isEmpty());
         assertTrue(this.batchQueue.getPendingWriteStore().isEmpty());
     }
@@ -173,6 +226,7 @@ final class HolderCallbackTest {
         this.sqlExceptionReference.set(null);
         this.batchQueue.flush();
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
         assertEquals(0, failureCount.get());
         assertTrue(this.batchQueue.getPendingWriteStore().isEmpty());
@@ -193,7 +247,9 @@ final class HolderCallbackTest {
 
         this.batchQueue.flush();
 
+        this.await(() -> firstCommitCount.get() == 1);
         assertEquals(1, firstCommitCount.get());
+        this.await(() -> secondCommitCount.get() == 1);
         assertEquals(1, secondCommitCount.get());
         assertEquals(1, this.sqlStatementCount.get());
     }
@@ -207,6 +263,7 @@ final class HolderCallbackTest {
         assertThrows(DatabaseException.class, () -> this.testHolder.save(testEntity, commitCount::incrementAndGet, failureCount::incrementAndGet));
 
         assertEquals(0, commitCount.get());
+        this.await(() -> failureCount.get() == 1);
         assertEquals(1, failureCount.get());
         assertEquals(0, this.sqlStatementCount.get());
     }
@@ -227,6 +284,7 @@ final class HolderCallbackTest {
         this.batchQueue.flush();
 
         assertEquals(0, failureCount.get());
+        this.await(() -> this.failureList.size() == 1);
         assertEquals(1, this.failureList.size());
         assertTrue(this.batchQueue.getPendingWriteStore().isEmpty());
     }
@@ -246,6 +304,7 @@ final class HolderCallbackTest {
         assertEquals(0, commitCount.get());
         this.batchQueue.flush();
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
     }
 
@@ -264,17 +323,43 @@ final class HolderCallbackTest {
         });
         this.batchQueue.flush();
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
         assertTrue(this.failureList.isEmpty());
     }
 
     @Test
-    void immediateAndQueuedCallbacksUseTheirRespectiveCompletionThreads() throws InterruptedException {
+    void unchangedAcknowledgedUpdateJoinsAnInFlightWriteAcrossRetryAndCoalescing() throws Exception {
+        final TestEntity entity = this.cachedEntity();
+        entity.setName("first");
+        this.testHolder.update(entity);
+        final PendingWrite pendingWrite = this.batchQueue.getPendingWriteStore().drain().getFirst();
+        final AtomicInteger successCount = new AtomicInteger();
+        final CompletableFuture<Void> completed = new CompletableFuture<>();
+        this.testHolder.updateAndSynchronize(entity, () -> {
+            successCount.incrementAndGet();
+            completed.complete(null);
+        }, () -> completed.completeExceptionally(new AssertionError("write failed")), completed::completeExceptionally);
+        assertFalse(completed.isDone());
+        this.batchQueue.getPendingWriteStore().requeue(pendingWrite);
+        entity.setName("second");
+        this.testHolder.update(entity);
+        this.batchQueue.flush();
+        completed.get(2L, TimeUnit.SECONDS);
+
+        assertEquals(1, successCount.get());
+        assertTrue(this.batchQueue.getPendingWriteStore().isEmpty());
+    }
+
+    @Test
+    void immediateAndQueuedCallbacksBothUseDedicatedVirtualThreads() throws InterruptedException {
         final TestEntity testEntity = this.cachedEntity();
         final AtomicReference<Thread> callbackThreadReference = new AtomicReference<>();
         this.testHolder.update(testEntity, () -> callbackThreadReference.set(Thread.currentThread()));
 
-        assertEquals(Thread.currentThread(), callbackThreadReference.get());
+        this.await(() -> callbackThreadReference.get() != null);
+        assertTrue(callbackThreadReference.get().isVirtual());
+        assertFalse(callbackThreadReference.get().equals(Thread.currentThread()));
 
         testEntity.setName("updated");
         callbackThreadReference.set(null);
@@ -283,7 +368,22 @@ final class HolderCallbackTest {
         final Thread thread = Thread.ofVirtual().start(this.batchQueue::flush);
         thread.join();
 
-        assertEquals(thread, callbackThreadReference.get());
+        this.await(() -> callbackThreadReference.get() != null);
+        assertTrue(callbackThreadReference.get().isVirtual());
+        assertFalse(callbackThreadReference.get().equals(thread));
+    }
+
+    private void await(final BooleanSupplier condition) {
+        final long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (!condition.getAsBoolean()) {
+            assertTrue(System.nanoTime() < deadline, "Callback did not complete");
+            try {
+                Thread.sleep(1L);
+            } catch (final InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(exception);
+            }
+        }
     }
 
     private TestEntity cachedEntity() {

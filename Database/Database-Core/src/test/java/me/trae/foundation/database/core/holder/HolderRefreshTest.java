@@ -26,6 +26,7 @@ import me.trae.foundation.database.lookup.TieredLookup;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
+import me.trae.foundation.database.storage.redis.RedisStorage;
 import me.trae.foundation.database.storage.revision.EntityRevisionStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,8 +41,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -103,6 +109,75 @@ final class HolderRefreshTest {
         when(this.coreDatabase.getBatchQueue()).thenReturn(this.batchQueue);
         when(this.batchQueue.getPendingWriteStore()).thenReturn(this.pendingWriteStore);
         when(this.holderLookups.getIdLookup()).thenReturn(this.tieredLookup);
+    }
+
+    @Test
+    void cacheFailureAfterQueueAcceptanceDoesNotClaimTheWriteWasRejected() throws Exception {
+        final HolderWriter<TestEntity> writer = new HolderWriter<>(this.repository, this.localStorage, this.localEntityIndex, null, this.changeTracker, this.uniqueClaimer, false);
+        final TestEntity entity = new TestEntity(UUID.randomUUID());
+        entity.setName("saved");
+        when(this.uniqueClaimer.claimId(entity)).thenReturn(mock(UniqueClaimer.EntityIdClaim.class));
+        when(this.uniqueClaimer.claim(eq(entity), anyCollection())).thenReturn(List.of());
+        this.localEntityIndex.setAdmissionFunction(_ -> {
+            throw new AssertionError("cache admission failed after queue acceptance");
+        });
+        final AtomicReference<List<Runnable>> callbackList = new AtomicReference<>();
+        doAnswer(invocation -> {
+            callbackList.set(invocation.getArgument(1));
+            return null;
+        }).when(this.repository).save(eq(entity), anyList(), anyList(), eq(false), anyString());
+        final CountDownLatch committed = new CountDownLatch(1);
+        final AtomicInteger writeFailureCount = new AtomicInteger();
+
+        assertDoesNotThrow(() -> writer.save(entity, committed::countDown, writeFailureCount::incrementAndGet));
+        callbackList.get().forEach(Runnable::run);
+
+        assertTrue(committed.await(1L, TimeUnit.SECONDS));
+        assertEquals(0, writeFailureCount.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @SuppressWarnings("unchecked")
+    void postCommitSaveInitializationFailureIsNeverAWriteFailure(final boolean synchronizedWrite) throws Exception {
+        final RedisStorage<TestEntity> redisStorage = mock(RedisStorage.class);
+        final HolderWriter<TestEntity> holderWriter = new HolderWriter<>(this.repository, this.localStorage, this.localEntityIndex, redisStorage, this.changeTracker, this.uniqueClaimer, true);
+        final TestEntity testEntity = new TestEntity(UUID.randomUUID());
+        testEntity.setName("saved");
+        final AtomicReference<List<Runnable>> callbackListReference = new AtomicReference<>();
+        final AtomicInteger commitCount = new AtomicInteger();
+        final AtomicInteger failureCount = new AtomicInteger();
+        when(this.uniqueClaimer.claimId(testEntity)).thenReturn(mock(UniqueClaimer.EntityIdClaim.class));
+        when(this.uniqueClaimer.claim(eq(testEntity), anyCollection())).thenReturn(List.of());
+        when(redisStorage.refresh(eq(testEntity.getId()), any())).thenThrow(new ConnectionException("Redis unavailable"));
+        doAnswer(invocation -> {
+            callbackListReference.set(invocation.getArgument(1));
+            return null;
+        }).when(this.repository).save(eq(testEntity), anyList(), anyList(), eq(true), anyString());
+
+        final CountDownLatch terminalLatch = new CountDownLatch(1);
+        final AtomicInteger synchronizationFailureCount = new AtomicInteger();
+        final Runnable committed = () -> {
+            commitCount.incrementAndGet();
+            terminalLatch.countDown();
+        };
+        if (synchronizedWrite) {
+            holderWriter.saveAndSynchronize(testEntity, committed, failureCount::incrementAndGet, exception -> {
+                synchronizationFailureCount.incrementAndGet();
+                terminalLatch.countDown();
+            });
+        } else {
+            holderWriter.save(testEntity, committed, failureCount::incrementAndGet);
+        }
+        assertThrows(ConnectionException.class, () -> callbackListReference.get().getFirst().run());
+        callbackListReference.get().subList(1, callbackListReference.get().size()).forEach(Runnable::run);
+
+        assertTrue(terminalLatch.await(2L, TimeUnit.SECONDS));
+        assertEquals(synchronizedWrite ? 0 : 1, commitCount.get());
+        assertEquals(synchronizedWrite ? 1 : 0, synchronizationFailureCount.get());
+        assertEquals(0, failureCount.get());
+        assertSame(testEntity, this.localStorage.get(testEntity.getId()).orElseThrow());
+        assertTrue(this.changeTracker.isTracked(testEntity));
     }
 
     @Test

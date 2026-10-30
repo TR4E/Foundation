@@ -5,6 +5,7 @@ import io.lettuce.core.RedisConnectionStateListener;
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
 import io.lettuce.core.pubsub.RedisPubSubListener;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
+import lombok.Setter;
 
 import java.net.SocketAddress;
 import java.util.Collections;
@@ -19,6 +20,12 @@ import java.util.function.Consumer;
 public final class RedisSubscriptionDispatcher extends RedisPubSubAdapter<String, String> implements RedisConnectionStateListener {
 
     private final Map<String, List<Consumer<String>>> consumerMap = new ConcurrentHashMap<>();
+
+    @Setter
+    private Runnable reconnectListener = () -> {};
+
+    @Setter
+    private Runnable disconnectListener = () -> {};
 
     private volatile StatefulRedisPubSubConnection<String, String> pubSubConnection;
     private volatile ExecutorService executorService;
@@ -92,6 +99,7 @@ public final class RedisSubscriptionDispatcher extends RedisPubSubAdapter<String
     @Override
     public void onRedisDisconnected(final RedisChannelHandler<?, ?> connection) {
         this.disconnected = true;
+        this.disconnectListener.run();
     }
 
     @Override
@@ -100,6 +108,7 @@ public final class RedisSubscriptionDispatcher extends RedisPubSubAdapter<String
 
     private void notifyReconnect() {
         this.disconnected = false;
+        this.reconnectListener.run();
         final ExecutorService current = this.executorService;
         if (current == null) {
             return;

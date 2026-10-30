@@ -3,6 +3,7 @@ package me.trae.foundation.database.core.batch;
 import lombok.Getter;
 import lombok.Setter;
 import me.trae.foundation.database.api.exception.DatabaseException;
+import me.trae.foundation.database.api.utility.DatabaseCallbacks;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import org.jooq.DSLContext;
@@ -24,6 +25,8 @@ public final class BatchQueue {
     private final PendingWriteStore pendingWriteStore;
 
     private final List<Runnable> preFlushTaskList = new CopyOnWriteArrayList<>();
+    private final List<Runnable> startTaskList = new CopyOnWriteArrayList<>();
+    private final List<Runnable> stopTaskList = new CopyOnWriteArrayList<>();
 
     private final BatchExecutor batchExecutor;
     private final PostgresDriver postgresDriver;
@@ -39,7 +42,7 @@ public final class BatchQueue {
     public BatchQueue(final PostgresDriver postgresDriver, final RedisDriver redisDriver, final Duration flushInterval, final int chunkSize, final int maximumPendingWrites) {
         this.pendingWriteStore = new PendingWriteStore(maximumPendingWrites);
         this.postgresDriver = postgresDriver;
-        this.batchExecutor = new BatchExecutor(postgresDriver, this::reportFailure);
+        this.batchExecutor = new BatchExecutor(postgresDriver, exception -> this.failureHandler.accept(exception));
         this.cacheInvalidationOutbox = redisDriver == null ? null : new CacheInvalidationOutbox(postgresDriver, redisDriver);
         this.flushInterval = flushInterval;
         this.chunkSize = chunkSize;
@@ -59,6 +62,8 @@ public final class BatchQueue {
         if (this.scheduledExecutorService != null) {
             return;
         }
+
+        this.startTaskList.forEach(Runnable::run);
 
         this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("database-batch-queue").factory());
 
@@ -82,10 +87,20 @@ public final class BatchQueue {
         if (!this.pendingWriteStore.isEmpty()) {
             this.reportFailure(new DatabaseException("Shut down with %s writes still pending".formatted(this.pendingWriteStore.size())));
         }
+
+        this.stopTaskList.forEach(this::runSafely);
     }
 
     public void addPreFlushTask(final Runnable task) {
         this.preFlushTaskList.add(task);
+    }
+
+    public void addStopTask(final Runnable task) {
+        this.stopTaskList.add(task);
+    }
+
+    public void addStartTask(final Runnable task) {
+        this.startTaskList.add(task);
     }
 
     public synchronized void flush() {
@@ -132,7 +147,7 @@ public final class BatchQueue {
     }
 
     public void reportFailure(final DatabaseException exception) {
-        this.failureHandler.accept(exception);
+        DatabaseCallbacks.report(this.failureHandler, exception);
     }
 
     private void dispatchCacheInvalidations(final boolean force) {
@@ -146,7 +161,7 @@ public final class BatchQueue {
             } else {
                 this.cacheInvalidationOutbox.dispatch();
             }
-        } catch (final RuntimeException exception) {
+        } catch (final RuntimeException | Error exception) {
             this.reportFailure(new DatabaseException("Failed to dispatch cache invalidation outbox", exception));
         }
     }
@@ -154,7 +169,7 @@ public final class BatchQueue {
     private void runSafely(final Runnable task) {
         try {
             task.run();
-        } catch (final RuntimeException exception) {
+        } catch (final RuntimeException | Error exception) {
             this.reportFailure(new DatabaseException("Batch queue task failed", exception));
         }
     }

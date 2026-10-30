@@ -146,13 +146,13 @@ The holder registers a pre-flush task that detects dirty tracked values, includi
 | Mode | Redis requirement | Local cache | Pinning |
 | --- | --- | --- | --- |
 | `SINGLE_INSTANCE` | Optional; supports `RedisMode.DISABLED` | Fixed expiry | Supported |
-| `MULTI_INSTANCE` | `RedisMode.ENABLED` and a configured Redis driver | Sliding idle expiry, bounded by a five-minute maximum age | Unsupported |
+| `MULTI_INSTANCE` | `RedisMode.ENABLED` and a configured Redis driver | Sliding idle expiry, bounded by a five-minute maximum age for unpinned entries | Supported |
 
 `RedisMode.DISABLED` keeps a single-instance holder's cache, claim, and write-invalidation path off Redis even when its database has a Redis driver for other holders. Multi-instance configuration without Redis is rejected during holder construction.
 
-Committed holder writes record cache invalidations in the same PostgreSQL transaction. An outbox dispatcher removes stale Redis entries and notifies peer multi-instance holders to evict local entries. Events survive Redis dispatch failures; reconnect handling and absolute cache age help recover from missed notifications.
+Committed holder writes record cache invalidations in the same PostgreSQL transaction. Redis ownership markers target only multi-instance holders currently caching the entity. Peer refreshes preserve pins and pending local edits; deletion removes both the cached entry and its pin. The durable outbox retries notifications after dispatch failures.
 
-Cache visibility is eventual. A successful mutation call may still be waiting in the write queue, and a committed change may briefly coexist with a stale peer cache. Choose the lookup tiers and concurrency strategy to fit the application's consistency requirements.
+Existing holder commit callbacks run after write completion without waiting for cache acknowledgements. All holder callbacks use dedicated framework virtual threads, even for unchanged updates or rejected writes; application failure handlers are isolated as well. To wait explicitly, call `saveAndSynchronize`, `updateAndSynchronize`, or `deleteAndSynchronize`. Their full overload takes an entity, per-call `Duration`, synchronized-success runnable, write-failure runnable, and `Consumer<SynchronizationException>`; the shorter overload uses five seconds. Synchronization failure means the write committed but owners did not confirm refresh, and never invokes the write-failure runnable. Each coalesced waiter has its own deadline. Receivers retry failed refreshes with bounded backoff independently of the sender's timeout, preserving cached values, pins, and pending edits until repair succeeds. Late acknowledgements never turn a timed-out operation into success. Cache admission and reconnect fencing continue to protect newly admitted copies.
 
 ## Writes, durability, and failures
 

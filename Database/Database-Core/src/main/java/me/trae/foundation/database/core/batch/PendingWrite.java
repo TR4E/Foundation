@@ -8,23 +8,32 @@ import me.trae.foundation.database.storage.redis.RedisInvalidation;
 import me.trae.foundation.database.storage.revision.RevisionState;
 import org.jooq.Field;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 @Getter
 public final class PendingWrite {
 
+    private final CompletableFuture<Boolean> commitFuture = new CompletableFuture<>();
+
     private final TableSchema<?> tableSchema;
     private final String tenantId;
+
     private final UUID id;
+
     private final WriteType writeType;
     private final Map<Field<?>, Object> valueMap;
-    private final List<Runnable> commitCallbackList;
-    private final List<Runnable> failureCallbackList;
+    private final CopyOnWriteArrayList<Runnable> commitCallbackList;
+    private final CopyOnWriteArrayList<Runnable> failureCallbackList;
     private final long sequence;
     private final RedisInvalidation invalidation;
     private final Long expectedRevision;
@@ -32,7 +41,14 @@ public final class PendingWrite {
     private final RevisionState revisionState;
 
     @Setter
+    private Duration synchronizationTimeout = Duration.ofSeconds(5);
+
+    @Setter
     private volatile DatabaseException failureException;
+
+    private CompletableFuture<Void> synchronizationFuture;
+
+    private CompletableFuture<Void> synchronizationTail;
 
     public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList, final long sequence, final RedisInvalidation invalidation, final Long expectedRevision, final Runnable revisionCallback, final RevisionState revisionState) {
         this.tableSchema = tableSchema;
@@ -40,8 +56,8 @@ public final class PendingWrite {
         this.id = id;
         this.writeType = writeType;
         this.valueMap = valueMap;
-        this.commitCallbackList = List.copyOf(commitCallbackList);
-        this.failureCallbackList = List.copyOf(failureCallbackList);
+        this.commitCallbackList = new CopyOnWriteArrayList<>(commitCallbackList);
+        this.failureCallbackList = new CopyOnWriteArrayList<>(failureCallbackList);
         this.sequence = sequence;
         this.invalidation = invalidation;
         this.expectedRevision = expectedRevision;
@@ -63,6 +79,26 @@ public final class PendingWrite {
 
     public PendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final WriteType writeType, final Map<Field<?>, Object> valueMap, final List<Runnable> commitCallbackList, final long sequence) {
         this(tableSchema, tenantId, id, writeType, valueMap, commitCallbackList, List.of(), sequence, null, null, null, null);
+    }
+
+    public synchronized CompletableFuture<Void> synchronize(final Supplier<CompletableFuture<Void>> synchronizationSupplier) {
+        if (this.synchronizationFuture == null) {
+            try {
+                this.synchronizationFuture = synchronizationSupplier.get();
+            } catch (final RuntimeException | Error exception) {
+                this.synchronizationFuture = CompletableFuture.failedFuture(exception);
+            }
+        }
+
+        return this.synchronizationFuture;
+    }
+
+    public synchronized void afterSynchronization(final Supplier<CompletableFuture<Void>> synchronizationSupplier, final Consumer<Throwable> completionConsumer) {
+        final CompletableFuture<Throwable> resultFuture = this.synchronize(synchronizationSupplier).handle((_, exception) -> exception);
+        final CompletableFuture<Void> previousFuture = this.synchronizationTail == null ? CompletableFuture.completedFuture(null) : this.synchronizationTail;
+        this.synchronizationTail = previousFuture.handle((_, _) -> null)
+                .thenCombine(resultFuture, (_, exception) -> exception)
+                .thenAcceptAsync(completionConsumer, runnable -> Thread.ofVirtual().name("entity-sync-callback").start(runnable));
     }
 
     public String getKey() {
@@ -108,7 +144,7 @@ public final class PendingWrite {
 
         final Runnable revisionCallback = writeType == WriteType.DELETE ? null : newer.getRevisionCallback() == null ? this.revisionCallback : newer.getRevisionCallback();
 
-        return new PendingWrite(
+        final PendingWrite replacement = new PendingWrite(
                 this.tableSchema,
                 this.tenantId,
                 this.id,
@@ -122,6 +158,9 @@ public final class PendingWrite {
                 revisionCallback,
                 newer.getRevisionState() == null ? this.revisionState : newer.getRevisionState()
         );
+        replacement.getCommitFuture().thenAccept(committed -> this.commitFuture.complete(committed));
+        replacement.getCommitFuture().thenAccept(committed -> newer.getCommitFuture().complete(committed));
+        return replacement;
     }
 
     private RedisInvalidation mergeInvalidation(final PendingWrite newer) {
@@ -150,6 +189,8 @@ public final class PendingWrite {
             revisedCallback = () -> this.revisionState.setRevision(nextRevision);
         }
 
-        return new PendingWrite(this.tableSchema, this.tenantId, this.id, this.writeType, revisedValueMap, this.commitCallbackList, this.failureCallbackList, this.sequence, this.invalidation, expectedRevision, revisedCallback, this.revisionState);
+        final PendingWrite replacement = new PendingWrite(this.tableSchema, this.tenantId, this.id, this.writeType, revisedValueMap, this.commitCallbackList, this.failureCallbackList, this.sequence, this.invalidation, expectedRevision, revisedCallback, this.revisionState);
+        replacement.getCommitFuture().thenAccept(committed -> this.commitFuture.complete(committed));
+        return replacement;
     }
 }

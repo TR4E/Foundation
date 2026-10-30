@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -120,6 +121,7 @@ final class HolderSharedStateTest {
         final TestEntity paperTestEntity = paperHolderComponents.getLocalStorage().get(proxyTestEntity.getId()).orElseThrow();
         assertTrue(paperTestEntity.isAdministrating());
         assertTrue(paperTestEntity.isVanished());
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
         assertTrue(paperHolderComponents.getLocalStorage().isPinned(proxyTestEntity.getId()));
         assertSame(proxyTestEntity, proxyHolderComponents.getLocalStorage().get(proxyTestEntity.getId()).orElseThrow());
@@ -145,6 +147,7 @@ final class HolderSharedStateTest {
 
         holderComponents.getHolderWriter().update(testEntity, commitCount::incrementAndGet);
 
+        this.await(() -> commitCount.get() == 1);
         assertEquals(1, commitCount.get());
         assertTrue(this.notificationList.isEmpty());
         assertFalse(this.hashMap.containsKey(this.sharedKey(testEntity.getId())));
@@ -179,6 +182,7 @@ final class HolderSharedStateTest {
         assertThrows(ConnectionException.class, () -> holderComponents.getHolderWriter().update(testEntity, commitCount::incrementAndGet, failureCount::incrementAndGet));
 
         assertEquals(0, commitCount.get());
+        this.await(() -> failureCount.get() == 1);
         assertEquals(1, failureCount.get());
         assertEquals(List.of(ADMINISTRATING), holderComponents.getChangeTracker().diff(testEntity));
         assertTrue(this.pendingWriteStore.isEmpty());
@@ -243,6 +247,19 @@ final class HolderSharedStateTest {
         assertTrue(pendingWrite.getInvalidation().isRemoveSharedState());
         assertTrue(pendingWrite.getInvalidation().withInstanceId("mixed").isRemoveSharedState());
         assertFalse(repositoryWriter.createInvalidation(testEntity.getId(), true, "proxy").isRemoveSharedState());
+    }
+
+    private void await(final BooleanSupplier condition) {
+        final long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (!condition.getAsBoolean()) {
+            assertTrue(System.nanoTime() < deadline, "Callback did not complete");
+            try {
+                Thread.sleep(1L);
+            } catch (final InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(exception);
+            }
+        }
     }
 
     private void configureDriver(final RedisDriver redisDriver) {

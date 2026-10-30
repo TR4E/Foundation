@@ -135,6 +135,7 @@ public final class PendingWriteStore {
         if (this.inFlightMap.remove(completed.getKey(), completed)) {
             this.pendingCallbackCount -= this.callbackCount(completed);
         }
+        completed.getCommitFuture().complete(true);
     }
 
     public synchronized List<PendingWrite> fail(final PendingWrite failed, final DatabaseException exception) {
@@ -146,6 +147,7 @@ public final class PendingWriteStore {
             this.inFlightMap.remove(failed.getKey());
             this.pendingCallbackCount -= this.callbackCount(inFlight);
             inFlight.setFailureException(exception);
+            inFlight.getCommitFuture().complete(false);
             failedWriteList.add(inFlight);
         }
 
@@ -153,6 +155,7 @@ public final class PendingWriteStore {
         if (pending != null) {
             this.pendingCallbackCount -= this.callbackCount(pending);
             pending.setFailureException(exception);
+            pending.getCommitFuture().complete(false);
             failedWriteList.add(pending);
         }
 
@@ -204,6 +207,34 @@ public final class PendingWriteStore {
         }
 
         return Collections.unmodifiableMap(valueMap);
+    }
+
+    public synchronized boolean hasPendingWrite(final TableSchema<?> tableSchema, final String tenantId, final UUID id) {
+        final String key = "%s|%s|%s".formatted(tableSchema.getTableName(), tenantId, id);
+        return this.pendingMap.containsKey(key) || this.inFlightMap.containsKey(key);
+    }
+
+    public synchronized boolean attachCommitCallback(final TableSchema<?> tableSchema, final String tenantId, final UUID id, final List<Runnable> commitCallbackList, final List<Runnable> failureCallbackList) {
+        final String key = "%s|%s|%s".formatted(tableSchema.getTableName(), tenantId, id);
+        final PendingWrite pendingWrite = this.pendingMap.get(key);
+        final PendingWrite inFlightWrite = this.inFlightMap.get(key);
+        final PendingWrite targetWrite = pendingWrite == null ? inFlightWrite : pendingWrite;
+        if (targetWrite == null) {
+            return false;
+        }
+
+        if (this.pendingCallbackCount + commitCallbackList.size() + failureCallbackList.size() > this.maximumPendingCallbacks) {
+            throw new DatabaseException("Pending callback capacity reached");
+        }
+
+        final List<Runnable> wrappedCommitList = commitCallbackList.stream().map(callback -> (Runnable) callback::run).toList();
+        targetWrite.getCommitCallbackList().addAll(wrappedCommitList);
+        targetWrite.getFailureCallbackList().addAll(failureCallbackList);
+        this.pendingCallbackCount += wrappedCommitList.size() + failureCallbackList.size();
+        if (pendingWrite == null) {
+            targetWrite.getCommitFuture().thenAccept(committed -> (committed ? wrappedCommitList : failureCallbackList).forEach(Runnable::run));
+        }
+        return true;
     }
 
     synchronized int getPendingCallbackCount() {

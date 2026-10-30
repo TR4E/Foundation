@@ -1,6 +1,9 @@
 package me.trae.foundation.database.core;
 
 import lombok.experimental.UtilityClass;
+import me.trae.foundation.database.api.exception.ConnectionException;
+import me.trae.foundation.database.api.exception.DatabaseException;
+import me.trae.foundation.database.api.holder.LookupTier;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.core.batch.PendingWriteStore;
 import me.trae.foundation.database.core.driver.PostgresDriver;
@@ -11,7 +14,10 @@ import me.trae.foundation.database.storage.driver.RedisSettings;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @UtilityClass
 public final class MultiJvmDatabaseWorker {
@@ -48,6 +54,19 @@ public final class MultiJvmDatabaseWorker {
                     break;
                 }
 
+                if (command.equals("PIN")) {
+                    holder.pin(holder.getById(id).orElseThrow());
+                    System.out.println("ACK|pinned");
+                    System.out.flush();
+                    continue;
+                }
+
+                if (command.equals("LOCAL")) {
+                    System.out.println("VALUE|%s".formatted(holder.getById(id, EnumSet.of(LookupTier.LOCAL)).map(WorkerEntity::getValue).orElse("missing")));
+                    System.out.flush();
+                    continue;
+                }
+
                 if (command.equals("DISCONNECT")) {
                     redisDriver.disconnect();
                     System.out.println("ACK|disconnected");
@@ -57,6 +76,18 @@ public final class MultiJvmDatabaseWorker {
 
                 if (command.equals("RECONNECT")) {
                     redisDriver.connect();
+                    final long reconnectDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+                    while (true) {
+                        try {
+                            redisDriver.getEntityCoordinator().checkLease();
+                            break;
+                        } catch (final ConnectionException exception) {
+                            if (System.nanoTime() >= reconnectDeadline) {
+                                throw exception;
+                            }
+                            Thread.sleep(1L);
+                        }
+                    }
                     System.out.println("ACK|reconnected");
                     System.out.flush();
                     continue;
@@ -90,7 +121,6 @@ public final class MultiJvmDatabaseWorker {
 
                     final WorkerEntity createdEntity = new WorkerEntity(id);
                     createdEntity.setValue(parts[1]);
-                    holder.save(createdEntity);
                     System.out.println("PREPARED|%s".formatted(parts[1]));
                     System.out.flush();
 
@@ -100,11 +130,24 @@ public final class MultiJvmDatabaseWorker {
                                 Thread.sleep(1L);
                             }
 
-                            coreDatabase.getBatchQueue().flush();
-                            System.out.println("CREATED|%s".formatted(repository.findById(id).map(WorkerEntity::getValue).orElse("missing")));
+                            final CompletableFuture<Boolean> createdFuture = new CompletableFuture<>();
+                            try {
+                                holder.save(createdEntity, () -> createdFuture.complete(true), () -> createdFuture.complete(false));
+                                coreDatabase.getBatchQueue().flush();
+                            } catch (final DatabaseException exception) {
+                                createdFuture.complete(false);
+                            }
+                            final boolean accepted = createdFuture.get(5L, TimeUnit.SECONDS);
+                            final long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+                            while (repository.findById(id).isEmpty() && System.nanoTime() < deadline) {
+                                Thread.sleep(1L);
+                            }
+                            System.out.println("CREATED|%s|%s".formatted(accepted ? "accepted" : "rejected", repository.findById(id).map(WorkerEntity::getValue).orElse("missing")));
                             System.out.flush();
-                        } catch (final InterruptedException exception) {
-                            Thread.currentThread().interrupt();
+                        } catch (final Exception exception) {
+                            if (exception instanceof InterruptedException) {
+                                Thread.currentThread().interrupt();
+                            }
                             throw new IllegalStateException(exception);
                         }
                     });

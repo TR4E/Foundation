@@ -59,6 +59,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -1236,14 +1238,17 @@ final class DatabaseTest {
         database.getBatchQueue().flush();
         reader.pin(reader.getById(account.getId()).orElseThrow());
         final AtomicInteger commitCount = new AtomicInteger();
+        final CountDownLatch synchronizedLatch = new CountDownLatch(1);
         final String sharedKey = RedisNamespace.of(this.table).getKey("cache:shared:%s".formatted(account.getId()));
         account.setSession("administrating");
 
         writer.update(account, () -> {
             assertEquals("1administrating", this.redisDriver.getCommands().hget(sharedKey, SESSION.getName()));
             commitCount.incrementAndGet();
+            synchronizedLatch.countDown();
         });
 
+        assertTrue(synchronizedLatch.await(6L, TimeUnit.SECONDS));
         assertEquals(1, commitCount.get());
         assertTrue(database.getBatchQueue().getPendingWriteStore().isEmpty());
         assertNull(repository.findById(account.getId()).orElseThrow().getSession());

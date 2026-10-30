@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -31,7 +32,7 @@ final class MultiJvmInvalidationTest {
     private final Map<Process, BufferedReader> readerMap = new ConcurrentHashMap<>();
 
     @Test
-    void separateJvmCachesAreInvalidatedAfterCommittedWrite() throws Exception {
+    void separateJvmCallbacksWaitForPinnedCacheRefresh() throws Exception {
         DatabaseTestEnvironment.requirePostgresAndRedis();
 
         final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(
@@ -81,14 +82,23 @@ final class MultiJvmInvalidationTest {
                 final Process process = this.startWorker(table, id, false, null);
                 processList.add(process);
                 assertEquals("READY|before", this.readMessage(process, "READY|"));
+                this.send(process, "PIN");
+                assertEquals("ACK|pinned", this.readMessage(process, "ACK|"));
             }
 
             this.send(processList.getFirst(), "DISCONNECT");
             assertEquals("ACK|disconnected", this.readMessage(processList.getFirst(), "ACK|"));
 
             entity.setValue("after");
-            holder.update(entity);
+            final CompletableFuture<Void> synchronizedFuture = new CompletableFuture<>();
+            holder.updateAndSynchronize(entity, () -> synchronizedFuture.complete(null), () -> synchronizedFuture.completeExceptionally(new IllegalStateException("Write failed")), synchronizedFuture::completeExceptionally);
             coreDatabase.getBatchQueue().flush();
+            synchronizedFuture.get(6L, TimeUnit.SECONDS);
+
+            for (final Process process : processList.subList(1, processList.size())) {
+                this.send(process, "LOCAL");
+                assertEquals("VALUE|after", this.readMessage(process, "VALUE|"));
+            }
 
             this.send(processList.getFirst(), "RECONNECT");
             assertEquals("ACK|reconnected", this.readMessage(processList.getFirst(), "ACK|"));
@@ -177,7 +187,10 @@ final class MultiJvmInvalidationTest {
             }
 
             assertTrue(List.of("writer-0", "writer-1").contains(repository.findById(id).orElseThrow().getValue()));
-            assertTrue(storedValueList.stream().allMatch(List.of("writer-0", "writer-1")::contains));
+            assertEquals(1L, storedValueList.stream().filter(value -> value.startsWith("accepted|")).count());
+            assertEquals(1L, storedValueList.stream().filter(value -> value.startsWith("rejected|")).count());
+            final String storedValue = repository.findById(id).orElseThrow().getValue();
+            assertTrue(storedValueList.stream().allMatch(value -> value.endsWith("|%s".formatted(storedValue))));
         } finally {
             processList.forEach(this::stopWorker);
             coreDatabase.stop();
@@ -256,6 +269,7 @@ final class MultiJvmInvalidationTest {
                 assertEquals("READY|deferred", this.readMessage(process, "READY|"));
             }
 
+            redisDriver.getCommands().del("%s:%s".formatted(table, id));
             for (final Process process : processList) {
                 this.send(process, "READ|cold");
             }

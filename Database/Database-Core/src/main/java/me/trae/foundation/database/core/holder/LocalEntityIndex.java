@@ -1,5 +1,6 @@
 package me.trae.foundation.database.core.holder;
 
+import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.repository.index.EntityIndex;
 import me.trae.foundation.database.lookup.index.EntityIndexKey;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 public final class LocalEntityIndex<E extends Entity> {
 
@@ -18,18 +20,37 @@ public final class LocalEntityIndex<E extends Entity> {
     private final Map<String, UUID> idByKeyMap = new HashMap<>();
     private final Map<UUID, List<String>> keysByIdMap = new HashMap<>();
 
+    @Setter
+    private Function<E, Runnable> admissionFunction = _ -> () -> {};
+
     public LocalEntityIndex(final List<EntityIndex<E>> indexes) {
         indexes.forEach(index -> this.indexMap.put(index.getName(), index));
     }
 
-    public synchronized void put(final E entity, final LocalStorage<UUID, E> localStorage) {
-        this.index(entity);
-        localStorage.put(entity.getId(), entity);
+    private void admit(final E entity, final LocalStorage<UUID, E> localStorage, final boolean pinned) {
+        localStorage.withLock(entity.getId(), () -> {
+            final Runnable completionRunnable = this.admissionFunction.apply(entity);
+            try {
+                synchronized (this) {
+                    this.index(entity);
+                    if (pinned) {
+                        localStorage.pin(entity.getId(), entity);
+                    } else {
+                        localStorage.put(entity.getId(), entity);
+                    }
+                }
+            } finally {
+                completionRunnable.run();
+            }
+        });
     }
 
-    public synchronized void pin(final E entity, final LocalStorage<UUID, E> localStorage) {
-        this.index(entity);
-        localStorage.pin(entity.getId(), entity);
+    public void put(final E entity, final LocalStorage<UUID, E> localStorage) {
+        this.admit(entity, localStorage, false);
+    }
+
+    public void pin(final E entity, final LocalStorage<UUID, E> localStorage) {
+        this.admit(entity, localStorage, true);
     }
 
     public synchronized void index(final E entity) {
@@ -58,12 +79,14 @@ public final class LocalEntityIndex<E extends Entity> {
         }
     }
 
-    public synchronized void evict(final UUID id, final LocalStorage<UUID, E> localStorage) {
-        this.remove(id);
-        localStorage.evict(id);
+    public void evict(final UUID id, final LocalStorage<UUID, E> localStorage) {
+        localStorage.withLock(id, () -> {
+            this.remove(id);
+            localStorage.evict(id);
+        });
     }
 
-    public synchronized Optional<E> get(final EntityIndex<? super E> entityIndex, final Object[] values, final LocalStorage<UUID, E> localStorage) {
+    public Optional<E> get(final EntityIndex<? super E> entityIndex, final Object[] values, final LocalStorage<UUID, E> localStorage) {
         final EntityIndex<E> registeredIndex = this.indexMap.get(entityIndex.getName());
 
         if (registeredIndex == null || !this.sameIndex(registeredIndex, entityIndex)) {
@@ -71,25 +94,31 @@ public final class LocalEntityIndex<E extends Entity> {
         }
 
         final String key = EntityIndexKey.encode(entityIndex, entityIndex.getValues(values));
-        final UUID id = this.idByKeyMap.get(key);
+        final UUID id = this.getId(key);
 
         if (id == null) {
             return Optional.empty();
         }
 
-        final Optional<E> entity = localStorage.get(id);
-
-        if (entity.isEmpty() || !registeredIndex.hasValues(entity.get()) || !key.equals(EntityIndexKey.encode(registeredIndex, registeredIndex.getValues(entity.get())))) {
-            this.remove(id);
-            return Optional.empty();
-        }
-
-        return entity;
+        return localStorage.withValueLock(id, () -> {
+            final Optional<E> entity = localStorage.get(id);
+            if (entity.isEmpty() || !registeredIndex.hasValues(entity.get()) || !key.equals(EntityIndexKey.encode(registeredIndex, registeredIndex.getValues(entity.get())))) {
+                this.remove(id);
+                return Optional.empty();
+            }
+            return entity;
+        });
     }
 
-    public synchronized void remove(final UUID id, final LocalStorage<UUID, E> localStorage) {
-        this.remove(id);
-        localStorage.remove(id);
+    private synchronized UUID getId(final String key) {
+        return this.idByKeyMap.get(key);
+    }
+
+    public void remove(final UUID id, final LocalStorage<UUID, E> localStorage) {
+        localStorage.withLock(id, () -> {
+            this.remove(id);
+            localStorage.remove(id);
+        });
     }
 
     private boolean sameIndex(final EntityIndex<E> first, final EntityIndex<?> second) {

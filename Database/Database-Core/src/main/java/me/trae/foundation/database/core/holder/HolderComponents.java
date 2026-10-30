@@ -13,6 +13,7 @@ import me.trae.foundation.database.core.holder.claim.UniqueClaimer;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.local.LocalStorage;
+import me.trae.foundation.database.storage.redis.RedisEntityCoordinator;
 import me.trae.foundation.database.storage.redis.RedisNamespace;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 
@@ -62,10 +63,64 @@ public final class HolderComponents<E extends Entity> {
         final HolderWriter<E> holderWriter = new HolderWriter<>(repository, localStorage, localEntityIndex, redisStorage, changeTracker, new UniqueClaimer<>(repository, holderLookups, redisDriver), redisMode == RedisMode.ENABLED);
 
         if (instanceMode == InstanceMode.MULTI_INSTANCE) {
-            final String channel = redisStorage.getRedisNamespace().getInvalidationChannel();
+            final RedisEntityCoordinator redisEntityCoordinator = redisDriver.getEntityCoordinator();
+            if (redisEntityCoordinator != null) {
+                final String namespace = redisStorage.getRedisNamespace().getKey("");
+                final Runnable bindingRunnable = () -> redisEntityCoordinator.bind(
+                        namespace,
+                        holderWriter.getSourceId(),
+                        id -> holderWriter.refreshLocalStrict(id, holderLookups),
+                        () -> localStorage.getValues().forEach(entity -> holderWriter.refreshLocalStrict(entity.getId(), holderLookups)),
+                        exception -> repository.getCoreDatabase().getBatchQueue().reportFailure(new DatabaseException("Entity owner synchronization failed", exception))
+                );
+                bindingRunnable.run();
+                localStorage.setReadGuard(redisEntityCoordinator::checkLease);
+                localStorage.setRemovalListener(id -> redisEntityCoordinator.remove(namespace, id, holderWriter.getSourceId()));
+                localEntityIndex.setAdmissionFunction(entity -> {
+                    final RedisEntityCoordinator.Admission admission = redisEntityCoordinator.admit(namespace, entity.getId(), holderWriter.getSourceId());
+                    if (admission.getReadyFuture().isDone()) {
+                        admission.getReadyFuture().join();
+                        return () -> {};
+                    }
 
-            redisDriver.subscribe(channel, message -> invalidateLocal(localStorage, holderLookups, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
+                    if (admission.getAdmissionThreadId() != Thread.currentThread().threadId()) {
+                        admission.getReadyFuture().join();
+                        return () -> {};
+                    }
+
+                    try {
+                        while (true) {
+                            final long generation = redisEntityCoordinator.generation(namespace, entity.getId());
+                            holderWriter.prepareAdmission(entity, holderLookups);
+                            final long currentGeneration = redisEntityCoordinator.generation(namespace, entity.getId());
+                            if (currentGeneration == generation) {
+                                break;
+                            }
+                        }
+
+                        return () -> admission.getReadyFuture().complete(null);
+                    } catch (final RuntimeException | Error exception) {
+                        admission.getReadyFuture().completeExceptionally(exception);
+                        try {
+                            redisEntityCoordinator.remove(namespace, entity.getId(), holderWriter.getSourceId());
+                        } catch (final RuntimeException | Error cleanupException) {
+                            exception.addSuppressed(cleanupException);
+                        }
+                        throw exception;
+                    }
+                });
+                repository.getCoreDatabase().getBatchQueue().addStopTask(() -> redisEntityCoordinator.unbind(holderWriter.getSourceId()));
+                repository.getCoreDatabase().getBatchQueue().addStartTask(() -> {
+                    bindingRunnable.run();
+                    localStorage.getValues().forEach(entity -> holderWriter.refreshLocalStrict(entity.getId(), holderLookups));
+                });
+            } else {
+                final String channel = redisStorage.getRedisNamespace().getInvalidationChannel();
+                redisDriver.subscribe(channel, message -> invalidateLocal(localStorage, holderLookups, holderWriter, repository.getCoreDatabase().getBatchQueue(), message));
+            }
         }
+
+        repository.getCoreDatabase().getBatchQueue().addStopTask(holderWriter::closeCompletions);
 
         return new HolderComponents<>(localStorage, localEntityIndex, changeTracker, holderLookups, holderWriter);
     }

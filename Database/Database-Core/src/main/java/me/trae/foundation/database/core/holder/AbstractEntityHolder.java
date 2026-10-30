@@ -3,6 +3,7 @@ package me.trae.foundation.database.core.holder;
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.DatabaseException;
+import me.trae.foundation.database.api.exception.SynchronizationException;
 import me.trae.foundation.database.api.holder.EntityHolder;
 import me.trae.foundation.database.api.holder.InstanceMode;
 import me.trae.foundation.database.api.holder.LookupTier;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractEntityRepository<E>> implements EntityHolder<E, R> {
 
@@ -102,6 +104,16 @@ public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractE
     }
 
     @Override
+    public final void saveAndSynchronize(final E entity, final Duration timeout, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.holderComponents.getHolderWriter().saveAndSynchronize(entity, timeout, synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
+    }
+
+    @Override
+    public final void saveAndSynchronize(final E entity, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.saveAndSynchronize(entity, Duration.ofSeconds(5), synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
+    }
+
+    @Override
     public final void save(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
         this.holderComponents.getHolderWriter().save(entity, commitRunnable, failureRunnable);
     }
@@ -117,6 +129,16 @@ public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractE
     }
 
     @Override
+    public final void updateAndSynchronize(final E entity, final Duration timeout, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.holderComponents.getHolderWriter().updateAndSynchronize(entity, timeout, synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
+    }
+
+    @Override
+    public final void updateAndSynchronize(final E entity, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.updateAndSynchronize(entity, Duration.ofSeconds(5), synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
+    }
+
+    @Override
     public final void update(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
         this.holderComponents.getHolderWriter().update(entity, commitRunnable, failureRunnable);
     }
@@ -129,6 +151,16 @@ public abstract class AbstractEntityHolder<E extends Entity, R extends AbstractE
     @Override
     public final void update(final E entity) {
         this.holderComponents.getHolderWriter().update(entity);
+    }
+
+    @Override
+    public final void deleteAndSynchronize(final E entity, final Duration timeout, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.holderComponents.getHolderWriter().deleteAndSynchronize(entity, timeout, synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
+    }
+
+    @Override
+    public final void deleteAndSynchronize(final E entity, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.deleteAndSynchronize(entity, Duration.ofSeconds(5), synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
     }
 
     @Override

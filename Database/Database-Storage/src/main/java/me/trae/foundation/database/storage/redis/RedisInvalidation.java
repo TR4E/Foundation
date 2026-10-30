@@ -6,6 +6,7 @@ import me.trae.foundation.database.storage.driver.RedisDriver;
 
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @AllArgsConstructor
@@ -20,6 +21,11 @@ public final class RedisInvalidation {
     private final String instanceId;
     private final boolean invalidateCache;
     private final boolean removeSharedState;
+    private final UUID notificationId;
+
+    public RedisInvalidation(final String cacheKey, final String missingKey, final String lockKey, final String channel, final UUID entityId, final String instanceId, final boolean invalidateCache, final boolean removeSharedState) {
+        this(cacheKey, missingKey, lockKey, channel, entityId, instanceId, invalidateCache, removeSharedState, UUID.randomUUID());
+    }
 
     public RedisInvalidation(final String cacheKey, final String missingKey, final String lockKey, final String channel, final UUID entityId, final String instanceId, final boolean invalidateCache) {
         this(cacheKey, missingKey, lockKey, channel, entityId, instanceId, invalidateCache, false);
@@ -29,7 +35,12 @@ public final class RedisInvalidation {
         this(cacheKey, missingKey, lockKey, channel, entityId, instanceId, true);
     }
 
-    public void dispatch(final RedisDriver redisDriver) {
+    public void dispatch(final RedisDriver redisDriver, final UUID notificationId) {
+        if (redisDriver.getEntityCoordinator() != null) {
+            redisDriver.getEntityCoordinator().notifyOwners(this, notificationId, false).join();
+            return;
+        }
+
         final String owner = UUID.randomUUID().toString();
 
         final long deadline = System.nanoTime() + Duration.ofMillis(WAIT_MILLIS).toNanos();
@@ -70,6 +81,21 @@ public final class RedisInvalidation {
         throw new IllegalStateException("Timed out waiting to invalidate Redis cache entry %s".formatted(this.cacheKey));
     }
 
+    public void dispatch(final RedisDriver redisDriver) {
+        this.dispatch(redisDriver, this.notificationId);
+    }
+
+    public CompletableFuture<Void> dispatchWait(final RedisDriver redisDriver, final UUID notificationId, final Duration timeout) {
+        if (redisDriver.getEntityCoordinator() != null) {
+            return redisDriver.getEntityCoordinator().notifyOwners(this, notificationId, true, timeout);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletableFuture<Void> dispatchWait(final RedisDriver redisDriver, final UUID notificationId) {
+        return this.dispatchWait(redisDriver, notificationId, Duration.ofSeconds(5));
+    }
+
     public RedisInvalidation withInstanceId(final String instanceId) {
         return new RedisInvalidation(
                 this.cacheKey,
@@ -79,7 +105,8 @@ public final class RedisInvalidation {
                 this.entityId,
                 instanceId,
                 this.invalidateCache,
-                this.removeSharedState
+                this.removeSharedState,
+                this.notificationId
         );
     }
 
@@ -92,7 +119,8 @@ public final class RedisInvalidation {
                 this.entityId,
                 this.instanceId,
                 this.invalidateCache,
-                true
+                true,
+                this.notificationId
         );
     }
 

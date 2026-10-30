@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -102,7 +103,7 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         this.redisDriver.getCommands().del(this.redisNamespace.getKey(id), this.getSharedKey(id));
     }
 
-    public void synchronizeProperties(final UUID id, final Map<String, String> encodedMap, final String sourceId) {
+    public CompletableFuture<Void> synchronizeProperties(final UUID id, final Map<String, String> encodedMap, final String sourceId, final boolean wait, final boolean initialize, final Duration timeout) {
         final Map<String, String> sharedValueMap = new LinkedHashMap<>();
 
         for (final EntityProperty<?, ?> entityProperty : this.entityCodec.getProperties()) {
@@ -114,6 +115,18 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         }
 
         if (!sharedValueMap.isEmpty()) {
+            if (this.redisDriver.getEntityCoordinator() != null) {
+                final RedisInvalidation redisInvalidation = this.redisNamespace.getInvalidation(id, sourceId, false);
+                return this.redisDriver.getEntityCoordinator().notifyOwnersNow(
+                        redisInvalidation,
+                        redisInvalidation.getNotificationId(),
+                        wait,
+                        sharedValueMap,
+                        initialize,
+                        timeout
+                );
+            }
+
             this.sharedHashWriter.writeAndPublish(
                     this.getSharedKey(id),
                     sharedValueMap,
@@ -121,6 +134,37 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                     "%s|%s".formatted(sourceId, id)
             );
         }
+
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletableFuture<Void> synchronizeProperties(final UUID id, final Map<String, String> encodedMap, final String sourceId, final boolean wait, final boolean initialize) {
+        return this.synchronizeProperties(id, encodedMap, sourceId, wait, initialize, Duration.ofSeconds(5));
+    }
+
+    public CompletableFuture<Void> synchronizeProperties(final UUID id, final Map<String, String> encodedMap, final String sourceId, final boolean wait) {
+        return this.synchronizeProperties(id, encodedMap, sourceId, wait, false);
+    }
+
+    public void synchronizeProperties(final UUID id, final Map<String, String> encodedMap, final String sourceId) {
+        this.synchronizeProperties(id, encodedMap, sourceId, false);
+    }
+
+    public CompletableFuture<Void> synchronize(final UUID id, final String sourceId, final boolean delete, final Duration timeout) {
+        final RedisInvalidation invalidation = this.redisNamespace.getInvalidation(id, sourceId, true);
+        return (delete ? invalidation.withSharedStateRemoval() : invalidation).dispatchWait(this.redisDriver, invalidation.getNotificationId(), timeout);
+    }
+
+    public CompletableFuture<Void> synchronize(final UUID id, final String sourceId, final boolean delete) {
+        return this.synchronize(id, sourceId, delete, Duration.ofSeconds(5));
+    }
+
+    public CompletableFuture<Void> synchronize(final RedisInvalidation invalidation, final Duration timeout) {
+        return invalidation.dispatchWait(this.redisDriver, invalidation.getNotificationId(), timeout);
+    }
+
+    public CompletableFuture<Void> synchronize(final RedisInvalidation invalidation) {
+        return this.synchronize(invalidation, Duration.ofSeconds(5));
     }
 
     public void restoreSharedProperties(final E entity) {

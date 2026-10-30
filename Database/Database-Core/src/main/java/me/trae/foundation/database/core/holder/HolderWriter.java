@@ -3,11 +3,17 @@ package me.trae.foundation.database.core.holder;
 import io.lettuce.core.RedisException;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.api.exception.DatabaseException;
+import me.trae.foundation.database.api.exception.SynchronizationException;
 import me.trae.foundation.database.api.holder.LookupTier;
 import me.trae.foundation.database.api.property.EntityProperty;
+import me.trae.foundation.database.api.utility.DatabaseCallbacks;
+import me.trae.foundation.database.core.batch.HolderCommitCallback;
+import me.trae.foundation.database.core.batch.PendingWrite;
 import me.trae.foundation.database.core.holder.change.ChangeTracker;
 import me.trae.foundation.database.core.holder.claim.UniqueClaimer;
 import me.trae.foundation.database.core.repository.AbstractEntityRepository;
@@ -16,12 +22,18 @@ import me.trae.foundation.database.storage.local.LocalStorage;
 import me.trae.foundation.database.storage.redis.RedisStorage;
 import org.jooq.Field;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 @AllArgsConstructor
@@ -34,6 +46,8 @@ public final class HolderWriter<E extends Entity> {
     @Getter
     private final String sourceId = UUID.randomUUID().toString();
 
+    private final ConcurrentHashMap<UUID, Completion> completionMap = new ConcurrentHashMap<>();
+
     private final AbstractEntityRepository<E> repository;
     private final LocalStorage<UUID, E> localStorage;
     private final LocalEntityIndex<E> localEntityIndex;
@@ -42,7 +56,7 @@ public final class HolderWriter<E extends Entity> {
     private final UniqueClaimer<E> uniqueClaimer;
     private final boolean redisEnabled;
 
-    private void saveWithCallbacks(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+    private void saveWithCallbacks(final E entity, final Completion completion) {
         synchronized (this.getLock(entity.getId())) {
             if (this.changeTracker.isTracked(entity.getId()) || this.localStorage != null && this.localStorage.contains(entity.getId())) {
                 throw new DatabaseException("Cannot save existing or already tracked %s %s".formatted(entity.getClass().getSimpleName(), entity.getId()));
@@ -51,20 +65,34 @@ public final class HolderWriter<E extends Entity> {
             final Map<String, String> encodedMap = this.changeTracker.encode(entity);
 
             final UniqueClaimer.EntityIdClaim idClaim = this.uniqueClaimer.claimId(entity);
+            final CompletableFuture<Void> initializationFuture = completion.getInitializationFuture();
 
             try {
                 final List<Runnable> callbackList = new ArrayList<>(this.uniqueClaimer.claim(entity, this.repository.getProperties()));
                 if (this.redisStorage != null) {
                     callbackList.add(() -> {
-                        this.cacheRedisEntity(entity.getId());
-
-                        this.redisStorage.synchronizeProperties(entity.getId(), encodedMap, this.sourceId);
+                        try {
+                            this.cacheRedisEntity(entity.getId());
+                            this.redisStorage.synchronizeProperties(entity.getId(), encodedMap, this.sourceId, false, true)
+                                    .whenComplete((_, exception) -> {
+                                        if (exception == null) {
+                                            initializationFuture.complete(null);
+                                        } else {
+                                            initializationFuture.completeExceptionally(exception);
+                                        }
+                                    });
+                        } catch (final RuntimeException | Error exception) {
+                            initializationFuture.completeExceptionally(exception);
+                            throw exception;
+                        }
                     });
+                } else {
+                    initializationFuture.complete(null);
                 }
 
                 callbackList.add(idClaim::release);
 
-                callbackList.addAll(this.callbackList(commitRunnable));
+                callbackList.addAll(this.commitCallbacks(completion, false, initializationFuture));
 
                 final List<Runnable> failureCallbackList = new ArrayList<>();
 
@@ -76,10 +104,11 @@ public final class HolderWriter<E extends Entity> {
                     }
                 });
 
-                failureCallbackList.addAll(this.callbackList(failureRunnable));
+                failureCallbackList.addAll(this.failureCallbacks(completion));
 
                 this.repository.save(entity, callbackList, failureCallbackList, this.redisEnabled, this.sourceId);
-            } catch (final RuntimeException exception) {
+                completion.getEnqueued().set(true);
+            } catch (final RuntimeException | Error exception) {
                 this.uniqueClaimer.release(entity);
 
                 idClaim.release();
@@ -95,13 +124,32 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
-    public void save(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+    private void save(final E entity, final Completion completion) {
         try {
-            this.saveWithCallbacks(entity, commitRunnable, failureRunnable);
+            this.saveWithCallbacks(entity, completion);
         } catch (final RuntimeException | Error exception) {
-            this.runCallback(failureRunnable, entity.getId());
-            throw exception;
+            if (!completion.getEnqueued().get()) {
+                completion.writeFailed();
+                throw exception;
+            }
+            this.repository.getCoreDatabase().getBatchQueue().reportFailure(new DatabaseException("Post-enqueue cache maintenance failed; write callbacks will report the write outcome", exception));
         }
+    }
+
+    public void save(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        this.save(entity, this.completion(entity.getId(), null, commitRunnable, failureRunnable, _ -> {}));
+    }
+
+    public void saveAndSynchronize(final E entity, final Duration timeout, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        if (timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("Synchronization timeout must be positive");
+        }
+        timeout.toNanos();
+        this.save(entity, this.completion(entity.getId(), timeout, synchronizedRunnable, failureRunnable, synchronizationFailureConsumer));
+    }
+
+    public void saveAndSynchronize(final E entity, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.saveAndSynchronize(entity, Duration.ofSeconds(5), synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
     }
 
     public void save(final E entity, final Runnable commitRunnable) {
@@ -112,7 +160,7 @@ public final class HolderWriter<E extends Entity> {
         this.save(entity, EMPTY_CALLBACK, EMPTY_CALLBACK);
     }
 
-    private boolean updateWithCallbacks(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+    private boolean updateWithCallbacks(final E entity, final Completion completion) {
         synchronized (this.getLock(entity.getId())) {
             if (!this.changeTracker.isTracked(entity)) {
                 final E baseline = this.repository.findById(entity.getId()).orElseThrow(() -> new DatabaseException("Cannot update missing %s %s".formatted(entity.getClass().getSimpleName(), entity.getId())));
@@ -128,7 +176,7 @@ public final class HolderWriter<E extends Entity> {
                 this.changeTracker.snapshot(entity, this.changeTracker.encode(baseline));
             }
 
-            final boolean writeQueued = this.writeChangedLocked(entity, commitRunnable, failureRunnable);
+            final boolean writeQueued = this.writeChangedLocked(entity, completion);
 
             if (this.localStorage != null) {
                 this.localEntityIndex.put(entity, this.localStorage);
@@ -138,20 +186,39 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
-    public void update(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
-        final boolean writeQueued;
-
+    private void update(final E entity, final Completion completion) {
         try {
-            writeQueued = this.updateWithCallbacks(entity, commitRunnable, failureRunnable);
+            if (!this.updateWithCallbacks(entity, completion)) {
+                if (completion.getTimeout() != null && this.repository.getCoreDatabase().getBatchQueue().getPendingWriteStore()
+                        .attachCommitCallback(this.repository.getTableSchema(), this.repository.getTenantId().orElse(null), entity.getId(), this.commitCallbacks(completion, false, CompletableFuture.completedFuture(null)), this.failureCallbacks(completion))) {
+                    completion.getEnqueued().set(true);
+                    return;
+                }
+                this.committed(completion, null, false, CompletableFuture.completedFuture(null));
+            }
         } catch (final RuntimeException | Error exception) {
-            this.runCallback(failureRunnable, entity.getId());
-
-            throw exception;
+            if (!completion.getEnqueued().get()) {
+                completion.writeFailed();
+                throw exception;
+            }
+            this.repository.getCoreDatabase().getBatchQueue().reportFailure(new DatabaseException("Post-enqueue cache maintenance failed; write callbacks will report the write outcome", exception));
         }
+    }
 
-        if (!writeQueued) {
-            this.runCallback(commitRunnable, entity.getId());
+    public void update(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        this.update(entity, this.completion(entity.getId(), null, commitRunnable, failureRunnable, _ -> {}));
+    }
+
+    public void updateAndSynchronize(final E entity, final Duration timeout, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        if (timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("Synchronization timeout must be positive");
         }
+        timeout.toNanos();
+        this.update(entity, this.completion(entity.getId(), timeout, synchronizedRunnable, failureRunnable, synchronizationFailureConsumer));
+    }
+
+    public void updateAndSynchronize(final E entity, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.updateAndSynchronize(entity, Duration.ofSeconds(5), synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
     }
 
     public void update(final E entity, final Runnable commitRunnable) {
@@ -168,7 +235,7 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
-    private boolean writeChangedLocked(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+    private boolean writeChangedLocked(final E entity, final Completion completion) {
         final Map<String, String> encodedMap = this.changeTracker.encode(entity);
 
         final List<EntityProperty<?, ?>> changedList = this.changeTracker.diff(entity.getId(), encodedMap);
@@ -179,28 +246,40 @@ public final class HolderWriter<E extends Entity> {
 
         final List<EntityProperty<?, ?>> persistentChangedList = changedList.stream().filter(EntityProperty::isPersistent).toList();
 
+        final CompletableFuture<Void> sharedFuture;
         if (this.redisStorage != null) {
             final Map<String, String> changedValueMap = new LinkedHashMap<>();
 
             changedList.forEach(entityProperty -> changedValueMap.put(entityProperty.getName(), encodedMap.get(entityProperty.getName())));
 
-            this.redisStorage.synchronizeProperties(entity.getId(), changedValueMap, this.sourceId);
+            sharedFuture = this.redisStorage.synchronizeProperties(
+                    entity.getId(),
+                    changedValueMap,
+                    this.sourceId,
+                    persistentChangedList.isEmpty() && completion.getTimeout() != null,
+                    false,
+                    completion.getTimeout() == null ? Duration.ofSeconds(5) : completion.getTimeout()
+            );
+        } else {
+            sharedFuture = CompletableFuture.completedFuture(null);
         }
 
         if (persistentChangedList.isEmpty()) {
+            completion.setSharedOnly(true);
             this.changeTracker.commit(entity, changedList);
-            return false;
+            this.committed(completion, null, false, sharedFuture);
+            return true;
         }
 
         final List<Runnable> callbackList = new ArrayList<>(this.uniqueClaimer.claim(entity, persistentChangedList));
 
-        callbackList.addAll(this.callbackList(commitRunnable));
+        callbackList.addAll(this.commitCallbacks(completion, false, sharedFuture));
 
         final List<Runnable> failureCallbackList = new ArrayList<>();
 
         failureCallbackList.add(() -> this.handleFailedWrite(entity, false));
 
-        failureCallbackList.addAll(this.callbackList(failureRunnable));
+        failureCallbackList.addAll(this.failureCallbacks(completion));
 
         this.repository.update(
                 entity,
@@ -210,6 +289,7 @@ public final class HolderWriter<E extends Entity> {
                 this.redisEnabled,
                 this.sourceId
         );
+        completion.getEnqueued().set(true);
 
         this.changeTracker.commit(entity, changedList);
 
@@ -219,24 +299,27 @@ public final class HolderWriter<E extends Entity> {
     }
 
     private void writeChangedLocked(final E entity) {
-        this.writeChangedLocked(entity, EMPTY_CALLBACK, EMPTY_CALLBACK);
+        if (!this.changeTracker.diff(entity).isEmpty()) {
+            this.writeChangedLocked(entity, this.completion(entity.getId(), null, EMPTY_CALLBACK, EMPTY_CALLBACK, _ -> {}));
+        }
     }
 
-    private void deleteWithCallbacks(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+    private void deleteWithCallbacks(final E entity, final Completion completion) {
         synchronized (this.getLock(entity.getId())) {
             final List<Runnable> callbackList = new ArrayList<>();
 
             callbackList.add(() -> this.uniqueClaimer.release(entity));
 
-            callbackList.addAll(this.callbackList(commitRunnable));
+            callbackList.addAll(this.commitCallbacks(completion, true, CompletableFuture.completedFuture(null)));
 
             this.repository.delete(
                     entity,
                     callbackList,
-                    this.callbackList(failureRunnable),
+                    this.failureCallbacks(completion),
                     this.redisEnabled,
                     this.sourceId
             );
+            completion.getEnqueued().set(true);
 
             if (this.localStorage != null) {
                 this.localEntityIndex.remove(entity.getId(), this.localStorage);
@@ -246,14 +329,32 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
-    public void delete(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+    private void delete(final E entity, final Completion completion) {
         try {
-            this.deleteWithCallbacks(entity, commitRunnable, failureRunnable);
+            this.deleteWithCallbacks(entity, completion);
         } catch (final RuntimeException | Error exception) {
-            this.runCallback(failureRunnable, entity.getId());
-
-            throw exception;
+            if (!completion.getEnqueued().get()) {
+                completion.writeFailed();
+                throw exception;
+            }
+            this.repository.getCoreDatabase().getBatchQueue().reportFailure(new DatabaseException("Post-enqueue cache maintenance failed; write callbacks will report the write outcome", exception));
         }
+    }
+
+    public void delete(final E entity, final Runnable commitRunnable, final Runnable failureRunnable) {
+        this.delete(entity, this.completion(entity.getId(), null, commitRunnable, failureRunnable, _ -> {}));
+    }
+
+    public void deleteAndSynchronize(final E entity, final Duration timeout, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        if (timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("Synchronization timeout must be positive");
+        }
+        timeout.toNanos();
+        this.delete(entity, this.completion(entity.getId(), timeout, synchronizedRunnable, failureRunnable, synchronizationFailureConsumer));
+    }
+
+    public void deleteAndSynchronize(final E entity, final Runnable synchronizedRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        this.deleteAndSynchronize(entity, Duration.ofSeconds(5), synchronizedRunnable, failureRunnable, synchronizationFailureConsumer);
     }
 
     public void delete(final E entity, final Runnable commitRunnable) {
@@ -264,16 +365,85 @@ public final class HolderWriter<E extends Entity> {
         this.delete(entity, EMPTY_CALLBACK, EMPTY_CALLBACK);
     }
 
-    private List<Runnable> callbackList(final Runnable runnable) {
-        return runnable == EMPTY_CALLBACK ? List.of() : List.of(runnable);
+    private Completion completion(final UUID id, final Duration timeout, final Runnable successRunnable, final Runnable failureRunnable, final Consumer<SynchronizationException> synchronizationFailureConsumer) {
+        final Completion completion = new Completion(id, timeout, successRunnable, failureRunnable, synchronizationFailureConsumer, this.repository.getCoreDatabase().getBatchQueue()::reportFailure);
+        if (timeout != null) {
+            this.completionMap.put(completion.getRequestId(), completion);
+            completion.getTerminalFuture().whenComplete((_, _) -> this.completionMap.remove(completion.getRequestId(), completion));
+        }
+        return completion;
     }
 
-    private void runCallback(final Runnable runnable, final UUID id) {
-        try {
-            runnable.run();
-        } catch (final RuntimeException exception) {
-            this.repository.getCoreDatabase().getBatchQueue().reportFailure(new DatabaseException("Holder callback failed for %s".formatted(id), exception));
+    public void closeCompletions() {
+        this.completionMap.values().stream()
+                .filter(completion -> completion.getCommitted().get())
+                .forEach(completion -> completion.synchronizationFailed(new SynchronizationException("Holder stopped before synchronization completed")));
+    }
+
+    private List<Runnable> failureCallbacks(final Completion completion) {
+        return completion.getFailureRunnable() == EMPTY_CALLBACK && completion.getTimeout() == null ? List.of() : List.of(completion::writeFailed);
+    }
+
+    private List<Runnable> commitCallbacks(final Completion completion, final boolean delete, final CompletableFuture<Void> prerequisiteFuture) {
+        if (completion.getSuccessRunnable() == EMPTY_CALLBACK && completion.getFailureRunnable() == EMPTY_CALLBACK && completion.getTimeout() == null) {
+            return List.of();
         }
+        return List.of(new HolderCommitCallback(completion.getTimeout(), pendingWrite -> this.committed(completion, pendingWrite, delete, prerequisiteFuture)));
+    }
+
+    private void committed(final Completion completion, final PendingWrite pendingWrite, final boolean delete, final CompletableFuture<Void> prerequisiteFuture) {
+        if (completion.getTerminal().get() || !completion.getCommitStarted().compareAndSet(false, true)) {
+            return;
+        }
+        completion.getCommitted().set(true);
+        if (completion.getTimeout() == null) {
+            completion.succeeded();
+            prerequisiteFuture.whenComplete((_, exception) -> {
+                if (exception != null) {
+                    this.repository.getCoreDatabase().getBatchQueue().reportFailure(new SynchronizationException("Write committed but cache maintenance failed", exception));
+                }
+            });
+            return;
+        }
+
+        final CompletableFuture<Void> synchronizationFuture;
+        if (this.redisStorage == null || completion.isSharedOnly()) {
+            synchronizationFuture = prerequisiteFuture;
+        } else if (pendingWrite != null && pendingWrite.getInvalidation() != null) {
+            synchronizationFuture = pendingWrite.synchronize(() -> prerequisiteFuture.thenCompose(_ -> this.redisStorage.synchronize(pendingWrite.getInvalidation(), pendingWrite.getSynchronizationTimeout())));
+        } else {
+            synchronizationFuture = prerequisiteFuture.thenCompose(_ -> this.redisStorage.synchronize(completion.getId(), this.sourceId, delete, completion.getTimeout()));
+        }
+
+        synchronizationFuture.thenApply(_ -> (Void) null)
+                .orTimeout(completion.getTimeout().toNanos(), TimeUnit.NANOSECONDS)
+                .whenComplete((_, exception) -> {
+                    if (exception == null) {
+                        completion.succeeded();
+                    } else {
+                        completion.synchronizationFailed(exception);
+                    }
+                });
+    }
+
+    public void prepareAdmission(final E entity, final HolderLookups<E> holderLookups) {
+        if (this.repository.getCoreDatabase().getBatchQueue().getPendingWriteStore()
+                .hasPendingWrite(this.repository.getTableSchema(), this.repository.getTenantId().orElse(null), entity.getId())) {
+            return;
+        }
+
+        final List<EntityProperty<?, ?>> dirtyPropertyList = this.changeTracker.isTracked(entity) ? this.changeTracker.diff(entity) : List.of();
+        final E currentEntity = holderLookups.loadFresh(entity.getId())
+                .orElseThrow(() -> new DatabaseException("Entity %s was deleted during cache admission".formatted(entity.getId())));
+
+        for (final EntityProperty<?, ?> entityProperty : this.repository.getProperties()) {
+            if (!dirtyPropertyList.contains(entityProperty)) {
+                this.copyProperty(entityProperty, currentEntity, entity);
+            }
+        }
+
+        this.repository.inheritRevision(entity, currentEntity);
+        this.changeTracker.snapshot(entity, this.changeTracker.encode(currentEntity));
     }
 
     public long increment(final E entity, final EntityProperty<? super E, ? extends Number> entityProperty, final long delta) {
@@ -352,7 +522,7 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
-    public void refreshLocal(final UUID id, final HolderLookups<E> holderLookups) {
+    private void refreshLocal(final UUID id, final HolderLookups<E> holderLookups, final boolean strict) {
         synchronized (this.getLock(id)) {
             final E localEntity = this.localStorage.get(id).orElse(null);
             if (localEntity == null) {
@@ -379,6 +549,10 @@ public final class HolderWriter<E extends Entity> {
                 try {
                     this.redisStorage.restoreSharedProperties(refreshedEntity);
                 } catch (final RedisException | ConnectionException exception) {
+                    if (strict) {
+                        throw exception;
+                    }
+
                     for (final EntityProperty<?, ?> entityProperty : this.repository.getProperties()) {
                         if (!entityProperty.isPersistent()) {
                             this.copyProperty(entityProperty, localEntity, refreshedEntity);
@@ -407,6 +581,14 @@ public final class HolderWriter<E extends Entity> {
         }
     }
 
+    public void refreshLocal(final UUID id, final HolderLookups<E> holderLookups) {
+        this.refreshLocal(id, holderLookups, false);
+    }
+
+    public void refreshLocalStrict(final UUID id, final HolderLookups<E> holderLookups) {
+        this.refreshLocal(id, holderLookups, true);
+    }
+
     private <Owner extends Entity, Value> void copyProperty(final EntityProperty<Owner, Value> entityProperty, final E sourceEntity, final E targetEntity) {
         entityProperty.setValue(entityProperty.getEntityType().cast(targetEntity), entityProperty.getValue(entityProperty.getEntityType().cast(sourceEntity)));
     }
@@ -415,5 +597,57 @@ public final class HolderWriter<E extends Entity> {
         final Object boxed = entityProperty.getValueType() == Integer.class ? Integer.valueOf(Math.toIntExact(value)) : Long.valueOf(value);
 
         entityProperty.setValue(entityProperty.getEntityType().cast(entity), entityProperty.getValueType().cast(boxed));
+    }
+
+    @RequiredArgsConstructor
+    @Getter
+    private static final class Completion {
+
+        private final UUID requestId = UUID.randomUUID();
+
+        private final AtomicBoolean terminal = new AtomicBoolean();
+        private final AtomicBoolean enqueued = new AtomicBoolean();
+        private final AtomicBoolean commitStarted = new AtomicBoolean();
+        private final AtomicBoolean committed = new AtomicBoolean();
+
+        private final CompletableFuture<Void> initializationFuture = new CompletableFuture<>();
+        private final CompletableFuture<Void> terminalFuture = new CompletableFuture<>();
+
+        private final UUID id;
+
+        private final Duration timeout;
+        private final Runnable successRunnable, failureRunnable;
+        private final Consumer<SynchronizationException> synchronizationFailureConsumer;
+        private final Consumer<DatabaseException> failureConsumer;
+
+        @Setter
+        private boolean sharedOnly;
+
+        private void succeeded() {
+            if (this.terminal.compareAndSet(false, true)) {
+                this.terminalFuture.complete(null);
+                if (this.successRunnable != EMPTY_CALLBACK) {
+                    DatabaseCallbacks.dispatch(this.successRunnable, this.failureConsumer);
+                }
+            }
+        }
+
+        private void writeFailed() {
+            if (this.terminal.compareAndSet(false, true)) {
+                this.terminalFuture.complete(null);
+                if (this.failureRunnable != EMPTY_CALLBACK) {
+                    DatabaseCallbacks.dispatch(this.failureRunnable, this.failureConsumer);
+                }
+            }
+        }
+
+        private void synchronizationFailed(final Throwable cause) {
+            if (this.terminal.compareAndSet(false, true)) {
+                this.terminalFuture.complete(null);
+                final SynchronizationException exception = new SynchronizationException("Write for %s committed, but cache synchronization failed".formatted(this.id), cause);
+                DatabaseCallbacks.dispatch(() -> this.synchronizationFailureConsumer.accept(exception), this.failureConsumer);
+                this.failureConsumer.accept(exception);
+            }
+        }
     }
 }

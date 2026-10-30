@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import me.trae.foundation.database.api.exception.ConnectionException;
 import me.trae.foundation.database.api.exception.DatabaseException;
 import me.trae.foundation.database.api.exception.OptimisticLockException;
+import me.trae.foundation.database.api.utility.DatabaseCallbacks;
 import me.trae.foundation.database.core.driver.PostgresDriver;
 import me.trae.foundation.database.core.schema.TableSchema;
 import org.jooq.Condition;
@@ -13,11 +14,13 @@ import org.jooq.Query;
 import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 @AllArgsConstructor
@@ -214,23 +217,35 @@ public final class BatchExecutor {
 
     private void reportFailure(final PendingWrite pendingWrite, final DatabaseException exception) {
         pendingWrite.setFailureException(exception);
-        this.failureHandler.accept(exception);
+        DatabaseCallbacks.report(this.failureHandler, exception);
     }
 
     private void complete(final PendingWrite pendingWrite, final boolean changed) {
+        pendingWrite.setSynchronizationTimeout(pendingWrite.getCommitCallbackList().stream()
+                .filter(WriteCommitCallback.class::isInstance)
+                .map(WriteCommitCallback.class::cast)
+                .map(WriteCommitCallback::getSynchronizationTimeout)
+                .filter(Objects::nonNull)
+                .max(Duration::compareTo)
+                .orElse(Duration.ofSeconds(5)));
+
         if (changed && pendingWrite.getRevisionCallback() != null) {
             try {
                 pendingWrite.getRevisionCallback().run();
-            } catch (final RuntimeException exception) {
-                this.failureHandler.accept(new DatabaseException("Revision callback failed for %s".formatted(pendingWrite.getId()), exception));
+            } catch (final RuntimeException | Error exception) {
+                DatabaseCallbacks.report(this.failureHandler, new DatabaseException("Revision callback failed for %s".formatted(pendingWrite.getId()), exception));
             }
         }
 
         for (final Runnable callback : pendingWrite.getCommitCallbackList()) {
             try {
-                callback.run();
-            } catch (final RuntimeException exception) {
-                this.failureHandler.accept(new DatabaseException("Commit callback failed for %s".formatted(pendingWrite.getId()), exception));
+                if (callback instanceof final WriteCommitCallback writeCommitCallback) {
+                    writeCommitCallback.run(pendingWrite);
+                } else {
+                    callback.run();
+                }
+            } catch (final RuntimeException | Error exception) {
+                DatabaseCallbacks.report(this.failureHandler, new DatabaseException("Commit callback failed for %s".formatted(pendingWrite.getId()), exception));
             }
         }
     }

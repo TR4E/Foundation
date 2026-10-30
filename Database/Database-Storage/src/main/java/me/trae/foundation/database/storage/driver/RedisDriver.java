@@ -12,6 +12,7 @@ import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.api.exception.ConnectionException;
+import me.trae.foundation.database.storage.redis.RedisEntityCoordinator;
 
 import java.time.Duration;
 import java.util.UUID;
@@ -21,6 +22,9 @@ import java.util.function.Consumer;
 public final class RedisDriver {
 
     private final RedisSubscriptionDispatcher subscriptionDispatcher = new RedisSubscriptionDispatcher();
+
+    @Getter
+    private final RedisEntityCoordinator entityCoordinator = new RedisEntityCoordinator(this);
 
     @Getter
     private final String instanceId = UUID.randomUUID().toString();
@@ -40,11 +44,14 @@ public final class RedisDriver {
         }
 
         try {
+            this.subscriptionDispatcher.setReconnectListener(this.entityCoordinator::reconnect);
+            this.subscriptionDispatcher.setDisconnectListener(this.entityCoordinator::connectionLost);
             this.redisClient = RedisClient.create(this.createRedisURI());
             this.connection = this.redisClient.connect();
             this.pubSubConnection = this.redisClient.connectPubSub();
 
             this.subscriptionDispatcher.attach(this.pubSubConnection);
+            this.entityCoordinator.reconnect();
         } catch (final RedisException exception) {
             this.disconnect();
             throw new ConnectionException("Failed to connect to Redis at %s:%s".formatted(this.redisSettings.getHost(), this.redisSettings.getPort()), exception);
@@ -52,6 +59,7 @@ public final class RedisDriver {
     }
 
     public synchronized void disconnect() {
+        this.entityCoordinator.suspend();
         this.subscriptionDispatcher.detach();
 
         if (this.pubSubConnection != null) {

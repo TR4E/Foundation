@@ -1,5 +1,6 @@
 package me.trae.foundation.database.storage.local;
 
+import lombok.Setter;
 import me.trae.foundation.database.api.storage.Storage;
 
 import java.time.Duration;
@@ -11,6 +12,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
 
@@ -19,9 +23,17 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     private final Map<Key, CacheEntry<Value>> entryMap = new ConcurrentHashMap<>();
     private final Set<Key> pinnedKeySet = ConcurrentHashMap.newKeySet();
 
+    private final Object[] lockArray = Stream.generate(Object::new).limit(64L).toArray();
+
     private final Duration expiry;
     private final boolean refreshOnRead;
     private final Duration maximumAge;
+
+    @Setter
+    private Consumer<Key> removalListener = _ -> {};
+
+    @Setter
+    private Runnable readGuard = () -> {};
 
     public LocalStorage(final Duration expiry, final boolean refreshOnRead, final Duration maximumAge) {
         this.expiry = expiry;
@@ -42,10 +54,11 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     }
 
     public void put(final Key key, final Value value, final Duration expiry) {
-        this.entryMap.compute(key, (_, existing) -> {
-            final boolean pinned = this.pinnedKeySet.contains(key) || existing != null && existing.isPinned();
-
-            return new CacheEntry<>(value, pinned ? null : expiry, pinned, pinned ? null : this.maximumAge);
+        this.withLock(key, () -> {
+            this.entryMap.compute(key, (_, existing) -> {
+                final boolean pinned = this.pinnedKeySet.contains(key) || existing != null && existing.isPinned();
+                return new CacheEntry<>(value, pinned ? null : expiry, pinned, pinned ? null : this.maximumAge);
+            });
         });
     }
 
@@ -56,18 +69,21 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
 
     @Override
     public void remove(final Key key) {
-        this.pinnedKeySet.remove(key);
-        this.entryMap.remove(key);
+        this.withLock(key, () -> {
+            this.pinnedKeySet.remove(key);
+            if (this.entryMap.remove(key) != null) {
+                this.removalListener.accept(key);
+            }
+        });
     }
 
     public void evict(final Key key) {
-        this.pinnedKeySet.remove(key);
-        this.entryMap.remove(key);
+        this.remove(key);
     }
 
     public void clear() {
-        this.entryMap.clear();
-        this.pinnedKeySet.clear();
+        final Set<Key> keySet = Set.copyOf(this.entryMap.keySet());
+        keySet.forEach(this::remove);
     }
 
     @Override
@@ -79,10 +95,16 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
         }
 
         if (cacheEntry.isExpired()) {
-            this.entryMap.remove(key, cacheEntry);
-
-            return Optional.empty();
+            synchronized (this.getLock(key)) {
+                if (this.entryMap.remove(key, cacheEntry)) {
+                    this.removalListener.accept(key);
+                    return Optional.empty();
+                }
+                return this.get(key);
+            }
         }
+
+        this.readGuard.run();
 
         if (this.refreshOnRead) {
             cacheEntry.refreshExpiry();
@@ -108,13 +130,17 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
     }
 
     public void pin(final Key key, final Value value) {
-        this.pinnedKeySet.add(key);
-        this.entryMap.put(key, new CacheEntry<>(value, null, true, null));
+        this.withLock(key, () -> {
+            this.pinnedKeySet.add(key);
+            this.entryMap.put(key, new CacheEntry<>(value, null, true, null));
+        });
     }
 
     public void unpin(final Key key) {
-        this.pinnedKeySet.remove(key);
-        this.entryMap.computeIfPresent(key, (_, existing) -> existing.isExpired() ? null : new CacheEntry<>(existing.getValue(), this.expiry, false, this.maximumAge));
+        this.withLock(key, () -> {
+            this.pinnedKeySet.remove(key);
+            this.entryMap.computeIfPresent(key, (_, existing) -> existing.isExpired() ? null : new CacheEntry<>(existing.getValue(), this.expiry, false, this.maximumAge));
+        });
     }
 
     public boolean isPinned(final Key key) {
@@ -133,11 +159,30 @@ public final class LocalStorage<Key, Value> implements Storage<Key, Value> {
         final List<Value> evictedList = new ArrayList<>();
 
         this.entryMap.forEach((key, cacheEntry) -> {
-            if (cacheEntry.isExpired() && this.entryMap.remove(key, cacheEntry)) {
-                evictedList.add(cacheEntry.getValue());
-            }
+            this.withLock(key, () -> {
+                if (cacheEntry.isExpired() && this.entryMap.remove(key, cacheEntry)) {
+                    evictedList.add(cacheEntry.getValue());
+                    this.removalListener.accept(key);
+                }
+            });
         });
 
         return evictedList;
+    }
+
+    public void withLock(final Key key, final Runnable runnable) {
+        synchronized (this.getLock(key)) {
+            runnable.run();
+        }
+    }
+
+    public <Result> Result withValueLock(final Key key, final Supplier<Result> supplier) {
+        synchronized (this.getLock(key)) {
+            return supplier.get();
+        }
+    }
+
+    private Object getLock(final Key key) {
+        return this.lockArray[Math.floorMod(key.hashCode(), this.lockArray.length)];
     }
 }

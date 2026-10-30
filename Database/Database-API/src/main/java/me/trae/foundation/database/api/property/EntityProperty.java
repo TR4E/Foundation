@@ -22,7 +22,12 @@ public final class EntityProperty<E extends Entity, Value> {
     private final BiConsumer<E, Value> setter;
     private final Class<Value> valueType;
     private final ValueConverter<Value, ?> valueConverter;
+
+    /**
+     * Whether this property is stored in PostgreSQL. Non-persistent properties still synchronize through Redis.
+     */
     private final boolean persistent;
+
     private final boolean caseInsensitive;
 
     public static <E extends Entity, Value> EntityProperty<E, Value> register(final Class<E> entityType, final String name, final Function<E, Value> getter, final BiConsumer<E, Value> setter, final Class<Value> valueType, final boolean persistent) {

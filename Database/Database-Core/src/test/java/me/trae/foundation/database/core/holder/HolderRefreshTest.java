@@ -106,7 +106,7 @@ final class HolderRefreshTest {
     }
 
     @Test
-    void refreshesPinnedEntityWithoutLosingLocalStateOrIndexes() {
+    void refreshesPinnedEntityIncludingNonPersistentStateAndIndexes() {
         final TestEntity localTestEntity = this.cacheEntity(true);
         final TestEntity refreshedTestEntity = this.remoteEntity(localTestEntity.getId());
 
@@ -114,7 +114,7 @@ final class HolderRefreshTest {
 
         assertSame(refreshedTestEntity, this.localStorage.get(localTestEntity.getId()).orElseThrow());
         assertEquals("owner", refreshedTestEntity.getName());
-        assertEquals("local-session", refreshedTestEntity.getSession());
+        assertEquals("remote-session", refreshedTestEntity.getSession());
         assertTrue(this.localStorage.isPinned(localTestEntity.getId()));
         assertEquals(List.of(refreshedTestEntity), this.localStorage.getPinnedValues());
         assertTrue(this.localEntityIndex.get(NAME_INDEX, new Object[]{"default"}, this.localStorage).isEmpty());
@@ -132,7 +132,7 @@ final class HolderRefreshTest {
 
         assertSame(refreshedTestEntity, this.localStorage.get(localTestEntity.getId()).orElseThrow());
         assertFalse(this.localStorage.isPinned(localTestEntity.getId()));
-        assertEquals("local-session", refreshedTestEntity.getSession());
+        assertEquals("remote-session", refreshedTestEntity.getSession());
     }
 
     @Test
@@ -177,7 +177,7 @@ final class HolderRefreshTest {
 
         final TestEntity refreshedTestEntity = this.localStorage.get(localTestEntity.getId()).orElseThrow();
         assertEquals("local-edit", refreshedTestEntity.getName());
-        assertEquals("local-session", refreshedTestEntity.getSession());
+        assertEquals("remote-session", refreshedTestEntity.getSession());
         assertTrue(this.changeTracker.diff(refreshedTestEntity).isEmpty());
     }
 
@@ -247,11 +247,12 @@ final class HolderRefreshTest {
         assertEquals(pinned, writerComponents.getLocalStorage().isPinned(writerTestEntity.getId()));
 
         when(redisCommands.hgetall(RedisNamespace.of("holder_refresh").getKey(writerTestEntity.getId()))).thenReturn(Map.of("name", "owner"));
+        when(redisCommands.hgetall(RedisNamespace.of("holder_refresh").getKey("cache:shared:%s".formatted(writerTestEntity.getId())))).thenReturn(Map.of("session", "1network-session"));
         consumerArgumentCaptor.getAllValues().getLast().accept(message);
 
         final TestEntity refreshedTestEntity = readerComponents.getLocalStorage().get(writerTestEntity.getId()).orElseThrow();
         assertEquals("owner", refreshedTestEntity.getName());
-        assertEquals("reader-session", refreshedTestEntity.getSession());
+        assertEquals("network-session", refreshedTestEntity.getSession());
         assertTrue(readerComponents.getLocalStorage().isPinned(writerTestEntity.getId()));
 
         when(redisCommands.hgetall(RedisNamespace.of("holder_refresh").getKey(writerTestEntity.getId()))).thenReturn(Map.of("name", "admin"));
@@ -279,12 +280,13 @@ final class HolderRefreshTest {
         holderComponents.getLocalEntityIndex().pin(testEntity, holderComponents.getLocalStorage());
         holderComponents.getChangeTracker().snapshot(testEntity);
         when(redisCommands.hgetall(redisNamespace.getKey(testEntity.getId()))).thenReturn(Map.of("name", "owner"));
+        when(redisCommands.hgetall(redisNamespace.getKey("cache:shared:%s".formatted(testEntity.getId())))).thenReturn(Map.of("session", "1network-session"));
 
         consumerArgumentCaptor.getValue().accept("remote|%s".formatted(testEntity.getId()));
 
         final TestEntity redisTestEntity = holderComponents.getLocalStorage().get(testEntity.getId()).orElseThrow();
         assertEquals("owner", redisTestEntity.getName());
-        assertEquals("local-session", redisTestEntity.getSession());
+        assertEquals("network-session", redisTestEntity.getSession());
         assertTrue(holderComponents.getLocalStorage().isPinned(testEntity.getId()));
 
         final TestEntity databaseTestEntity = new TestEntity(testEntity.getId());
@@ -296,7 +298,7 @@ final class HolderRefreshTest {
 
         assertSame(databaseTestEntity, holderComponents.getLocalStorage().get(testEntity.getId()).orElseThrow());
         assertEquals("admin", databaseTestEntity.getName());
-        assertEquals("local-session", databaseTestEntity.getSession());
+        assertEquals("network-session", databaseTestEntity.getSession());
         assertTrue(holderComponents.getLocalStorage().isPinned(testEntity.getId()));
         verify(this.batchQueue, never()).reportFailure(any());
     }

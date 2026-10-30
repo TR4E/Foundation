@@ -71,7 +71,8 @@ public interface EntityHolder<E extends Entity, R extends EntityRepository<E>> {
     void save(final E entity);
 
     /**
-     * Runs the commit callback immediately when no write is needed, or after the database commit.
+     * Runs the commit callback immediately when no write is needed, after Redis synchronization for
+     * non-persistent changes, or after the database commit for persistent changes.
      * Callbacks run on the calling thread for immediate completion, or on the batch processing thread.
      * A commit does not acknowledge cache refreshes in other instances.
      */

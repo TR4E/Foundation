@@ -52,6 +52,20 @@ public final class RedisHashWriter {
                     """
     );
 
+    private static final RedisScript PUBLISH_SCRIPT = new RedisScript(
+            """
+                    for index = 3, #ARGV, 2 do
+                        redis.call('HSET', KEYS[1], ARGV[index], ARGV[index + 1])
+                    end
+                    local expiry = tonumber(ARGV[1])
+                    if expiry > 0 then
+                        redis.call('PEXPIRE', KEYS[1], expiry)
+                    end
+                    redis.call('PUBLISH', KEYS[2], ARGV[2])
+                    return 1
+                    """
+    );
+
     private static final RedisScript INCREMENT_SCRIPT = new RedisScript(
             """
                     local value = redis.call('HINCRBY', KEYS[1], ARGV[1], ARGV[2])
@@ -73,6 +87,18 @@ public final class RedisHashWriter {
 
     public void write(final String key, final Map<String, String> fieldMap) {
         WRITE_SCRIPT.execute(this.redisDriver, ScriptOutputType.INTEGER, new String[]{key}, this.createArguments(fieldMap).toArray(String[]::new));
+    }
+
+    public void writeAndPublish(final String key, final Map<String, String> fieldMap, final String channel, final String message) {
+        final List<String> argumentList = new ArrayList<>();
+        argumentList.add(String.valueOf(this.expiryMillis));
+        argumentList.add(message);
+        fieldMap.forEach((field, value) -> {
+            argumentList.add(field);
+            argumentList.add(value);
+        });
+
+        PUBLISH_SCRIPT.execute(this.redisDriver, ScriptOutputType.INTEGER, new String[]{key, channel}, argumentList.toArray(String[]::new));
     }
 
     public boolean writeIfLockOwner(final String key, final String lockKey, final String owner, final Map<String, String> fieldMap) {

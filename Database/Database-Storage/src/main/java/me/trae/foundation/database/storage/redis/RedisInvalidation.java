@@ -19,6 +19,11 @@ public final class RedisInvalidation {
     private final UUID entityId;
     private final String instanceId;
     private final boolean invalidateCache;
+    private final boolean removeSharedState;
+
+    public RedisInvalidation(final String cacheKey, final String missingKey, final String lockKey, final String channel, final UUID entityId, final String instanceId, final boolean invalidateCache) {
+        this(cacheKey, missingKey, lockKey, channel, entityId, instanceId, invalidateCache, false);
+    }
 
     public RedisInvalidation(final String cacheKey, final String missingKey, final String lockKey, final String channel, final UUID entityId, final String instanceId) {
         this(cacheKey, missingKey, lockKey, channel, entityId, instanceId, true);
@@ -36,6 +41,10 @@ public final class RedisInvalidation {
                         redisDriver.getCommands().del(this.cacheKey, this.missingKey);
                     } else {
                         redisDriver.getCommands().del(this.missingKey);
+                    }
+
+                    if (this.removeSharedState) {
+                        redisDriver.getCommands().del(this.getSharedKey());
                     }
 
                     redisDriver.publish(this.channel, "%s|%s".formatted(this.instanceId, this.entityId));
@@ -69,7 +78,25 @@ public final class RedisInvalidation {
                 this.channel,
                 this.entityId,
                 instanceId,
-                this.invalidateCache
+                this.invalidateCache,
+                this.removeSharedState
         );
+    }
+
+    public RedisInvalidation withSharedStateRemoval() {
+        return new RedisInvalidation(
+                this.cacheKey,
+                this.missingKey,
+                this.lockKey,
+                this.channel,
+                this.entityId,
+                this.instanceId,
+                this.invalidateCache,
+                true
+        );
+    }
+
+    private String getSharedKey() {
+        return "%scache:shared:%s".formatted(this.cacheKey.substring(0, this.cacheKey.length() - this.entityId.toString().length()), this.entityId);
     }
 }

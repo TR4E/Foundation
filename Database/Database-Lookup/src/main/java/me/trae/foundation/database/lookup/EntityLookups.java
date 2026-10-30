@@ -103,7 +103,9 @@ public final class EntityLookups {
 
     private static <E extends Entity, Value> Optional<E> findRedis(final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final EntityProperty<? super E, Value> entityProperty, final Value value) {
         final Object normalizedValue = entityProperty.normalizeIndexValue(value);
-        final Optional<E> result = propertyIndex.find(value).flatMap(redisStorage::get)
+
+        final Optional<E> result = propertyIndex.find(value)
+                .flatMap(redisStorage::get)
                 .filter(entity -> Objects.equals(entityProperty.normalizeIndexValue(entityProperty.getValue(entity)), normalizedValue));
 
         if (result.isEmpty()) {
@@ -133,14 +135,18 @@ public final class EntityLookups {
         try {
             return redisStorage.getOrLoad(id, () -> {
                 loaderStarted.set(true);
+
                 final Optional<E> loaded = entityRepository.findById(id);
+
                 loadedReference.set(loaded);
+
                 return loaded;
             });
         } catch (final RedisException | ConnectionException exception) {
             if (loaderStarted.get()) {
                 final Optional<E> loaded = loadedReference.get();
-                if (loaded != null) {
+
+                if (loaded.isPresent()) {
                     return loaded;
                 }
 
@@ -163,13 +169,16 @@ public final class EntityLookups {
         try {
             return redisStorage.getOrLoadAll(ids, missingIds -> {
                 loaderStarted.set(true);
+
                 final Map<UUID, E> loaded = mapById(entityRepository.findManyById(missingIds));
+
                 loadedReference.set(loaded);
                 return loaded.values();
             });
         } catch (final RedisException | ConnectionException exception) {
             if (loaderStarted.get()) {
                 final Map<UUID, E> loaded = loadedReference.get();
+
                 if (loaded != null) {
                     return loaded;
                 }
@@ -192,6 +201,7 @@ public final class EntityLookups {
     private static <E extends Entity> Optional<E> findRedisByIndex(final RedisStorage<E> redisStorage, final RedisEntityIndex<E> redisEntityIndex, final EntityIndex<E> entityIndex, final List<Object> values) {
         try {
             final Optional<UUID> id = redisEntityIndex.find(values);
+
             final Optional<E> entity = id.flatMap(redisStorage::get).filter(found -> entityIndex.hasValues(found) && EntityIndexKey.encode(entityIndex, entityIndex.getValues(found)).equals(EntityIndexKey.encode(entityIndex, entityIndex.getValues(values.toArray()))));
 
             if (entity.isEmpty()) {
@@ -221,7 +231,8 @@ public final class EntityLookups {
 
     private static <E extends Entity> void writeRedisByIndex(final RedisStorage<E> redisStorage, final RedisEntityIndex<E> redisEntityIndex, final EntityIndex<E> entityIndex, final E entity) {
         try {
-            redisStorage.put(entity.getId(), entity);
+            redisStorage.cache(entity);
+
             redisEntityIndex.put(entityIndex.getValues(entity), entity.getId());
         } catch (final RedisException | ConnectionException ignored) {
         }
@@ -229,7 +240,8 @@ public final class EntityLookups {
 
     private static <E extends Entity, Value> void writeRedisByProperty(final RedisStorage<E> redisStorage, final PropertyIndex<Value> propertyIndex, final Value value, final E entity) {
         try {
-            redisStorage.put(entity.getId(), entity);
+            redisStorage.cache(entity);
+
             propertyIndex.put(value, entity.getId());
         } catch (final RedisException | ConnectionException ignored) {
         }

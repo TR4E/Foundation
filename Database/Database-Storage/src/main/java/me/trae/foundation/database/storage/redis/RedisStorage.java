@@ -12,6 +12,7 @@ import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.EntityProperty;
 import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.storage.codec.EntityCodec;
+import me.trae.foundation.database.storage.codec.ValueCodec;
 import me.trae.foundation.database.storage.driver.RedisDriver;
 import me.trae.foundation.database.storage.redis.script.RedisScript;
 import me.trae.foundation.database.storage.revision.EntityRevisionStore;
@@ -36,16 +37,17 @@ import java.util.function.Supplier;
 public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
 
     private static final String REVISION_FIELD = "__foundation_revision";
+    private static final String ENTITY_FIELD = "__foundation_entity";
 
     private static final String WRITE_MISSING_SCRIPT_SOURCE = "if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3]) return 1";
     private static final String RELEASE_LOCK_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+
+    private static final RedisScript WRITE_MISSING_SCRIPT = new RedisScript(WRITE_MISSING_SCRIPT_SOURCE);
 
     private static final long FILL_LOCK_MILLIS = 30_000L;
     private static final long FILL_WAIT_MILLIS = 35_000L;
     private static final long NEGATIVE_CACHE_MILLIS = 1_000L;
     private static final long FAILURE_CACHE_MILLIS = 500L;
-
-    private static final RedisScript WRITE_MISSING_SCRIPT = new RedisScript(WRITE_MISSING_SCRIPT_SOURCE);
 
     private final RedisDriver redisDriver;
 
@@ -54,11 +56,20 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
 
     private final EntityCodec<E> entityCodec;
     private final RedisHashWriter redisHashWriter;
+    private final RedisHashWriter sharedHashWriter;
     private final boolean revisioned;
     private final EntityRevisionStore entityRevisionStore;
 
     public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry, final boolean revisioned, final EntityRevisionStore entityRevisionStore) {
-        this(redisDriver, redisNamespace, new EntityCodec<>(entityType), new RedisHashWriter(redisDriver, expiry), revisioned, entityRevisionStore);
+        this(
+                redisDriver,
+                redisNamespace,
+                new EntityCodec<>(entityType),
+                new RedisHashWriter(redisDriver, expiry),
+                new RedisHashWriter(redisDriver, null),
+                revisioned,
+                entityRevisionStore
+        );
     }
 
     public RedisStorage(final RedisDriver redisDriver, final RedisNamespace redisNamespace, final Class<E> entityType, final Duration expiry, final boolean revisioned) {
@@ -76,11 +87,61 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     @Override
     public void put(final UUID id, final E entity) {
         this.redisHashWriter.write(this.redisNamespace.getKey(id), this.encode(entity));
+
+        this.synchronizeProperties(id, this.entityCodec.encode(entity), this.redisDriver.getInstanceId());
+    }
+
+    public void cache(final E entity) {
+        this.restoreSharedProperties(entity);
+
+        this.redisHashWriter.write(this.redisNamespace.getKey(entity.getId()), this.encode(entity));
     }
 
     @Override
     public void remove(final UUID id) {
-        this.redisDriver.getCommands().del(this.redisNamespace.getKey(id));
+        this.redisDriver.getCommands().del(this.redisNamespace.getKey(id), this.getSharedKey(id));
+    }
+
+    public void synchronizeProperties(final UUID id, final Map<String, String> encodedMap, final String sourceId) {
+        final Map<String, String> sharedValueMap = new LinkedHashMap<>();
+
+        for (final EntityProperty<?, ?> entityProperty : this.entityCodec.getProperties()) {
+            if (!entityProperty.isPersistent() && encodedMap.containsKey(entityProperty.getName())) {
+                final String value = encodedMap.get(entityProperty.getName());
+
+                sharedValueMap.put(entityProperty.getName(), value == null ? "0" : "1%s".formatted(value));
+            }
+        }
+
+        if (!sharedValueMap.isEmpty()) {
+            this.sharedHashWriter.writeAndPublish(
+                    this.getSharedKey(id),
+                    sharedValueMap,
+                    this.redisNamespace.getInvalidationChannel(),
+                    "%s|%s".formatted(sourceId, id)
+            );
+        }
+    }
+
+    public void restoreSharedProperties(final E entity) {
+        if (this.entityCodec.getProperties().stream().allMatch(EntityProperty::isPersistent)) {
+            return;
+        }
+
+        final Map<String, String> sharedValueMap = this.redisDriver.getCommands().hgetall(this.getSharedKey(entity.getId()));
+
+        for (final EntityProperty<?, ?> entityProperty : this.entityCodec.getProperties()) {
+            if (!entityProperty.isPersistent() && sharedValueMap.containsKey(entityProperty.getName())) {
+                this.restoreSharedProperty(entityProperty, entity, sharedValueMap.get(entityProperty.getName()));
+            }
+        }
+    }
+
+    private <Owner extends Entity, Value> void restoreSharedProperty(final EntityProperty<Owner, Value> entityProperty, final E entity, final String value) {
+        entityProperty.setValue(
+                entityProperty.getEntityType().cast(entity),
+                value.equals("0") ? null : ValueCodec.decode(entityProperty, value.substring(1))
+        );
     }
 
     public void invalidate(final UUID id) {
@@ -136,13 +197,17 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                         loaded = loader.get();
                     } catch (final RuntimeException exception) {
                         this.writeFailureMarker(id, lockKey, owner, exception);
+
                         throw exception;
                     }
 
                     if (loaded.isPresent()) {
+                        this.restoreSharedProperties(loaded.get());
+
                         if (!this.redisHashWriter.writeIfLockOwner(this.redisNamespace.getKey(id), lockKey, owner, this.encode(loaded.get()))) {
                             return Optional.of(this.get(id).orElseThrow(() -> new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(id))));
                         }
+
                         this.redisDriver.getCommands().del(this.getMissingKey(id));
                     } else {
                         committedSave = this.awaitPendingSave(id);
@@ -153,10 +218,13 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                                 saved = loader.get();
                             } catch (final RuntimeException exception) {
                                 this.writeFailureMarker(id, lockKey, owner, exception);
+
                                 throw exception;
                             }
 
                             if (saved.isPresent()) {
+                                this.restoreSharedProperties(saved.get());
+
                                 if (!this.redisHashWriter.writeIfLockOwner(this.redisNamespace.getKey(id), lockKey, owner, this.encode(saved.get()))) {
                                     return Optional.of(this.get(id).orElseThrow(() -> new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(id))));
                                 }
@@ -191,7 +259,9 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
 
     public Optional<E> refresh(final UUID id, final Supplier<Optional<E>> loader) {
         final String lockKey = this.getLockKey(id);
+
         final String owner = UUID.randomUUID().toString();
+
         final long deadline = System.nanoTime() + Duration.ofMillis(FILL_WAIT_MILLIS).toNanos();
 
         while (System.nanoTime() < deadline) {
@@ -202,13 +272,17 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                         loaded = loader.get();
                     } catch (final RuntimeException exception) {
                         this.writeFailureMarker(id, lockKey, owner, exception);
+
                         throw exception;
                     }
 
                     if (loaded.isPresent()) {
+                        this.restoreSharedProperties(loaded.get());
+
                         if (!this.redisHashWriter.writeIfLockOwner(this.redisNamespace.getKey(id), lockKey, owner, this.encode(loaded.get()))) {
                             throw new IllegalStateException("Redis cache refresh lock expired while loading %s".formatted(id));
                         }
+
                         this.redisDriver.getCommands().del(this.getMissingKey(id));
                     } else {
                         this.redisDriver.getCommands().del(this.redisNamespace.getKey(id));
@@ -255,14 +329,16 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
 
                 final String lockKey = this.getLockKey(id);
 
-                boolean acquired = false;
-                while (!acquired) {
+                boolean acquired;
+
+                while (true) {
                     acquired = this.acquireLockIfAvailable(lockKey, owner);
                     if (acquired) {
                         break;
                     }
 
                     final Optional<E> current = this.get(id);
+
                     if (current.isPresent()) {
                         entityMap.put(id, current.get());
                         break;
@@ -310,20 +386,24 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
                 final Set<UUID> loadedIdSet = new LinkedHashSet<>();
 
                 for (final E entity : loadedEntities) {
+                    this.restoreSharedProperties(entity);
                     final String owner = lockOwnerMap.get(entity.getId());
 
                     if (owner == null || !this.redisHashWriter.writeIfLockOwner(this.redisNamespace.getKey(entity.getId()), this.getLockKey(entity.getId()), owner, this.encode(entity))) {
                         final E cached = this.get(entity.getId()).orElseThrow(() -> new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(entity.getId())));
+
                         entityMap.put(entity.getId(), cached);
                     } else {
                         entityMap.put(entity.getId(), entity);
                     }
+
                     loadedIdSet.add(entity.getId());
                 }
 
                 for (final UUID id : loadIdList) {
                     if (!loadedIdSet.contains(id)) {
                         final String owner = lockOwnerMap.get(id);
+
                         if (owner != null && !this.writeMissingIfLockOwner(id, this.getLockKey(id), owner)) {
                             throw new IllegalStateException("Redis cache fill lock expired while loading %s".formatted(id));
                         }
@@ -355,9 +435,7 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         for (final Map.Entry<UUID, RedisFuture<Map<String, String>>> entry : futureMap.entrySet()) {
             final Optional<E> entity = this.decode(entry.getKey(), this.await(entry.getValue()));
 
-            if (entity.isPresent()) {
-                entityMap.put(entry.getKey(), entity.get());
-            }
+            entity.ifPresent(e -> entityMap.put(entry.getKey(), e));
         }
 
         return entityMap;
@@ -373,7 +451,13 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
             return;
         }
 
-        this.redisHashWriter.write(this.redisNamespace.getKey(entity.getId()), this.encode(entity, entityProperties));
+        final List<? extends EntityProperty<?, ?>> persistentPropertyList = entityProperties.stream().filter(EntityProperty::isPersistent).toList();
+
+        if (!persistentPropertyList.isEmpty()) {
+            this.redisHashWriter.write(this.redisNamespace.getKey(entity.getId()), this.encode(entity, persistentPropertyList));
+        }
+
+        this.synchronizeProperties(entity.getId(), this.entityCodec.encode(entity, entityProperties), this.redisDriver.getInstanceId());
     }
 
     public long increment(final UUID id, final EntityProperty<?, ? extends Number> entityProperty, final long delta) {
@@ -389,7 +473,15 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     }
 
     public RedisStorage<E> forTenant(final String tenantId) {
-        return new RedisStorage<>(this.redisDriver, this.redisNamespace.withTenant(tenantId), this.entityCodec, this.redisHashWriter, this.revisioned, this.entityRevisionStore);
+        return new RedisStorage<>(
+                this.redisDriver,
+                this.redisNamespace.withTenant(tenantId),
+                this.entityCodec,
+                this.redisHashWriter,
+                this.sharedHashWriter,
+                this.revisioned,
+                this.entityRevisionStore
+        );
     }
 
     private Optional<E> decode(final UUID id, final Map<String, String> fieldMap) {
@@ -397,18 +489,22 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
             return Optional.empty();
         }
 
+        final E entity;
+
         try {
-            final E entity = this.entityCodec.decode(id, fieldMap);
+            entity = this.entityCodec.decode(id, fieldMap);
 
             if (this.revisioned && fieldMap.containsKey(REVISION_FIELD)) {
                 this.entityRevisionStore.setRevision(entity, Long.parseLong(fieldMap.get(REVISION_FIELD)));
             }
-
-            return Optional.of(entity);
         } catch (final RuntimeException exception) {
-            this.remove(id);
+            this.redisDriver.getCommands().del(this.redisNamespace.getKey(id));
             return Optional.empty();
         }
+
+        this.restoreSharedProperties(entity);
+
+        return Optional.of(entity);
     }
 
     private Map<String, String> encode(final E entity, final Collection<? extends EntityProperty<?, ?>> entityProperties) {
@@ -422,7 +518,15 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
     }
 
     private Map<String, String> encode(final E entity) {
-        return this.encode(entity, this.entityCodec.getProperties());
+        final Map<String, String> fieldMap = this.encode(entity, this.entityCodec.getProperties().stream().filter(EntityProperty::isPersistent).toList());
+
+        fieldMap.put(ENTITY_FIELD, "1");
+
+        return fieldMap;
+    }
+
+    private String getSharedKey(final UUID id) {
+        return this.redisNamespace.getKey("cache:shared:%s".formatted(id));
     }
 
     private boolean acquireLockIfAvailable(final String lockKey, final String owner) {
@@ -449,12 +553,16 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
 
     private boolean awaitPendingSave(final UUID id) {
         final String claimKey = this.redisNamespace.getKey("claim:id:%s".formatted(id));
+
         final String entityId = id.toString();
+
         final long deadline = System.nanoTime() + Duration.ofMillis(FILL_WAIT_MILLIS).toNanos();
+
         String claim = this.redisDriver.getCommands().get(claimKey);
 
         while (claim != null && !claim.equals(entityId) && System.nanoTime() < deadline) {
             this.pauseBeforeRetry(deadline);
+
             claim = this.redisDriver.getCommands().get(claimKey);
         }
 
@@ -503,9 +611,10 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
         }
 
         try {
-            Thread.sleep(Math.min(25L, Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
+            Thread.sleep(Math.clamp(TimeUnit.NANOSECONDS.toMillis(remainingNanos), 1L, 25L));
         } catch (final InterruptedException exception) {
             Thread.currentThread().interrupt();
+
             throw new IllegalStateException("Interrupted while waiting for a Redis cache fill", exception);
         }
     }
@@ -515,6 +624,7 @@ public final class RedisStorage<E extends Entity> implements Storage<UUID, E> {
             return future.get();
         } catch (final InterruptedException exception) {
             Thread.currentThread().interrupt();
+
             throw new IllegalStateException("Interrupted while waiting for a Redis bulk lookup", exception);
         } catch (final ExecutionException exception) {
             if (exception.getCause() instanceof final RedisException redisException) {

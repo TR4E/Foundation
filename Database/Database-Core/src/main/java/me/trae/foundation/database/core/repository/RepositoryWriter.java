@@ -110,13 +110,15 @@ public final class RepositoryWriter<E extends Entity> {
 
         final Long expectedRevision = revisionState == null ? null : revisionState.getRevision();
 
+        final RedisInvalidation redisInvalidation = this.createInvalidation(entity.getId(), redisEnabled, sourceId);
+
         this.pendingWriteStore.queueDelete(
                 this.tableSchema,
                 this.tenantId,
                 entity.getId(),
                 commitCallbackList,
                 failureCallbackList,
-                this.createInvalidation(entity.getId(), redisEnabled, sourceId),
+                redisInvalidation == null ? null : redisInvalidation.withSharedStateRemoval(),
                 expectedRevision,
                 revisionState
         );

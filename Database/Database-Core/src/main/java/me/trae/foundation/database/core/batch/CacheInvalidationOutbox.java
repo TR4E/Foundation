@@ -33,6 +33,7 @@ public final class CacheInvalidationOutbox {
     private static final Field<UUID> ENTITY_ID = DSL.field(DSL.name("entity_id"), SQLDataType.UUID.nullable(false));
     private static final Field<String> INSTANCE_ID = DSL.field(DSL.name("instance_id"), SQLDataType.VARCHAR(64).nullable(false));
     private static final Field<Boolean> INVALIDATE_CACHE = DSL.field(DSL.name("invalidate_cache"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.inline(true)));
+    private static final Field<Boolean> REMOVE_SHARED_STATE = DSL.field(DSL.name("remove_shared_state"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.inline(false)));
     private static final Field<Instant> CREATED_AT = DSL.field(DSL.name("created_at"), SQLDataType.INSTANT.nullable(false));
 
     private static final int BATCH_SIZE = 25;
@@ -44,11 +45,12 @@ public final class CacheInvalidationOutbox {
 
     public void synchronize() {
         this.postgresDriver.getDslContext().createTableIfNotExists(TABLE)
-                .columns(ID, CACHE_KEY, MISSING_KEY, LOCK_KEY, CHANNEL, ENTITY_ID, INSTANCE_ID, INVALIDATE_CACHE, CREATED_AT)
+                .columns(ID, CACHE_KEY, MISSING_KEY, LOCK_KEY, CHANNEL, ENTITY_ID, INSTANCE_ID, INVALIDATE_CACHE, REMOVE_SHARED_STATE, CREATED_AT)
                 .constraint(DSL.primaryKey(ID))
                 .execute();
 
         this.postgresDriver.getDslContext().alterTable(TABLE).addColumnIfNotExists(INVALIDATE_CACHE).execute();
+        this.postgresDriver.getDslContext().alterTable(TABLE).addColumnIfNotExists(REMOVE_SHARED_STATE).execute();
 
         this.postgresDriver.getDslContext().createIndexIfNotExists(DSL.name("foundation_cache_outbox_created_idx"))
                 .on(TABLE, CREATED_AT)
@@ -76,6 +78,7 @@ public final class CacheInvalidationOutbox {
                     .set(ENTITY_ID, invalidation.getEntityId())
                     .set(INSTANCE_ID, invalidation.getInstanceId())
                     .set(INVALIDATE_CACHE, invalidation.isInvalidateCache())
+                    .set(REMOVE_SHARED_STATE, invalidation.isRemoveSharedState())
                     .set(CREATED_AT, Instant.now()));
         }
 
@@ -90,11 +93,13 @@ public final class CacheInvalidationOutbox {
         }
 
         final long currentTime = System.nanoTime();
+
         if (!force && currentTime - this.lastPollNanos < POLL_INTERVAL_NANOS) {
             return;
         }
 
         this.lastPollNanos = currentTime;
+
         final DSLContext dslContext = this.postgresDriver.getDslContext();
 
         if (!dslContext.fetchExists(TABLE)) {
@@ -102,6 +107,7 @@ public final class CacheInvalidationOutbox {
         }
 
         final String owner = UUID.randomUUID().toString();
+
         final String dispatchLock = "%s:%s".formatted(DISPATCH_LOCK, this.postgresDriver.getPostgresSettings().getJdbcUrl());
 
         if (!this.redisDriver.tryAcquireLock(dispatchLock, owner, Duration.ofMinutes(2))) {
@@ -109,7 +115,7 @@ public final class CacheInvalidationOutbox {
         }
 
         try {
-            final Result<? extends Record> recordList = dslContext.select(ID, CACHE_KEY, MISSING_KEY, LOCK_KEY, CHANNEL, ENTITY_ID, INSTANCE_ID, INVALIDATE_CACHE)
+            final Result<? extends Record> recordList = dslContext.select(ID, CACHE_KEY, MISSING_KEY, LOCK_KEY, CHANNEL, ENTITY_ID, INSTANCE_ID, INVALIDATE_CACHE, REMOVE_SHARED_STATE)
                     .from(TABLE)
                     .orderBy(CREATED_AT)
                     .limit(BATCH_SIZE)
@@ -123,7 +129,8 @@ public final class CacheInvalidationOutbox {
                         record.get(CHANNEL),
                         record.get(ENTITY_ID),
                         record.get(INSTANCE_ID),
-                        record.get(INVALIDATE_CACHE)
+                        record.get(INVALIDATE_CACHE),
+                        record.get(REMOVE_SHARED_STATE)
                 ).dispatch(this.redisDriver);
             }
 

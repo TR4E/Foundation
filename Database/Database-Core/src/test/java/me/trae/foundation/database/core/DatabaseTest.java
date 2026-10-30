@@ -366,7 +366,7 @@ final class DatabaseTest {
         final AccountHolder restartedHolder = new AccountHolder(repository);
 
         final Account cached = restartedHolder.getById(account.getId()).orElseThrow();
-        assertNull(cached.getSession());
+        assertEquals(account.getSession(), cached.getSession());
         assertEquals(account.getTags(), cached.getTags());
         assertTrue(restartedHolder.getById(account.getId(), EnumSet.of(LookupTier.REDIS)).isPresent());
     }
@@ -1221,6 +1221,67 @@ final class DatabaseTest {
 
         assertTrue(reader.getPinned().isEmpty());
         assertEquals(999L, repository.findById(account.getId()).orElseThrow().getCoins());
+    }
+
+    @Test
+    void nonPersistentUpdatesRefreshPinnedPeersAndSurviveDatabaseCacheRefill() throws InterruptedException {
+        final CoreDatabase database = this.openDatabase(null);
+        final AccountRepository repository = new AccountRepository(database, this.table, TenantScope.NONE);
+        final AccountHolder writer = new AccountHolder(repository);
+        final AccountHolder reader = new AccountHolder(repository, InstanceMode.MULTI_INSTANCE);
+        database.start();
+
+        final Account account = this.createAccount("shared-state");
+        writer.save(account);
+        database.getBatchQueue().flush();
+        reader.pin(reader.getById(account.getId()).orElseThrow());
+        final AtomicInteger commitCount = new AtomicInteger();
+        final String sharedKey = RedisNamespace.of(this.table).getKey("cache:shared:%s".formatted(account.getId()));
+        account.setSession("administrating");
+
+        writer.update(account, () -> {
+            assertEquals("1administrating", this.redisDriver.getCommands().hget(sharedKey, SESSION.getName()));
+            commitCount.incrementAndGet();
+        });
+
+        assertEquals(1, commitCount.get());
+        assertTrue(database.getBatchQueue().getPendingWriteStore().isEmpty());
+        assertNull(repository.findById(account.getId()).orElseThrow().getSession());
+        final long sharedDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+
+        while (reader.getById(account.getId(), EnumSet.of(LookupTier.LOCAL)).map(Account::getSession).filter("administrating"::equals).isEmpty() && System.nanoTime() < sharedDeadline) {
+            Thread.sleep(10L);
+        }
+
+        assertEquals("administrating", reader.getById(account.getId(), EnumSet.of(LookupTier.LOCAL)).orElseThrow().getSession());
+        assertEquals(1, reader.getPinned().size());
+        account.setName("renamed");
+        writer.update(account);
+        database.getBatchQueue().flush();
+        final long persistentDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+
+        while (reader.getById(account.getId(), EnumSet.of(LookupTier.LOCAL)).map(Account::getName).filter("renamed"::equals).isEmpty() && System.nanoTime() < persistentDeadline) {
+            database.getBatchQueue().flush();
+            Thread.sleep(10L);
+        }
+
+        final Account refreshedAccount = reader.getById(account.getId(), EnumSet.of(LookupTier.LOCAL)).orElseThrow();
+        assertEquals("renamed", refreshedAccount.getName());
+        assertEquals("administrating", refreshedAccount.getSession());
+        assertEquals(List.of(refreshedAccount), reader.getPinned());
+        this.redisDriver.getCommands().del(RedisNamespace.of(this.table).getKey(account.getId()));
+        assertEquals("administrating", reader.getById(account.getId(), EnumSet.of(LookupTier.DATABASE)).orElseThrow().getSession());
+
+        writer.delete(account);
+        database.getBatchQueue().flush();
+        final long deletionDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+
+        while (this.redisDriver.getCommands().exists(sharedKey) > 0L && System.nanoTime() < deletionDeadline) {
+            database.getBatchQueue().flush();
+            Thread.sleep(10L);
+        }
+
+        assertEquals(0L, this.redisDriver.getCommands().exists(sharedKey));
     }
 
     @Test

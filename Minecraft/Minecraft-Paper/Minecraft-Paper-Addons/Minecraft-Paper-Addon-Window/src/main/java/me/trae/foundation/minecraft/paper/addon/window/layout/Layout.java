@@ -3,6 +3,7 @@ package me.trae.foundation.minecraft.paper.addon.window.layout;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import me.trae.foundation.minecraft.paper.addon.window.constants.WindowConstants;
 import me.trae.foundation.minecraft.paper.addon.window.element.Element;
 import org.bukkit.inventory.Inventory;
 
@@ -19,6 +20,22 @@ public class Layout {
 
     public static Layout of(final int size) {
         return new Layout(size);
+    }
+
+    public static Layout createDoubleChest() {
+        return of(WindowConstants.DOUBLE_CHEST_WINDOW_SIZE);
+    }
+
+    public static Layout createSingleChest() {
+        return of(WindowConstants.SINGLE_CHEST_WINDOW_SIZE);
+    }
+
+    public static Layout createDispenser() {
+        return of(WindowConstants.DISPENSER_WINDOW_SIZE);
+    }
+
+    public static Layout createHopper() {
+        return of(WindowConstants.HOPPER_WINDOW_SIZE);
     }
 
     public final void set(final int slot, final Element<?> element) {

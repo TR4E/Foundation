@@ -1,6 +1,7 @@
 package me.trae.foundation.minecraft.paper.addon.window.types;
 
 import me.trae.foundation.minecraft.paper.addon.window.Window;
+import me.trae.foundation.minecraft.paper.addon.window.constants.WindowConstants;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -11,8 +12,8 @@ public abstract class DispenserWindow<Layout extends me.trae.foundation.minecraf
     public DispenserWindow(final Layout layout, final Player viewer) {
         super(layout, viewer);
 
-        if (layout.getSize() != 9) {
-            throw new IllegalArgumentException("DispenserWindow requires a layout size of 9");
+        if (layout.getSize() != WindowConstants.DISPENSER_WINDOW_SIZE) {
+            throw new IllegalArgumentException("%s requires a layout size of %s".formatted(DispenserWindow.class.getSimpleName(), WindowConstants.DISPENSER_WINDOW_SIZE));
         }
     }
 

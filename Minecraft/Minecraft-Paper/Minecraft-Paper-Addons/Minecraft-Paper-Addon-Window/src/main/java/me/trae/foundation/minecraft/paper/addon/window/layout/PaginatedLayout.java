@@ -1,6 +1,7 @@
 package me.trae.foundation.minecraft.paper.addon.window.layout;
 
 import lombok.Getter;
+import me.trae.foundation.minecraft.paper.addon.window.constants.WindowConstants;
 import me.trae.foundation.minecraft.paper.addon.window.element.Element;
 import org.bukkit.inventory.Inventory;
 
@@ -14,20 +15,18 @@ public final class PaginatedLayout extends Layout {
     private final int[] contentSlots;
 
     private List<Element<?>> content;
-
-    private int total;
-    private int page;
+    private int total, page;
 
     PaginatedLayout(final int size, final int[] contentSlots) {
         super(size);
 
         if (contentSlots.length == 0) {
-            throw new IllegalArgumentException("PaginatedLayout requires at least one content slot");
+            throw new IllegalArgumentException("%s requires at least one content slot".formatted(PaginatedLayout.class.getSimpleName()));
         }
 
         for (final int slot : contentSlots) {
             if (slot < 0 || slot >= size) {
-                throw new IllegalArgumentException("PaginatedLayout content slots must fall within the layout size");
+                throw new IllegalArgumentException("%s content slots must fall within the layout size".formatted(PaginatedLayout.class.getSimpleName()));
             }
         }
 
@@ -39,6 +38,22 @@ public final class PaginatedLayout extends Layout {
 
     public static PaginatedLayout of(final int size, final int[] contentSlots) {
         return new PaginatedLayout(size, contentSlots);
+    }
+
+    public static PaginatedLayout createDoubleChest(final int[] contentSlots) {
+        return new PaginatedLayout(WindowConstants.DOUBLE_CHEST_WINDOW_SIZE, contentSlots);
+    }
+
+    public static PaginatedLayout createSingleChest(final int[] contentSlots) {
+        return new PaginatedLayout(WindowConstants.SINGLE_CHEST_WINDOW_SIZE, contentSlots);
+    }
+
+    public static PaginatedLayout createDispenser(final int[] contentSlots) {
+        return new PaginatedLayout(WindowConstants.DISPENSER_WINDOW_SIZE, contentSlots);
+    }
+
+    public static PaginatedLayout createHopper(final int[] contentSlots) {
+        return new PaginatedLayout(WindowConstants.HOPPER_WINDOW_SIZE, contentSlots);
     }
 
     public <Type extends Element<?>> void setContent(final List<Type> content) {

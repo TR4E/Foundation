@@ -1,6 +1,6 @@
 <h1 align="center">Minecraft-Paper-Addon-Window</h1>
 
-<p align="center">Per-player inventory menus with layout-driven slot placement, asynchronous element building, pagination, and click routing.</p>
+<p align="center">Per-player inventory menus with layout-driven slot placement, asynchronous data loading, pagination, and click routing.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -8,7 +8,7 @@
   <a href="https://papermc.io/"><img alt="Paper" src="https://img.shields.io/badge/Paper-API-44cc11?logo=minecraft&logoColor=white"></a>
 </p>
 
-The Window addon defines inventory menus as classes. A window owns one viewer and one layout; the layout owns slot placement, so a window supplies content without deciding where it lands. Element building runs off the main thread, which means a window can read from a database or a remote service while it opens, and only the item writes return to the main thread. The addon handles the inventory holder wiring, click routing, cancellation of every item movement, open and close gating, and cleanup on quit.
+The Window addon defines inventory menus as classes. A window owns one viewer and one layout; the layout owns slot placement, so a window supplies content without deciding where it lands. The `build()` hook loads data off the main thread, then `registerElements(layout)` creates and places elements on the main thread before the items are applied. The addon handles the inventory holder wiring, click routing, cancellation of every item movement, open and close gating, and cleanup on quit.
 
 ## Contents
 
@@ -45,7 +45,10 @@ The constructor takes `(layout, viewer)`. Create a plain layout with `Layout.of(
 public final class OrderWindow extends ChestWindow<Layout> {
 
     private final OrderRepository orderRepository;
+
     private final String orderId;
+
+    private Order order;
 
     public OrderWindow(final Player viewer, final OrderRepository orderRepository, final String orderId) {
         super(Layout.of(27), viewer);
@@ -60,12 +63,14 @@ public final class OrderWindow extends ChestWindow<Layout> {
     }
 
     @Override
+    protected void build() {
+        this.order = this.orderRepository.findOrderById(this.orderId);
+    }
+
+    @Override
     protected void registerElements(final Layout layout) {
-        final Order order = this.orderRepository.findOrderById(this.orderId);
-
         layout.border(new FillerElement(this));
-
-        layout.set(13, new OrderElement(this, order));
+        layout.set(13, new OrderElement(this, this.order));
     }
 }
 ```
@@ -73,6 +78,7 @@ public final class OrderWindow extends ChestWindow<Layout> {
 | Value | Example | Purpose |
 | --- | --- | --- |
 | `getViewerId()` | `f7c1e0a4-...` | The viewer's UUID, stored instead of a `Player` field |
+| `getOpenedAt()` | `long` | Timestamp in milliseconds recorded when the window instance is constructed |
 | `getViewer()` | `Optional<Player>` | The viewer resolved from that UUID, empty once they disconnect |
 | `getLayout()` | `Layout` | The layout supplied to the constructor, typed to the generic parameter |
 | `getInventory()` | `Inventory` | The backing inventory, created lazily on first access and never null |
@@ -84,12 +90,15 @@ The base constructor rejects a layout whose size is zero or negative. Window typ
 | Method | Returns | Default | Purpose |
 | --- | --- | --- | --- |
 | `getTitle()` | `Component` | _abstract_ | Protected method; inventory title, read once when the inventory is created |
-| `registerElements(layout)` | `void` | _abstract_ | Populate the layout; runs off the main thread |
+| `build()` | `void` | no-op | Protected hook; load data off the main thread before each element registration |
+| `registerElements(layout)` | `void` | _abstract_ | Populate the cleared layout on the main thread using the data loaded by `build()` |
 | `createInventory()` | `Inventory` | _abstract_ | Implemented as final by the supplied window types |
 | `canOpen(player)` | `boolean` | `true` | Pre-open check |
 | `canClose(player)` | `boolean` | `true` | Check for player and API closes; `false` schedules a reopen |
 | `onOpen(player)` | `void` | no-op | Called from an uncancelled Bukkit open event; tracked reopens skip it |
 | `onClose(player)` | `void` | no-op | Called for an accepted close, including forced closes |
+| `getOpenSoundStash()` | `SoundStash` | `null` | Sound played before `onOpen`; tracked reopens skip both |
+| `getCloseSoundStash()` | `SoundStash` | `null` | Sound played before `onClose` for an accepted close |
 
 `getTitle()` is evaluated when the inventory is built, so a title cannot change on a later render. Build a new window to change it.
 
@@ -101,6 +110,7 @@ A window type owns the inventory shape and validates the layout size against it.
 | --- | --- | --- |
 | `ChestWindow<Layout>` | Sized chest | Multiple of `9`, at most `54` |
 | `DispenserWindow<Layout>` | Dispenser | Exactly `9` |
+| `HopperWindow<Layout>` | Hopper | Exactly `5` |
 
 ```java
 public final class InvoiceWindow extends DispenserWindow<Layout> {
@@ -132,6 +142,10 @@ Create it with `Layout.of(size)`. The constructor is protected for layout subcla
 | Method | Returns | Purpose |
 | --- | --- | --- |
 | `of(size)` | `Layout` | Create a layout with the given slot count |
+| `createSingleChest()` | `Layout` | Create a `27`-slot layout |
+| `createDoubleChest()` | `Layout` | Create a `54`-slot layout |
+| `createDispenser()` | `Layout` | Create a `9`-slot layout |
+| `createHopper()` | `Layout` | Create a `5`-slot layout |
 | `getSize()` | `int` | Slot count supplied to the factory |
 | `set(slot, element)` | `void` | Place one element; out-of-range slots are ignored |
 | `fill(element)` | `void` | Place the element in every slot that is still empty |
@@ -146,25 +160,34 @@ Create it with `Layout.of(size)`. The constructor is protected for layout subcla
 
 `border`, `row`, and `column` assume nine columns. For a dispenser's 3×3 shape, use `set` to place individual slots or `fill` to fill empty slots.
 
-The element map is a `ConcurrentHashMap`. Element registration writes to it off the main thread; inventory rendering and click routing read it on the main thread.
+The element map is a `ConcurrentHashMap`. Element registration, inventory rendering, and click routing run on the main thread. Keep asynchronous data loading in `build()` rather than modifying the layout there.
 
 ## Paginated layout
 
-`PaginatedLayout` adds a content region on top of the static placements. Create it with `PaginatedLayout.of(size, contentSlots)`. Supply the total matching item count with `setTotal(total)` and load only the current page into `setContent(content)`, using `getOffset()` and `getLimit()` for the query.
+`PaginatedLayout` adds a content region on top of the static placements. Create it with `PaginatedLayout.of(size, contentSlots)`. Load the current page in `build()`, then supply its total matching item count with `setTotal(total)` and its elements with `setContent(content)` in `registerElements`.
 
-The example repository counts orders for the viewer and accepts `(viewerId, offset, limit)` when fetching them. Call `setTotal` before checking navigation or reading the offset: it updates the page count and clamps the current page when the total shrinks.
+The example uses Database's `EntityRepository<Order>` and `EntityPage<Order>`. Supply an application query that filters the intended orders and uses a deterministic, unique ordering. Database pages start at `1`, while layout pages start at `0`: request `getPage() + 1` with `getLimit()` as the page size. The repository counts matches and clamps the requested page, so apply the returned total before setting the returned page minus one. This keeps the menu aligned when the last page disappears after deletions.
 
 ```java
 public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
 
     private static final int[] CONTENT_SLOTS = {10, 11, 12, 13, 14, 15, 16};
 
-    private final OrderRepository orderRepository;
+    private final EntityRepository<Order> orderRepository;
 
-    public OrderHistoryWindow(final Player viewer, final OrderRepository orderRepository) {
+    private final Query<Order> orderQuery;
+
+    private EntityPage<Order> entityPage;
+
+    public OrderHistoryWindow(
+            final Player viewer,
+            final EntityRepository<Order> orderRepository,
+            final Query<Order> orderQuery
+    ) {
         super(PaginatedLayout.of(27, CONTENT_SLOTS), viewer);
 
         this.orderRepository = orderRepository;
+        this.orderQuery = orderQuery;
     }
 
     @Override
@@ -173,10 +196,26 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
     }
 
     @Override
+    protected void build() {
+        final PaginatedLayout paginatedLayout = this.getLayout();
+
+        this.entityPage = this.orderRepository.findPage(
+                this.orderQuery,
+                paginatedLayout.getPage() + 1,
+                paginatedLayout.getLimit()
+        );
+    }
+
+    @Override
     protected void registerElements(final PaginatedLayout layout) {
-        layout.setTotal(this.orderRepository.countOrdersByCustomer(this.getViewerId()));
+        layout.setTotal(Math.toIntExact(this.entityPage.getTotalCount()));
+        layout.setPage(this.entityPage.getPage() - 1);
 
         layout.border(new FillerElement(this));
+
+        layout.setContent(this.entityPage.getEntities().stream()
+                .map(order -> new OrderElement(this, order))
+                .toList());
 
         if (layout.hasPreviousPage()) {
             layout.set(18, new PreviousPageButton(this));
@@ -185,17 +224,11 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
         if (layout.hasNextPage()) {
             layout.set(26, new NextPageButton(this));
         }
-
-        final List<Element<?>> orderElementList = this.orderRepository
-                .findOrdersByCustomer(this.getViewerId(), layout.getOffset(), layout.getLimit())
-                .stream()
-                .map(order -> new OrderElement(this, order))
-                .collect(Collectors.toCollection(ArrayList::new));
-
-        layout.setContent(orderElementList);
     }
 }
 ```
+
+The layout total is an `int`, while the database total is a `long`; the example uses `Math.toIntExact` and requires at most `Integer.MAX_VALUE` matches. A nonempty database page performs a count and a limited select. These are separate reads, and concurrent changes can shift offset-based results between pages. For other repositories, `getOffset()` and `getLimit()` expose the equivalent offset and page size; clamp the requested offset against the latest total before fetching.
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
@@ -218,15 +251,15 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
 
 The factory rejects an empty content-slot array and any slot that falls outside the layout size. Supply distinct content slots so rendering and click resolution agree.
 
-`setContent` stores the current page's list directly. Rendering and click resolution use its indices starting at `0`, with no page offset applied to the list. Supply at most `getLimit()` elements; entries beyond the content-slot count are not displayed. Loading content does not update the total, so call `setTotal` explicitly even when the first page contains all results.
+`setContent` copies the current page's list. Rendering and click resolution use its indices starting at `0`, with no page offset applied to the list. Supply at most `getLimit()` elements; entries beyond the content-slot count are not displayed. Loading content does not update the total, so call `setTotal` explicitly even when the first page contains all results.
 
-`clear()` removes static placements and resets the loaded content to an empty list. The total and page stay unchanged. Each render starts with an empty content list; `registerElements` supplies the new page's results.
+`clear()` removes static placements and resets the loaded content to an empty list. The total and page stay unchanged. Each render loads data in `build()` first, then clears the layout before `registerElements` supplies the new page's elements.
 
 Content is written after the static placements, so an element placed in a content slot shows through wherever the current page runs short. A filler behind the content region fills the gaps on the last page without any extra work. The same rule applies to click resolution: a content slot past the end of the list resolves to whatever static element sits underneath it.
 
-Changing the page updates the query offset without loading content. After `nextPage()`, `previousPage()`, or `setPage(page)`, call `render(null)` to fetch and render that page. `refresh()` redraws the already loaded list, so it does not load a different page.
+Changing the page updates the query offset without loading content. After `nextPage()`, `previousPage()`, or `setPage(page)`, call `render()` to fetch and render that page. `refresh()` redraws the already loaded list, so it does not load a different page.
 
-The click listener ignores button clicks while the window is rendering, so navigation buttons do not need their own rendering check. A previous-page button uses `previousPage()` followed by `render(null)` in the same way as the next-page button below.
+The click listener ignores button clicks while the window is rendering, so navigation buttons do not need their own rendering check. A previous-page button uses `previousPage()` followed by `render()` in the same way as the next-page button below.
 
 ```java
 public final class NextPageButton extends Button<OrderHistoryWindow> {
@@ -251,7 +284,7 @@ public final class NextPageButton extends Button<OrderHistoryWindow> {
             return;
         }
 
-        this.getWindow().render(null);
+        this.getWindow().render();
     }
 }
 ```
@@ -312,7 +345,7 @@ public final class CancelOrderButton extends Button<OrderWindow> {
     public void onClick(final Player player, final ClickType clickType) {
         UtilMessage.message(player, "Order", "Cancelled.");
 
-        this.getWindow().close();
+        UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, this.getWindow()::close);
     }
 }
 ```
@@ -321,60 +354,65 @@ public final class CancelOrderButton extends Button<OrderWindow> {
 | --- | --- | --- | --- |
 | `onClick(player, clickType)` | `void` | _abstract_ | Called when the button is clicked |
 | `canClick(player, clickType)` | `boolean` | `true` | Pre-click check |
+| `getClickSoundStash(player, clickType)` | `SoundStash` | `null` | Sound played after `onClick` and before `ButtonPostClickEvent` |
 
-Button callbacks run inside `InventoryClickEvent`. Call `open()` and `close()` directly: the Window API marshals these calls to the main thread and defers the operation until the next tick. Button classes do not need scheduler calls.
+Button callbacks run inside `InventoryClickEvent`. The Window API does not defer `close()` or schedule `open()` checks internally. Defer inventory transitions from a click to the next tick with `UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, runnable)`, as in the close example above.
 
 ## Lifecycle
 
 | Method | Behaviour |
 | --- | --- |
-| `open()` | Queue an open for the next tick, check the viewer and open gates, render, and show only if its request is still current |
-| `close()` | Cancel an unfinished open for this window and queue a close for the next tick; close only if this window is still on top |
-| `render(runnable)` | Rebuild every element off-thread, write them on the main thread, then run the callback |
+| `open()` | Check the viewer and open gates immediately, render, then show if the viewer still has the captured inventory open |
+| `close()` | Close immediately if this window is still on top; does not cancel an unfinished open |
+| `render()` | Run `build()` off-thread, then clear, register, and apply elements on the main thread |
+| `render(runnable)` | Same as `render()`, then run the supplied callback on the main thread; accepts `null` |
 | `refresh()` | Rewrite the current elements immediately with no rebuild; skipped while rendering; call on the main thread |
 
-`open()` does nothing when the viewer is offline or this instance is already rendering. Otherwise it creates a unique request for that viewer and schedules the open checks for the next tick. Cancelling `WindowOpenEvent` or returning `false` from `canOpen` prevents the build. Items are applied before the inventory is shown, and the viewer and request are checked again before opening it.
+Call `open()`, `close()`, `render()`, `refresh()`, and `getInventory()` on the main thread. `open()` returns when the viewer is offline. It dispatches `WindowOpenEvent`, checks `canOpen`, and captures the viewer's current top inventory before starting a render. Cancelling the event or returning `false` prevents the build. If this instance is already rendering, the new render and its open callback are dropped.
 
-A newer open or close request invalidates the viewer's previous request. Opening or closing another inventory through Bukkit also invalidates pending requests, including when the viewer returns to the same crafting inventory afterward. Completing an older request cannot consume a newer one. Disconnect cleanup and `closeAll()` invalidate pending requests too.
+After rendering, `open()` resolves the viewer again and opens the built inventory only if their current top inventory is still the captured inventory. This is an inventory identity check, not a request ID: leaving and returning to that same inventory while loading can still allow the open to complete. Separate window instances can render concurrently.
 
-`close()` accepts a request only if this window is currently visible or owns the viewer's pending request. It invalidates the previous request immediately on the main thread, then checks its request and the current inventory again next tick. A stale reference cannot close a replacement inventory, and calling `close()` before an unfinished open completes prevents that open from appearing. A normal API close still passes through `canClose`.
+`close()` returns when the viewer is offline or another inventory is on top. Otherwise it calls `closeInventory()` immediately and the normal close veto applies. It does not invalidate a render in flight, so calling it before an unfinished open completes does not cancel that open.
 
 A close removes the window from the active tracking maps before any veto check. Only Bukkit close reasons `PLAYER` and `PLUGIN` dispatch `WindowCloseEvent` and check `canClose`. Cancelling that event or returning `false` schedules a reopen one tick later and skips `onClose` for that close. Other reasons, including replacement, disconnect, death, and `CANT_USE`, bypass both checks and call `onClose`.
 
-The delayed reopen checks both its unique request ID and the pending inventory. It requires an online, living viewer whose current view is the default `CRAFTING` view. A newer request or another inventory open or close invalidates it, so opening and closing a newer menu cannot revive an old reopen. A matching reopen marker suppresses `onOpen`. Opening a replacement inventory closes the previous window without a veto.
+The delayed reopen checks both its unique request ID and the pending inventory. It requires an online, living viewer whose current view is the default `CRAFTING` view. An unexpected Bukkit inventory open or close invalidates the pending reopen. A matching reopen marker suppresses the open sound and `onOpen`. Opening a replacement inventory closes the previous window without a veto.
 
 The open listener handles uncancelled Bukkit open events at `MONITOR` priority, registers the window in both active maps, and then calls `onOpen` unless it is a tracked reopen. Internal inventory transitions preserve their expected request, including a newer request made by a lifecycle callback.
 
 ## Asynchronous rendering
 
-`registerElements` runs off the main thread on every render. Blocking calls belong there, which is the point: a window can query a database, read a cache, or fetch a profile while it opens, with no scheduling code in the definition.
+`build()` runs off the main thread on every render. Use it to query a database, read a cache, or fetch a profile, storing the result in window fields for `registerElements`. Keep Bukkit operations that require the main thread out of `build()`.
 
-`open()` and `close()` handle main-thread scheduling internally and can be called directly from button handlers or asynchronous code. Call `render()`, `refresh()`, and `getInventory()` on the main thread. `render()` schedules `registerElements` asynchronously, then schedules `applyTo` and its callback on the main thread. `toItemStack()` runs inside `applyTo`; keep any Bukkit operations in element constructors or `registerElements` limited to APIs that support asynchronous use.
+After `build()` returns, the framework schedules the apply phase on the main thread: clear the layout, call `registerElements(layout)`, write the items with `applyTo`, then run the optional render callback. Element constructors and `toItemStack()` therefore run on the main thread when elements are created in `registerElements`. The loaded fields are handed over through the scheduled apply task; do not mutate them from unrelated asynchronous work.
 
 ```java
 @Override
-protected void registerElements(final Layout layout) {
-    final Customer customer = this.customerRepository.findCustomerByName("alice");
+protected void build() {
+    this.customer = this.customerRepository.findCustomerByName("alice");
+}
 
-    layout.set(13, new CustomerElement(this, customer));
+@Override
+protected void registerElements(final Layout layout) {
+    layout.set(13, new CustomerElement(this, this.customer));
 }
 ```
 
-A render in flight blocks another from starting on the same window instance. A render requested while one is running is dropped. Separate instances can render concurrently; only the viewer's current open request can show its result.
+The snippet assumes window fields `CustomerRepository customerRepository` and `Customer customer`. A render in flight blocks another from starting on the same window instance. A render requested while one is running is dropped.
 
-If `registerElements` throws a `RuntimeException` or `Error`, the normal apply and callback steps are skipped and an abort is scheduled on the main thread. Exceptions while applying items or running the callback also abort the render. The abort clears the layout, invalidates this window's current request, and schedules a forced close for the next tick with reason `CANT_USE`. That close affects only this window if it is still visible. Click routing remains blocked until cleanup finishes, and the original exception is rethrown for the scheduler to report.
+If `build()` throws a `RuntimeException` or `Error`, the normal apply and callback steps are skipped and an abort is scheduled on the main thread. Exceptions in `registerElements`, item application, or the callback abort immediately in the main-thread apply phase. The abort clears the layout, resets the rendering flag, and closes this window with reason `CANT_USE` if it is still visible. The original exception is rethrown for the scheduler to report.
 
 Treat `registerElements` as a rebuild from an empty layout. Static placements are cleared before it runs, and `PaginatedLayout.clear()` also clears loaded content while retaining the page and total. The previous items can remain visible during a rebuild, but button clicks are ignored while `isRendering()` is `true`.
 
-On a successful render, the rendering flag stays set until after the callback returns. Calls to `render()` or `refresh()` from that callback are therefore skipped, including from `onOpen` invoked while `open()` shows the inventory. Calling `close()` or opening another window from a lifecycle callback queues the operation safely for the next tick.
+On a successful render, the rendering flag stays set until after the callback returns. Calls to `render()` or `refresh()` from that callback are therefore skipped, including from `onOpen` invoked while `open()` shows the inventory. Defer another render or an inventory transition from a lifecycle callback to the next tick when needed.
 
 ## Refreshing
 
-`refresh()` rewrites the current elements without rebuilding them. Call it on the main thread: it applies the layout immediately without scheduling. It does not call `registerElements`, but it does call `toItemStack()` again, including each element's `getDescription()`.
+`refresh()` rewrites the current elements without rebuilding them. Call it on the main thread: it applies the layout immediately without scheduling. It does not call `build()` or `registerElements`, but it does call `toItemStack()` again, including each element's `getDescription()`.
 
-Use `refresh()` when the item stacks should change but the element set should not, such as a counter in a description or a toggle whose state lives on the element. Use `render(null)` when the element set itself has to be rebuilt, including page navigation, a list that gained an entry, or a slot that became available.
+Use `refresh()` when the item stacks should change but the element set should not, such as a counter in a description or a toggle whose state lives on the element. Use `render()` when the element set itself has to be rebuilt, including page navigation, a list that gained an entry, or a slot that became available.
 
-`refresh()` is a no-op while rendering or until the backing inventory has been created. Calling `getInventory()` creates it even before the first `open()`. If item rendering fails, it uses the same deferred abort cleanup as `render()` and rethrows the exception to the caller.
+`refresh()` is a no-op while rendering or until the backing inventory has been created. Calling `getInventory()` creates it even before the first `open()`. Exceptions from item rendering propagate directly to the caller; `refresh()` does not run the render abort cleanup.
 
 ## Click handling
 
@@ -394,7 +432,7 @@ Only clicks on the window itself resolve to a button, so a slot number that exis
 
 While `window.isRendering()` is `true`, the click is still cancelled, but the listener returns before resolving an element. No `ButtonPreClickEvent`, `canClick`, `onClick`, or `ButtonPostClickEvent` runs for that click.
 
-A routed click runs `ButtonPreClickEvent`, then `canClick`, then `onClick`, then `ButtonPostClickEvent`. A cancelled pre-click event or a `canClick` returning `false` stops it, and the post-click event does not fire. That split is the hook for cross-cutting rules: check a cooldown on the pre event and stamp it on the post event, and no button needs to know about it.
+A routed click runs `ButtonPreClickEvent`, then `canClick`, then `onClick`, plays the optional click sound, and dispatches `ButtonPostClickEvent`. A cancelled pre-click event or a `canClick` returning `false` stops it, and the post-click event does not fire. That split is the hook for cross-cutting rules: check a cooldown on the pre event and stamp it on the post event, and no button needs to know about it.
 
 Click routing runs at `HIGH` priority and respects an earlier cancellation, so a plugin that cancels the click first suppresses the button.
 
@@ -438,7 +476,9 @@ public final class ConfirmWindow extends ChestWindow<Layout> {
 ```java
 @Override
 public void onClick(final Player player, final ClickType clickType) {
-    new ConfirmWindow(player, this.getWindow()).open();
+    UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, () -> {
+        new ConfirmWindow(player, this.getWindow()).open();
+    });
 }
 ```
 
@@ -447,11 +487,11 @@ A back button is the same call in reverse:
 ```java
 @Override
 public void onClick(final Player player, final ClickType clickType) {
-    this.getWindow().getParent().open();
+    UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, this.getWindow().getParent()::open);
 }
 ```
 
-Opening and closing from inside a click are safe through the Window API: both methods defer the inventory operation internally. The parent instance stays alive because the child holds it, and reopening it runs `registerElements` again, so it comes back with current data.
+The examples defer the transition because the Window API does not schedule it for the caller. The parent instance stays alive because the child holds it, and reopening it runs `build()` and `registerElements` again, so it comes back with current data.
 
 ## Events
 
@@ -482,7 +522,7 @@ Inject `WindowService` to resolve open windows:
 
 A window is also reachable from its inventory without the service, since `Inventory.getHolder()` returns the window itself.
 
-Use `closeAll()` on the main thread in a consuming plugin's shutdown path. It invalidates open, close, and reopen requests before closing tracked windows with reason `CANT_USE`, which bypasses close vetoes. New Window API requests are ignored while it runs. Builds already in flight can finish, but their invalidated open requests cannot show an inventory afterward.
+Use `closeAll()` on the main thread in a consuming plugin's shutdown path. It clears service request and reopen tracking, closes tracked windows with reason `CANT_USE`, which bypasses close vetoes, and clears the active maps. It guards against recursive `closeAll()` calls. It does not cancel `Window.build()` tasks or gate `Window.open()` calls; an unfinished open still uses its captured-inventory check when rendering completes.
 
 Cleanup runs on `PlayerQuitEvent` at `MONITOR` priority. It removes the player's current window entry, that window's inventory entry, and all pending request markers. The close listener also removes active entries immediately when an inventory closes, including when that close is vetoed.
 

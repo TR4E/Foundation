@@ -14,9 +14,11 @@ import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.Addo
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMaterial;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -91,6 +93,10 @@ public final class ItemActivateListener implements Listener {
 
                 // Denies the material's own use by default, so an ender pearl activates without leaving the hand.
                 event.setUseItemInHand(activatableCustomItem.useItemInHand(player, itemStack, activateType));
+
+                if (event.useItemInHand() == Event.Result.DENY) {
+                    UtilTask.executeSynchronously(player::updateInventory);
+                }
 
                 // Leaves the block's response untouched by default, letting the item suppress it per block.
                 if (clickedBlock != null) {

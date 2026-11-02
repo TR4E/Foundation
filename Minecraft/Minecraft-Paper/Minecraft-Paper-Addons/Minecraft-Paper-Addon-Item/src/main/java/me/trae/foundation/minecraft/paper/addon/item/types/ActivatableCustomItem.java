@@ -20,7 +20,15 @@ public abstract class ActivatableCustomItem extends CustomItem {
     public abstract Set<ActivateType> getSupportedActivateTypes();
 
     public Event.Result useItemInHand(final Player player, final ItemStack itemStack, final ActivateType activateType) {
-        return activateType == ActivateType.RIGHT_CLICK && UtilMaterial.isUsable(itemStack.getType()) ? Event.Result.DENY : Event.Result.DEFAULT;
+        if (itemStack.getType().isBlock()) {
+            return Event.Result.DENY;
+        }
+
+        if (activateType == ActivateType.RIGHT_CLICK && UtilMaterial.isUsable(itemStack.getType())) {
+            return Event.Result.DENY;
+        }
+
+        return Event.Result.DEFAULT;
     }
 
     public Event.Result useInteractedBlock(final Player player, final ItemStack itemStack, final Block block, final ActivateType activateType) {

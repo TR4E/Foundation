@@ -250,7 +250,9 @@ public abstract class Item {
         itemMeta.displayName(this.getDisplayName());
 
         // Lore
-        this.applyLore(itemMeta);
+        if (this.getLore() != null) {
+            this.applyLore(itemMeta);
+        }
 
         // Model
         itemMeta.setItemModel(this.getModel());

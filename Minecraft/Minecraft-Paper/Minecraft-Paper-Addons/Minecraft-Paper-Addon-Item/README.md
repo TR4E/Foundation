@@ -17,6 +17,7 @@ The Item addon provides a framework for defining custom items that are identifie
 
 - [Item hierarchy](#item-hierarchy)
 - [Base item](#base-item)
+- [Default item](#default-item)
 - [Custom item](#custom-item)
 - [Activatable custom item](#activatable-custom-item)
 - [Single activatable custom item](#single-activatable-custom-item)
@@ -45,9 +46,9 @@ Items form an inheritance chain from simple definitions to fully interactive too
 | `ActivatableCustomItem` | Multiple activation types (left click, right click, drop, swap hand) |
 | `SingleActivatableCustomItem` | Single activation type with simplified callbacks and cooldown hooks |
 | `ChannelCustomItem` | Sustained right-click activation with start/channel/stop lifecycle |
-| `DefaultItem` | Wraps vanilla items with styling only, no custom unique ID or identifier |
+| `DefaultItem` | Material-based fallback for vanilla items, with no custom unique ID or identifier |
 
-`ItemService` discovers registered `CustomItem` components through an injected live list and manages the apply/update/refresh lifecycle. Vanilla materials use cached `DefaultItem` definitions.
+`ItemService` discovers registered `CustomItem` components through an injected live list and manages the apply/update/refresh lifecycle. Lookup maps are rebuilt when live dependencies change. Fallback `DefaultItem` definitions are created lazily through `ItemAddonSettings.createDefaultItem(material)` and cached per material.
 
 ## Base item
 
@@ -98,6 +99,14 @@ public class InfoBook extends Item {
 | `addGlow()` | `Boolean` | `null` | Enchantment glint override (`true` = always, `false` = never, `null` = default) |
 | `stamp(ItemMeta)` | `void` | no-op | Write custom persistent data during creation and updates; skipped by `createView()`; final in `CustomItem` |
 | `editMeta(ItemMeta)` | `void` | no-op | Final item meta adjustments after all other properties are applied |
+
+## Default item
+
+`DefaultItem` extends `Item` with a material-only constructor. Its `getName()` and `getLore()` methods both return `null`; it supplies no custom name or lore of its own. Override `ItemAddonSettings.createDefaultItem(material)` to supply a specialized default definition for each material. The service caches the returned definition on first use.
+
+For ordinary stacks without a custom unique ID or version marker, `ItemService.apply(...)` calls `DefaultItem.refresh(...)`. This dispatches `ItemStackUpdateEvent` without reapplying definition metadata, preserving existing names, lore, enchantments, and other metadata unless an event listener changes them. Overriding a default definition's styling methods alone does not apply that styling during refresh; use the update event for changes to ordinary stacks.
+
+An unresolved custom stack that reaches the fallback and still carries a unique ID or version marker instead uses `DefaultItem.create(itemStack)`. This builds a new stack from the default definition, carrying over only the amount and damage rather than copying the old metadata. Naturally obtainable conversion and deletion checks run before this fallback.
 
 ## Custom item
 
@@ -238,6 +247,8 @@ public class CombatKnife extends ActivatableCustomItem {
 For supported main-hand clicks, the listener checks the activation gates before setting vanilla interaction results. Returning `false` from `activateOnItemUse(...)` skips activation on right-click with a usable material. With `activateOnBlockUse(...)` returning `false`, right-clicking an interactable block (including a block usable with the held item) skips activation unless the player is sneaking. These early returns leave the interaction results untouched.
 
 If the gates pass, `useItemInHand(...)` and `useInteractedBlock(...)` control the vanilla actions separately from custom activation. Allowing activation on a block does not itself deny the block's vanilla action; return `Event.Result.DENY` from `useInteractedBlock(...)` when that is needed.
+
+When the resulting item-in-hand action is `Event.Result.DENY`, `ItemActivateListener` calls `player.updateInventory()` through `UtilTask.executeSynchronously(...)` to resynchronize the client inventory and address ghost block placement or item-count desynchronization after denied use. This happens before the custom activation sequence, even if `ItemPreActivateEvent` or `canActivate(...)` subsequently prevents activation. Interactions skipped by the activation gates do not reach this synchronization step.
 
 The activation sequence is `ItemPreActivateEvent`, then `canActivate(...)`, then `onActivate(...)`, followed by `ItemPostActivateEvent`. Cancelling the pre-event or returning `false` from `canActivate(...)` stops custom activation. The clicked block is `null` for air clicks, drops, and hand swaps. Drops and hand swaps use this same sequence without the click-specific activation gates or vanilla interaction hooks.
 
@@ -430,7 +441,7 @@ Custom items are identified through Bukkit's `PersistentDataContainer` on the it
 | `custom:item_tracking_id` | `String` | UUID for an individually tracked item; enabled only for trackable definitions with a stack limit of `1` |
 | `custom:item_dynamic_lore` | Container | Nested container for dynamic lore key-value pairs |
 
-During synchronization, registered custom items are checked against their definition's version. Outdated items are updated, preserving durability. If a definition no longer resolves and no naturally obtainable replacement applies, a deletable item is removed; otherwise, its material receives default styling.
+During synchronization, registered custom items are checked against their definition's version. Outdated items are updated, preserving durability. If a definition no longer resolves and no naturally obtainable replacement applies, a deletable item is removed; otherwise, a stack retaining a custom unique ID or version marker is recreated through its material's cached default definition. Ordinary stacks are refreshed without rebuilding metadata.
 
 `generateVersionEntries()` includes material, attribute visibility, stack limit, glint, style name and tag, model, tooltip style, color, decorations, name, lore templates, tracking, and deletion settings. Entries are joined with a null separator and hashed with SHA-256. The version is computed lazily and cached per definition instance. Override this protected hook to include additional configuration, retaining the superclass entries when those should still trigger updates. Per-stack dynamic lore values, `isInvincible()`, and `canDespawn()` are not included in the default hash.
 
@@ -526,7 +537,14 @@ Item definitions are applied to player inventories at these points:
 | Crafting result | Result slot |
 | Smelting result | Result slot |
 
-The `apply` method on `ItemService` resolves registered custom definitions, updates outdated items, and dispatches refresh events for current items. It can also convert a material into a naturally obtainable custom item, remove an unresolved deletable item, or apply a cached `DefaultItem` definition.
+The `apply` method on `ItemService` processes nonempty stacks in this order:
+
+1. Resolve the stored unique ID to a registered custom definition: update outdated stacks or refresh current stacks.
+2. Look for a naturally obtainable custom definition for the material: create a new custom stack using the existing amount and damage.
+3. Remove an unresolved stack marked deletable by returning `null`.
+4. Resolve the cached `DefaultItem` for the material: recreate stacks carrying a custom unique ID or version marker, or refresh ordinary stacks without rebuilding metadata.
+
+Null and empty stacks are returned unchanged. Always use the returned value, since applying a definition can replace or remove the stack. Recreation keeps amount and damage but does not copy other metadata; refresh dispatches `ItemStackUpdateEvent` on the existing stack.
 
 Crafting preview formatting runs at `NORMAL` priority. The Recipe addon's checks run later at `HIGHEST`, so a disabled placeholder supplied by those checks is not passed through Item formatting afterward. Inventory synchronization also handles stored items in block-state containers and bundles.
 
@@ -546,7 +564,7 @@ Inject `ItemService` to access registered definitions:
 | `searchCustomItem(commandSender, input, inform, predicate)` | `Optional<CustomItem>` | The same search restricted by the predicate |
 | `apply(itemStack)` | `ItemStack` | Apply the item lifecycle; may return a replacement stack or null |
 
-`getItemList()` follows registrations as dependencies initialize and shut down. Callers cannot add, remove, or replace entries through the injected list. The item definitions themselves retain their own behaviour and state.
+`getItemList()` follows registrations as dependencies initialize and shut down. Callers cannot add, remove, or replace entries through the injected list. The item definitions themselves retain their own behaviour and state. `onLiveDependencyUpdate()` rebuilds the unique ID and naturally obtainable material lookup maps from this list; cached default definitions are retained. If multiple definitions share a unique ID or naturally obtainable material, the last entry encountered in the list wins that lookup.
 
 `Item.isSimilarByMaterial(itemStack)` compares the stack's material with the definition's material and returns `false` for `null`. `CustomItem.isSimilarByUniqueId(itemStack)` compares a stack's stored unique ID with the definition's `uniqueId`. `isHolding(livingEntity)` uses the same unique ID comparison for the main-hand item.
 

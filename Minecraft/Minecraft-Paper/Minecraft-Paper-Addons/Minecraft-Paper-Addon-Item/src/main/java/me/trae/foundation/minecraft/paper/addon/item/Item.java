@@ -180,7 +180,12 @@ public abstract class Item {
     }
 
     public final void setDynamicLoreValue(final ItemMeta itemMeta, final String key, final String value) {
-        if (this.getLore().stream().flatMap(line -> DYNAMIC_LORE_PATTERN.matcher(line).results()).noneMatch(matchResult -> matchResult.group(1).equalsIgnoreCase(key))) {
+        final List<String> lore = this.getLore();
+        if (lore == null) {
+            return;
+        }
+
+        if (lore.stream().flatMap(line -> DYNAMIC_LORE_PATTERN.matcher(line).results()).noneMatch(matchResult -> matchResult.group(1).equalsIgnoreCase(key))) {
             throw new IllegalArgumentException("Unknown dynamic lore key: %s".formatted(key));
         }
 

@@ -50,7 +50,7 @@ public abstract class ActivatableCustomItem extends CustomItem {
     public abstract void onActivate(final Player player, final ItemStack itemStack, final Block clickedBlock, final ActivateType activateType);
 
     public String getCooldownName(final ActivateType activateType) {
-        return this.getIdentifier();
+        return this.getName();
     }
 
     public long getCooldownDuration(final ActivateType activateType) {

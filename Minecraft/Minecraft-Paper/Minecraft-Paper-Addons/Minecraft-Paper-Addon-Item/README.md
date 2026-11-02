@@ -1,6 +1,6 @@
 <h1 align="center">Minecraft-Paper-Addon-Item</h1>
 
-<p align="center">Custom items with activation mechanics, cooldowns, versioned updates, optional instance tracking, and crafting prevention.</p>
+<p align="center">Custom items with activation mechanics, cooldown hooks, versioned updates, optional instance tracking, and crafting prevention.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -8,7 +8,7 @@
   <a href="https://papermc.io/"><img alt="Paper" src="https://img.shields.io/badge/Paper-API-44cc11?logo=minecraft&logoColor=white"></a>
 </p>
 
-The Item addon provides a framework for defining custom items that are identified by persistent data, automatically styled, version-tracked, and protected from unintended crafting. Items can react to player interactions through an activation system with cooldowns and channeling support.
+The Item addon provides a framework for defining custom items that are identified by persistent data, automatically styled, version-tracked, and protected from unintended crafting. Items can react to player interactions through an activation system with cooldown hooks and channeling support.
 
 ## Contents
 
@@ -43,7 +43,7 @@ Items form an inheritance chain from simple definitions to fully interactive too
 | `Item` | Base: material, name, lore, color, style, display name formatting |
 | `CustomItem` | Persistent unique ID, typable identifier, version tracking, optional instance tracking, update/refresh lifecycle |
 | `ActivatableCustomItem` | Multiple activation types (left click, right click, drop, swap hand) |
-| `SingleActivatableCustomItem` | Single activation type with simplified API and cooldown |
+| `SingleActivatableCustomItem` | Single activation type with simplified callbacks and cooldown hooks |
 | `ChannelCustomItem` | Sustained right-click activation with start/channel/stop lifecycle |
 | `DefaultItem` | Wraps vanilla items with styling only, no custom unique ID or identifier |
 
@@ -80,23 +80,23 @@ public class InfoBook extends Item {
 }
 ```
 
-`getName()` returns plain text with no color codes. The display name color is controlled by `getColor()`, which defaults to white. Lore lines default to white and are not italicized.
+`getName()` and lore lines are deserialized through `UtilMessage`, so they can contain supported text markup. The display name uses `getColor()` and `getDecorations()` as fallback styling; explicit formatting in the name takes precedence. Without a style, the name defaults to white. Names are non-italic unless explicitly styled otherwise, while lore lines default to white and always have italics disabled. Returning `null` from `getName()` clears the custom display name.
 
 ### Overridable methods
 
 | Method | Returns | Default | Purpose |
 | --- | --- | --- | --- |
-| `getName()` | `String` | _abstract_ | Plain-text display name (no colors) |
+| `getName()` | `String` | _abstract_ | Display name with supported text markup; `null` clears it |
 | `getLore()` | `List<String>` | _abstract_ | Lore lines (default color is white) |
-| `getColor()` | `java.awt.Color` | `ChatColor.WHITE` | Display name color |
-| `getDecorations()` | `List<TextDecoration>` | `null` | Text decorations (bold, italic, etc.) |
+| `getColor()` | `java.awt.Color` | Style color, otherwise `ChatColor.WHITE.getColor()` | Fallback display name color |
+| `getDecorations()` | `List<TextDecoration>` | Style decorations, otherwise `null` | Fallback display name decorations (bold, italic, etc.) |
 | `getStyle()` | `ItemStyle` | `null` | Mass style override (color, decorations, tooltip, tag) |
 | `getModel()` | `NamespacedKey` | `null` | Custom model for resource packs |
-| `getTooltipStyle()` | `NamespacedKey` | `null` | Tooltip style for 1.20+ |
+| `getTooltipStyle()` | `NamespacedKey` | Style tooltip, otherwise `null` | Resource pack tooltip style |
 | `hideAttributes()` | `boolean` | `false` | Hide all item flags |
 | `getMaxStackSize()` | `int` | Material default | Custom max stack size |
 | `addGlow()` | `Boolean` | `null` | Enchantment glint override (`true` = always, `false` = never, `null` = default) |
-| `stamp(ItemMeta)` | `void` | no-op | Write custom persistent data during creation and updates; skipped by `createView()` |
+| `stamp(ItemMeta)` | `void` | no-op | Write custom persistent data during creation and updates; skipped by `createView()`; final in `CustomItem` |
 | `editMeta(ItemMeta)` | `void` | no-op | Final item meta adjustments after all other properties are applied |
 
 ## Custom item
@@ -106,7 +106,7 @@ public class InfoBook extends Item {
 | Value | Example | Purpose |
 | --- | --- | --- |
 | `getUniqueId()` | `d4f7a8b2-1c3e-4f5a-9b6d-2e8f0a1c3d5e` | Stable definition identity stored on item stacks for lookup and comparison |
-| `getIdentifier()` | `HEALING_WAND` | Static, typable name used for in-game search, suggestions, and default cooldown names |
+| `getIdentifier()` | `HEALING_WAND` | Static, typable name used for in-game search and suggestions |
 | `getName()` | `Healing Wand` | Raw display name used when rendering the item |
 
 Supply a stable `uniqueId` in the constructor; all stacks of the same definition share it. The examples use UUID strings, but the addon does not generate this value or require a UUID format. Keep it unchanged when renaming the identifier or display name so existing stacks still resolve to the same definition.
@@ -154,11 +154,15 @@ public class HealingWand extends CustomItem {
 | Method | Returns | Default | Purpose |
 | --- | --- | --- | --- |
 | `hideAttributes()` | `boolean` | `true` | Custom items hide attributes by default |
-| `isInvincible()` | `boolean` | `false` | Prevent the item from being destroyed |
+| `isInvincible()` | `boolean` | `false` | Cancel damage and combustion events for the dropped item |
+| `canDespawn()` | `boolean` | `true` | Allow the dropped item to despawn naturally; return `false` to cancel its despawn event |
 | `isTrackable()` | `boolean` | `false` | Enable an instance tracking ID when `getMaxStackSize()` is `1` |
 | `removeVanillaUseCooldown()` | `boolean` | `true` | Remove the vanilla use cooldown animation |
 | `naturallyObtainable()` | `boolean` | `false` | Whether the item can appear in natural loot |
 | `deleteIfRemoved()` | `boolean` | `false` | Delete the item on next inventory sync if the definition is removed |
+| `generateVersionEntries()` | `List<String>` | Visual configuration, tracking, and deletion settings | Protected hook supplying entries for the definition's version hash |
+
+Invincibility and despawning are independent: override both `isInvincible()` to return `true` and `canDespawn()` to return `false` to protect dropped items from damage, combustion, and natural despawning.
 
 ## Activatable custom item
 
@@ -210,10 +214,10 @@ public class CombatKnife extends ActivatableCustomItem {
 
 | Type | Trigger |
 | --- | --- |
-| `LEFT_CLICK` | Left-click air or block |
-| `RIGHT_CLICK` | Right-click air or block |
-| `DROP_ITEM` | Player drops the item |
-| `SWAP_HAND` | Player swaps main and off hand |
+| `LEFT_CLICK` | Left-click air or block with the main-hand item |
+| `RIGHT_CLICK` | Right-click air or block with the main-hand item |
+| `DROP_ITEM` | Player attempts to drop the item; the drop is cancelled when handled as an activation |
+| `SWAP_HAND` | Player attempts to swap the main-hand item into the off hand; the swap is cancelled when handled as an activation |
 
 ### Additional overridable methods
 
@@ -222,16 +226,26 @@ public class CombatKnife extends ActivatableCustomItem {
 | `getSupportedActivateTypes()` | `Set<ActivateType>` | _abstract_ | Which interactions trigger activation |
 | `onActivate(player, itemStack, block, type)` | `void` | _abstract_ | Called when the item is activated |
 | `canActivate(player, itemStack, block, type)` | `boolean` | `true` | Pre-activation check |
-| `useItemInHand(player, itemStack, type)` | `Event.Result` | `DENY` for right-click usable items, else `DEFAULT` | Control vanilla item-in-hand behavior |
+| `useItemInHand(player, itemStack, type)` | `Event.Result` | `DENY` for block items or right-click usable items, else `DEFAULT` | Control vanilla item-in-hand behavior |
 | `useInteractedBlock(player, itemStack, block, type)` | `Event.Result` | `DEFAULT` | Control vanilla block interaction |
-| `activateOnItemUse(player, itemStack, type)` | `boolean` | `true` | Whether to activate on item use |
-| `activateOnBlockUse(player, itemStack, block, type)` | `boolean` | `false` | Whether to activate on block use |
-| `getCooldownName(type)` | `String` | `getIdentifier()` | Stable cooldown name, independent of the display name |
-| `getCooldownDuration(type)` | `long` | `0L` | Cooldown in milliseconds |
+| `activateOnItemUse(player, itemStack, type)` | `boolean` | `true` | Allow activation when right-clicking with a usable material |
+| `activateOnBlockUse(player, itemStack, block, type)` | `boolean` | `false` | Allow activation when right-clicking a block that responds to the interaction |
+| `getCooldownName(type)` | `String` | `getName()` | Cooldown name hook; override to make it independent of the display name |
+| `getCooldownDuration(type)` | `long` | `0L` | Cooldown duration hook in milliseconds |
+
+### Interaction flow
+
+For supported main-hand clicks, the listener checks the activation gates before setting vanilla interaction results. Returning `false` from `activateOnItemUse(...)` skips activation on right-click with a usable material. With `activateOnBlockUse(...)` returning `false`, right-clicking an interactable block (including a block usable with the held item) skips activation unless the player is sneaking. These early returns leave the interaction results untouched.
+
+If the gates pass, `useItemInHand(...)` and `useInteractedBlock(...)` control the vanilla actions separately from custom activation. Allowing activation on a block does not itself deny the block's vanilla action; return `Event.Result.DENY` from `useInteractedBlock(...)` when that is needed.
+
+The activation sequence is `ItemPreActivateEvent`, then `canActivate(...)`, then `onActivate(...)`, followed by `ItemPostActivateEvent`. Cancelling the pre-event or returning `false` from `canActivate(...)` stops custom activation. The clicked block is `null` for air clicks, drops, and hand swaps. Drops and hand swaps use this same sequence without the click-specific activation gates or vanilla interaction hooks.
+
+`getCooldownName(...)` and `getCooldownDuration(...)` expose configuration for consuming code. The addon's activation listener does not check or start cooldowns automatically; overriding the duration alone does not delay subsequent activations.
 
 ## Single activatable custom item
 
-`SingleActivatableCustomItem` simplifies `ActivatableCustomItem` for items that respond to a single interaction type. The activation type is passed in the constructor, and the API methods drop the `ActivateType` parameter.
+`SingleActivatableCustomItem` simplifies `ActivatableCustomItem` for items that respond to a single interaction type. Pass the activation type in the constructor and override the simplified methods below. Final adapters route the parent callbacks to these methods, and `getSupportedActivateTypes()` returns only the configured type. The typed `canActivate(...)` adapter also rejects other activation types.
 
 ```java
 @Singleton
@@ -282,10 +296,12 @@ public class TeleportPearl extends SingleActivatableCustomItem {
 | --- | --- | --- | --- |
 | `onActivate(player, itemStack, block)` | `void` | _abstract_ | Called when the item is activated |
 | `canActivate(player, itemStack, block)` | `boolean` | `true` | Pre-activation check |
-| `useItemInHand(player, itemStack)` | `Event.Result` | `DEFAULT` | Control vanilla item-in-hand behavior |
+| `useItemInHand(player, itemStack)` | `Event.Result` | Parent behavior for the configured type: `DENY` for block items or right-click usable items, else `DEFAULT` | Control vanilla item-in-hand behavior |
 | `useInteractedBlock(player, itemStack, block)` | `Event.Result` | `DEFAULT` | Control vanilla block interaction |
-| `getCooldownName()` | `String` | `getIdentifier()` | Stable cooldown name, independent of the display name |
-| `getCooldownDuration()` | `long` | `0L` | Cooldown in milliseconds |
+| `getCooldownName()` | `String` | `getName()` | Cooldown name hook |
+| `getCooldownDuration()` | `long` | `0L` | Cooldown duration hook in milliseconds |
+
+`activateOnItemUse(player, itemStack, type)` and `activateOnBlockUse(player, itemStack, block, type)` remain inherited with their `ActivateType` parameter and defaults of `true` and `false`. There are no simplified overloads for these gates. The interaction flow and cooldown behavior described above also apply to single-activation items.
 
 ## Channel custom item
 
@@ -416,6 +432,8 @@ Custom items are identified through Bukkit's `PersistentDataContainer` on the it
 
 During synchronization, registered custom items are checked against their definition's version. Outdated items are updated, preserving durability. If a definition no longer resolves and no naturally obtainable replacement applies, a deletable item is removed; otherwise, its material receives default styling.
 
+`generateVersionEntries()` includes material, attribute visibility, stack limit, glint, style name and tag, model, tooltip style, color, decorations, name, lore templates, tracking, and deletion settings. Entries are joined with a null separator and hashed with SHA-256. The version is computed lazily and cached per definition instance. Override this protected hook to include additional configuration, retaining the superclass entries when those should still trigger updates. Per-stack dynamic lore values, `isInvincible()`, and `canDespawn()` are not included in the default hash.
+
 ### Creation and updates
 
 | Method | Behaviour |
@@ -438,7 +456,7 @@ public boolean isTrackable() {
 }
 
 @Override
-protected int getMaxStackSize() {
+public int getMaxStackSize() {
     return 1;
 }
 ```
@@ -477,7 +495,9 @@ public List<String> getLore() {
 }
 ```
 
-Set dynamic values with `setDynamicLoreValue(itemStack, "kills", "42")`. The values are stored in the item's persistent data and resolved each time the lore is applied.
+Set dynamic values with `setDynamicLoreValue(itemStack, "kills", "42")` or the `ItemMeta` overload. Both store the value and immediately reapply the lore. Read a stored value with `getDynamicLoreValue(itemStack, "kills")`, which returns `Optional<String>`.
+
+Placeholder keys use lowercase letters, digits, `.`, `_`, `/`, and `-`. Setter and getter keys are normalized to lowercase; setting a key absent from the definition's lore throws `IllegalArgumentException`. Missing values render as empty strings. Each lore application removes stored keys no longer referenced by the lore and removes the nested container when empty. Substituted values are also processed as text markup when the lore is rendered.
 
 ## Crafting prevention
 
@@ -510,7 +530,7 @@ The `apply` method on `ItemService` resolves registered custom definitions, upda
 
 Crafting preview formatting runs at `NORMAL` priority. The Recipe addon's checks run later at `HIGHEST`, so a disabled placeholder supplied by those checks is not passed through Item formatting afterward. Inventory synchronization also handles stored items in block-state containers and bundles.
 
-Durability is preserved during updates. When the material changes between versions, durability is scaled proportionally (upgrade) or capped (downgrade).
+Updates keep existing damage when the material stays the same. When switching between damageable materials with positive maximum durability, an upgrade preserves the percentage of remaining uses (rounded), while a downgrade preserves the remaining use count up to the new maximum. The result retains at least one use.
 
 ## Item service
 
@@ -528,7 +548,7 @@ Inject `ItemService` to access registered definitions:
 
 `getItemList()` follows registrations as dependencies initialize and shut down. Callers cannot add, remove, or replace entries through the injected list. The item definitions themselves retain their own behaviour and state.
 
-`CustomItem.isSimilarByUniqueId(itemStack)` compares a stack's stored unique ID with the definition's `uniqueId`. `isHolding(livingEntity)` uses the same comparison for the main-hand item.
+`Item.isSimilarByMaterial(itemStack)` compares the stack's material with the definition's material and returns `false` for `null`. `CustomItem.isSimilarByUniqueId(itemStack)` compares a stack's stored unique ID with the definition's `uniqueId`. `isHolding(livingEntity)` uses the same unique ID comparison for the main-hand item.
 
 ## Item search
 

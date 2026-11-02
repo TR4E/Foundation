@@ -55,11 +55,11 @@ public abstract class SingleActivatableCustomItem extends ActivatableCustomItem 
     }
 
     public Event.Result useItemInHand(final Player player, final ItemStack itemStack) {
-        return Event.Result.DEFAULT;
+        return super.useItemInHand(player, itemStack, this.activateType);
     }
 
     public Event.Result useInteractedBlock(final Player player, final ItemStack itemStack, final Block block) {
-        return Event.Result.DEFAULT;
+        return super.useInteractedBlock(player, itemStack, block, this.activateType);
     }
 
     public String getCooldownName() {

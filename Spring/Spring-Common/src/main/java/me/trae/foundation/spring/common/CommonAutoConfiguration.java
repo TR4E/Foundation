@@ -2,6 +2,7 @@ package me.trae.foundation.spring.common;
 
 import me.trae.foundation.spring.common.address.IpAddressProperties;
 import me.trae.foundation.spring.common.address.IpAddressResolver;
+import me.trae.foundation.spring.common.cookie.CookieHelper;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -17,5 +18,11 @@ public class CommonAutoConfiguration {
     @ConditionalOnMissingBean
     public IpAddressResolver ipAddressResolver(final FoundationProperties foundationProperties, final IpAddressProperties ipAddressProperties) {
         return new IpAddressResolver(foundationProperties, ipAddressProperties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CookieHelper cookieHelper(final FoundationProperties foundationProperties) {
+        return new CookieHelper(foundationProperties);
     }
 }

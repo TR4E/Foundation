@@ -23,6 +23,7 @@
         <module>Minecraft-Paper-Addon-Item</module>
         <module>Minecraft-Paper-Addon-Npc</module>
         <module>Minecraft-Paper-Addon-Recipe</module>
+        <module>Minecraft-Paper-Addon-ResourcePack</module>
         <module>Minecraft-Paper-Addon-Sidebar</module>
         <module>Minecraft-Paper-Addon-Tablist</module>
         <module>Minecraft-Paper-Addon-Team</module>

@@ -1,6 +1,6 @@
 <h1 align="center">Minecraft-Paper-Addons</h1>
 
-<p align="center">Optional Paper plugin features: chat channels, damage processing, items, NPCs, recipes, holograms, sidebars, billboards, death messages, tab lists, and teams.</p>
+<p align="center">Optional Paper plugin features: billboards, chat channels, damage processing, death messages, holograms, items, NPCs, recipes, resource packs, sidebars, tab lists, teams, and windows.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
@@ -8,7 +8,7 @@
   <a href="https://papermc.io/"><img alt="Paper" src="https://img.shields.io/badge/Paper-1.21.11-44cc11?logo=minecraft&logoColor=white"></a>
 </p>
 
-Minecraft-Paper-Addons is a Maven aggregator for the eleven optional feature addons. Each addon is a standalone library that integrates with the [Plugin Framework](../Minecraft-Paper-Plugin-Framework/README.md) through the addon system. Add only the addons your plugin needs.
+Minecraft-Paper-Addons is a Maven aggregator for thirteen optional feature addons. Each addon is a standalone library that integrates with the [Plugin Framework](../Minecraft-Paper-Plugin-Framework/README.md) through the addon system. Add only the addons your plugin needs.
 
 ## Addons
 
@@ -22,6 +22,7 @@ Minecraft-Paper-Addons is a Maven aggregator for the eleven optional feature add
 | [Item](Minecraft-Paper-Addon-Item/README.md) | Custom items with activation, cooldowns, and inventory management | No |
 | [NPC](Minecraft-Paper-Addon-Npc/README.md) | NPCs with capabilities, state restoration, and delayed respawns | No |
 | [Recipe](Minecraft-Paper-Addon-Recipe/README.md) | Custom shaped and shapeless crafting recipes | No |
+| [ResourcePack](Minecraft-Paper-Addon-ResourcePack/README.md) | Per-player resource packs with eligibility checks and required-pack enforcement | No |
 | [Sidebar](Minecraft-Paper-Addon-Sidebar/README.md) | Scoreboard sidebars with per-player content | Yes |
 | [Tablist](Minecraft-Paper-Addon-Tablist/README.md) | Player tab list header and footer | No |
 | [Team](Minecraft-Paper-Addon-Team/README.md) | Team prefixes, suffixes, colors, and collision rules | Yes |

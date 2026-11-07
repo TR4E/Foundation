@@ -1,7 +1,7 @@
 package me.trae.foundation.minecraft.paper.addon.item.services;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import me.trae.foundation.injector.api.lifecycle.Lifecycle;
 import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.DefaultItem;
@@ -14,6 +14,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -21,33 +22,36 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Getter
 @AddonSingleton
 public final class ItemService implements Lifecycle {
 
     private final CustomItemSearchEngine customItemSearchEngine = new CustomItemSearchEngine(this);
 
-    private final Map<String, CustomItem> uniqueIdItemMap = new HashMap<>();
-    private final Map<Material, CustomItem> obtainableItemMap = new EnumMap<>(Material.class);
     private final Map<Material, DefaultItem> defaultItemMap = new EnumMap<>(Material.class);
 
     private final List<CustomItem> itemList;
-
     private final ItemAddonSettings settings;
+
+    private Map<String, CustomItem> uniqueIdItemMap = Collections.emptyMap();
+    private Map<Material, CustomItem> obtainableItemMap = Collections.emptyMap();
 
     @Override
     public void onLiveDependencyUpdate() {
-        this.uniqueIdItemMap.clear();
-        this.obtainableItemMap.clear();
+        final Map<String, CustomItem> uniqueIdItemMap = new HashMap<>();
+        final Map<Material, CustomItem> obtainableItemMap = new EnumMap<>(Material.class);
 
         for (final CustomItem customItem : this.itemList) {
-            this.uniqueIdItemMap.put(customItem.getUniqueId(), customItem);
+            uniqueIdItemMap.put(customItem.getUniqueId(), customItem);
 
             if (customItem.naturallyObtainable()) {
-                this.obtainableItemMap.put(customItem.getMaterial(), customItem);
+                obtainableItemMap.put(customItem.getMaterial(), customItem);
             }
         }
+
+        this.uniqueIdItemMap = Map.copyOf(uniqueIdItemMap);
+        this.obtainableItemMap = Map.copyOf(obtainableItemMap);
     }
 
     public Optional<CustomItem> getItemByUniqueId(final String uniqueId) {

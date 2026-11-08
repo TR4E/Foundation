@@ -15,7 +15,11 @@ public abstract class BaseUtilMessage {
     }
 
     public static String serializeWithReset(final Component component) {
-        return serialize(component) + "<reset>";
+        return Message.serializeWithReset(component);
+    }
+
+    public static String serializeToJson(final Component component) {
+        return Message.serializeToJson(component);
     }
 
     public static Component deserialize(final String string) {

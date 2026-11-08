@@ -35,7 +35,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- MiniMessage -->
+        <!-- Adventure MiniMessage -->
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-text-minimessage</artifactId>

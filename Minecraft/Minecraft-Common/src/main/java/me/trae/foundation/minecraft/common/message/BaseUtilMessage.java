@@ -11,7 +11,7 @@ import java.util.UUID;
 public abstract class BaseUtilMessage {
 
     public static String serialize(final Component component) {
-        return Message.getMiniMessage().serialize(component);
+        return Message.serialize(component);
     }
 
     public static String serializeWithReset(final Component component) {
@@ -19,7 +19,7 @@ public abstract class BaseUtilMessage {
     }
 
     public static Component deserialize(final String string) {
-        return Message.getMiniMessage().deserialize(string);
+        return Message.deserialize(string);
     }
 
     public static void message(final Audience audience, final Component message) {
@@ -35,7 +35,7 @@ public abstract class BaseUtilMessage {
     }
 
     public static void message(final Audience audience, final Component prefix, final String message) {
-        audience.sendMessage(Message.render(prefix, Message.getMiniMessage().deserialize(message)));
+        audience.sendMessage(Message.render(prefix, deserialize(message)));
     }
 
     public static void message(final Audience audience, final String prefix, final String message) {

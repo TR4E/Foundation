@@ -28,6 +28,14 @@ public class Message {
     @Setter
     private String prefixFormat = "[%s] ";
 
+    public static String serialize(final Component component) {
+        return miniMessage.serialize(component);
+    }
+
+    public static Component deserialize(final String string) {
+        return miniMessage.deserialize(string);
+    }
+
     public static Component render(final Component prefix, final Component message) {
         if (prefix == null) {
             return message;
@@ -37,7 +45,7 @@ public class Message {
     }
 
     public static Component render(final String prefix, final String message) {
-        return render(prefix(prefix), miniMessage.deserialize(message));
+        return render(prefix(prefix), deserialize(message));
     }
 
     public static Component prefix(final Color color, final String prefix) {

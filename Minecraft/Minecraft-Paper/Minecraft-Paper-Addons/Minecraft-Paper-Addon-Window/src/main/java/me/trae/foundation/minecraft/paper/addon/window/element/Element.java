@@ -31,6 +31,12 @@ public abstract class Element<Window extends me.trae.foundation.minecraft.paper.
         itemStack.editMeta(itemMeta -> {
             UtilPdc.setPersistentDataType(itemMeta.getPersistentDataContainer(), ELEMENT_KEY, PersistentDataType.BOOLEAN, true);
 
+            final Component displayName = this.getDisplayName();
+
+            if (displayName != null && !itemMeta.hasDisplayName()) {
+                itemMeta.displayName(displayName);
+            }
+
             final List<String> description = this.getDescription();
 
             if (description != null && !description.isEmpty()) {
@@ -47,6 +53,10 @@ public abstract class Element<Window extends me.trae.foundation.minecraft.paper.
         });
 
         return itemStack;
+    }
+
+    public Component getDisplayName() {
+        return null;
     }
 
     public abstract List<String> getDescription();

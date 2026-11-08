@@ -36,6 +36,10 @@ public class Message {
         return miniMessage.deserialize(string);
     }
 
+    public static String escape(final String string) {
+        return string.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'");
+    }
+
     public static Component render(final Component prefix, final Component message) {
         if (prefix == null) {
             return message;

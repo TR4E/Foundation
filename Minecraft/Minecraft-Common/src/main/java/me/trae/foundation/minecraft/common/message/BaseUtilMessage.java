@@ -22,6 +22,10 @@ public abstract class BaseUtilMessage {
         return Message.deserialize(string);
     }
 
+    public static String escape(final String string) {
+        return Message.escape(string);
+    }
+
     public static void message(final Audience audience, final Component message) {
         audience.sendMessage(Message.render(null, message));
     }

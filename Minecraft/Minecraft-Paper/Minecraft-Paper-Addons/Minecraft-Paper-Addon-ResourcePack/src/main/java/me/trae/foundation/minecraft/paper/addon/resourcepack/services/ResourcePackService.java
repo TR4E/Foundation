@@ -61,11 +61,20 @@ public final class ResourcePackService implements Lifecycle {
         final List<UUID> uniqueIdList = new ArrayList<>();
 
         for (final ResourcePack resourcePack : this.resourcePackList) {
+            if (!resourcePack.isValidated()) {
+                resourcePack.revalidate();
+            }
+
             final boolean exists = playerResourcePackData.isLoaded(resourcePack) || playerResourcePackData.isPending(resourcePack);
 
             if (resourcePack.canLoad() && resourcePack.canLoad(player)) {
-                if (exists) {
+                if (exists && playerResourcePackData.isCurrent(resourcePack)) {
                     continue;
+                }
+
+                if (exists) {
+                    playerResourcePackData.removeLoaded(resourcePack);
+                    playerResourcePackData.removePending(resourcePack);
                 }
 
                 if (resourcePack.isRequired()) {

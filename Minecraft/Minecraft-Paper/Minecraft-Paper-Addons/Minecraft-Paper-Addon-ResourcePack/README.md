@@ -8,7 +8,7 @@
   <a href="https://papermc.io/"><img alt="Paper" src="https://img.shields.io/badge/Paper-API-44cc11?logo=minecraft&logoColor=white"></a>
 </p>
 
-The ResourcePack addon manages registered resource packs through Paper's Adventure resource pack API. Packs define their download URL, hash, eligibility, and whether acceptance is required. The addon sends eligible packs, removes packs that become ineligible, and tracks each player's pending and successfully loaded packs by UUID.
+The ResourcePack addon manages registered resource packs through Paper's Adventure resource pack API. Packs define their download URL, hash, eligibility, and whether acceptance is required. The addon sends eligible packs, removes packs that become ineligible, and tracks each player's pending and successfully loaded packs by UUID and hash so updated packs can be sent again.
 
 ## Contents
 
@@ -31,9 +31,9 @@ The ResourcePack addon manages registered resource packs through Paper's Adventu
 
 `ResourcePackService` discovers registered `ResourcePack` components. `ResourcePackListener` synchronizes a player's packs when they join or change worlds:
 
-1. Evaluate each pack's global and per-player eligibility.
+1. Refresh each pack's cached metadata if its URL or hash has changed, then evaluate its global and per-player eligibility.
 2. Remove tracked packs that are no longer eligible from both the player and the addon's loaded/pending state.
-3. Collect eligible packs that are neither loaded nor pending, separating required and optional packs.
+3. Collect eligible packs that are neither loaded nor pending with the current hash, clearing outdated tracking and separating required and optional packs.
 4. Call `ResourcePackAddonSettings.onApplying(player)` if any new packs need sending.
 5. Send the required batch followed by the optional batch, using `replace(false)` to preserve other packs.
 
@@ -83,11 +83,11 @@ public boolean canLoad(final Player player) {
 }
 ```
 
-The listener synchronizes automatically on join and world changes. When a `ResourcePack` subclass handles its own listener events or scheduled updates, call `this.sync(player)` from those methods after changing an eligibility condition.
+The listener synchronizes automatically on join and world changes. Resource pack subclasses only need to define their pack metadata, eligibility, and optional callbacks; they do not need to obtain the service or call synchronization themselves.
 
-`ResourcePack.sync(player)` resolves `ResourcePackService` through the Injector when called and delegates to its `sync(player)` method. It reevaluates all registered packs for that player. Do not inject `ResourcePackService` directly into a `ResourcePack` subclass: the service depends on the registered packs, so constructor injection can create a circular dependency. Use the helper from the pack's listener or scheduler methods after initialization.
+For changes that should take effect before the next join or world change, inject `ResourcePackService` into a separate plugin listener or service and call `this.resourcePackService.sync(player)`. This reevaluates all registered packs for that player.
 
-Eligible packs that are already loaded or pending are skipped. Ineligible tracked packs are removed with `Player.removeResourcePacks(...)`. The addon does not periodically poll eligibility or automatically synchronize players when registered components change.
+Eligible packs that are already loaded or pending with the current hash are skipped. If a tracked pack's hash changes, synchronization clears its old loaded/pending state and queues it for sending again under the same UUID. Ineligible tracked packs are removed with `Player.removeResourcePacks(...)`. The addon does not periodically poll eligibility or automatically synchronize players when registered components change.
 
 ## Loading status
 
@@ -129,16 +129,16 @@ Both default titles use an empty main title with a 250 ms fade-in, 2,000 ms stay
 
 ## Resource pack service
 
-Inject `ResourcePackService` into separate plugin components, such as listeners or services, to synchronize packs or inspect tracking. Within a `ResourcePack` subclass's listener or scheduler methods, use `this.sync(player)` instead of injecting the service to avoid a circular dependency.
+Inject `ResourcePackService` into separate plugin components, such as listeners or services, when you need explicit synchronization or access to player tracking. Keep this outside your `ResourcePack` subclasses; the addon handles their normal synchronization automatically.
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
-| `sync(player)` | `void` | Reevaluate eligibility, remove ineligible tracked packs, and send new eligible packs |
+| `sync(player)` | `void` | Refresh metadata, reevaluate eligibility, remove ineligible tracked packs, and send new or hash-changed eligible packs |
 | `getResourcePackByUniqueId(uniqueId)` | `Optional<ResourcePack>` | Find a registered pack by UUID |
 | `getPlayerResourcePackDataByPlayer(player)` | `Optional<PlayerResourcePackData>` | Read the player's current tracking object, if present |
 | `cleanup(player)` | `void` | Remove the player's addon tracking without sending a client removal request |
 
-`PlayerResourcePackData` provides `isLoaded(resourcePack)`, `isPending(resourcePack)`, `isAnyLoaded()`, and `isAnyPending()`. State is held in memory for the current session; it is not persisted across reconnects.
+`PlayerResourcePackData` stores loaded and pending hashes by pack UUID. It provides `isLoaded(resourcePack)`, `isPending(resourcePack)`, `isAnyLoaded()`, and `isAnyPending()` to inspect presence. `isCurrent(resourcePack)` compares the pack's current hash with its tracked loaded hash, or its pending hash when no loaded entry exists. State is held in memory for the current session; it is not persisted across reconnects.
 
 The UUID lookup map is rebuilt when live dependencies update. Use unique UUIDs across all registered packs.
 
@@ -149,7 +149,9 @@ The UUID lookup map is rebuilt when live dependencies update. Use unique UUIDs a
 - `revalidate()` rebuilds the cached metadata from the current URL and hash.
 - `isValidated()` returns `true` only when cached metadata exists and its URL and hash still match the current values.
 
-If your URL or hash changes at runtime, call `revalidate()` to refresh the cache. This does not resend the pack or clear player tracking. A normal `sync(player)` still skips a pack whose UUID is already loaded or pending.
+On every synchronization, the service checks `isValidated()` and calls `revalidate()` when needed, so pack subclasses do not need to refresh metadata themselves. Calling `revalidate()` directly only refreshes the cache; it does not send a request or clear player tracking.
+
+Changing a pack's hash causes it to be sent again on the next synchronization, even when its UUID is already loaded or pending. Changing only the URL refreshes the metadata but does not resend a tracked pack whose hash is unchanged. Update the hash whenever the ZIP contents change.
 
 ## Installation
 

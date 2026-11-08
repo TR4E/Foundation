@@ -1,8 +1,6 @@
 package me.trae.foundation.minecraft.paper.addon.resourcepack;
 
 import lombok.Getter;
-import me.trae.foundation.injector.api.Injector;
-import me.trae.foundation.minecraft.paper.addon.resourcepack.services.ResourcePackService;
 import net.kyori.adventure.resource.ResourcePackInfo;
 import net.kyori.adventure.resource.ResourcePackInfoLike;
 import org.bukkit.entity.Player;
@@ -33,10 +31,6 @@ public abstract class ResourcePack implements ResourcePackInfoLike {
         }
 
         return this.resourcePackInfo;
-    }
-
-    public final void sync(final Player player) {
-        Injector.INSTANCE.get(ResourcePackService.class).sync(player);
     }
 
     public final void revalidate() {

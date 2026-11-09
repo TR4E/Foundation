@@ -26,11 +26,11 @@ The Sidebar addon displays scoreboard sidebars using NMS packets. Multiple sideb
 
 ## How it works
 
-`SidebarService` manages registered sidebars and dispatches `SidebarUpdateEvent` every 250 milliseconds for each online player (asynchronously). `SidebarListener` handles the event and determines which sidebar to display:
+`SidebarService` checks active sidebars asynchronously every 250 milliseconds. It dispatches `SidebarUpdateEvent` when an active sidebar becomes ineligible; otherwise it refreshes only non-static titles. Players without an active sidebar are skipped. Joining players receive an asynchronous update event, and explicit updates can be requested through `sidebar.updatePlayer(player)` or `sidebar.updateAllPlayers()`. `SidebarListener` handles update events and determines which sidebar to display:
 
 1. Clear the current sidebar if the update event is cancelled.
-2. If an identifier is supplied, process the update only when it matches the currently active sidebar.
-3. Find the first eligible sidebar, clearing the current one if none is eligible.
+2. Select the eligible sidebar with the lowest priority value, clearing the current one if none is eligible.
+3. If an identifier is supplied, process the update only when it matches the selected eligible sidebar.
 4. If it differs from the current one, switch by clearing the old and creating the new.
 5. If it is the same, update the title and lines if they changed.
 
@@ -66,7 +66,7 @@ public class GameSidebar extends Sidebar {
                 Component.text("Player: %s".formatted(player.getName()), NamedTextColor.WHITE),
                 Component.text("Server statistics", NamedTextColor.GRAY),
                 Component.empty(),
-                Component.text("Online: %d".formatted(Bukkit.getOnlinePlayers().size()), NamedTextColor.YELLOW)
+                Component.text("Online: %d".formatted(UtilServer.getOnlinePlayers().size()), NamedTextColor.YELLOW)
         );
     }
 }
@@ -78,15 +78,15 @@ The constructor takes a unique identifier and a priority. Override `getTitle` an
 
 When multiple sidebars are registered, priority determines which one is shown. Priority `0` is the highest (checked first), and `Integer.MAX_VALUE` is the lowest (checked last). The first eligible sidebar for the player is displayed. Override `canDisplay()` for global eligibility and `canDisplay(player)` for per-player checks.
 
-Override `isStaticTitle()` to return `false` if the title changes over time. Static titles are sent once and not rechecked, saving bandwidth.
+Override `isStaticTitle()` to return `false` if the title changes over time. Static titles skip scheduled refreshes, but explicit update events still refresh them. Lines refresh through update events; the scheduler does not poll line content.
 
 ## Caching
 
-Titles and lines are cached per player in `cachedTitleMap` and `cachedLinesMap`. The service only sends packets when the cached value differs from the current value. Line count changes trigger removal of excess lines. This avoids sending redundant packets every 250 milliseconds for static or slowly changing sidebars.
+Titles and lines are cached per player in `cachedTitleMap` and `cachedLinesMap`. Title refreshes send packets only when the title changes. Line updates resend changed lines and any lines whose scores shift when the line count changes, and remove excess lines. The scheduler uses the title cache during non-static title refreshes; update events use both caches.
 
 ## Events
 
-`SidebarUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional sidebar identifier. Cancel the event to clear the sidebar for that player. An identifier restricts the update to a player already displaying that sidebar; it does not force selection of that sidebar. An update without an identifier reevaluates normal eligibility and priority.
+`SidebarUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional sidebar identifier. Cancel the event to clear the sidebar for that player. An identifier allows the update only when the normally selected eligible sidebar has that identifier, including when it is not yet active. A mismatched identifier leaves the current display unchanged; no eligible sidebar clears it. An update without an identifier reevaluates normal eligibility and priority.
 
 ## Installation
 

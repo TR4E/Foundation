@@ -12,19 +12,19 @@ import java.util.UUID;
 public class UtilMessage extends BaseUtilMessage {
 
     public static void broadcast(final Component prefix, final Component message, final Collection<UUID> ignored) {
-        message(Bukkit.getServer().getOnlinePlayers(), prefix, message, ignored);
+        message(UtilServer.getOnlinePlayers(), prefix, message, ignored);
     }
 
     public static void broadcast(final Component prefix, final String message, final Collection<UUID> ignored) {
-        message(Bukkit.getServer().getOnlinePlayers(), prefix, message, ignored);
+        message(UtilServer.getOnlinePlayers(), prefix, message, ignored);
     }
 
     public static void broadcast(final String prefix, final String message, final Collection<UUID> ignored) {
-        message(Bukkit.getServer().getOnlinePlayers(), prefix, message, ignored);
+        message(UtilServer.getOnlinePlayers(), prefix, message, ignored);
     }
 
     public static void broadcast(final String prefix, final Component message, final Collection<UUID> ignored) {
-        message(Bukkit.getServer().getOnlinePlayers(), prefix, message, ignored);
+        message(UtilServer.getOnlinePlayers(), prefix, message, ignored);
     }
 
     public static void broadcast(final Component prefix, final Component message) {

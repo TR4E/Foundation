@@ -3,6 +3,7 @@ package me.trae.foundation.minecraft.paper.addon.recipe;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilWorld;
 import me.trae.foundation.utilities.UtilJava;
 import org.bukkit.Bukkit;
 import org.bukkit.Keyed;
@@ -105,11 +106,11 @@ public abstract class AbstractCustomRecipe {
 
     public final Set<NamespacedKey> getConflictingKeys() {
         return UtilJava.createCollection(new HashSet<>(), set -> {
-            if (!this.removeConflictingRecipes() || UtilItemStack.getUniqueIdByItemStack(this.getResult()).isPresent() || Bukkit.getWorlds().isEmpty()) {
+            if (!this.removeConflictingRecipes() || UtilItemStack.getUniqueIdByItemStack(this.getResult()).isPresent() || UtilWorld.getWorlds().isEmpty()) {
                 return;
             }
 
-            if (Bukkit.getCraftingRecipe(this.toMatrix(), Bukkit.getWorlds().getFirst()) instanceof final Keyed keyed && keyed.getKey().getNamespace().equals(NamespacedKey.MINECRAFT)) {
+            if (Bukkit.getCraftingRecipe(this.toMatrix(), UtilWorld.getWorlds().getFirst()) instanceof final Keyed keyed && keyed.getKey().getNamespace().equals(NamespacedKey.MINECRAFT)) {
                 set.add(keyed.getKey());
             }
         });

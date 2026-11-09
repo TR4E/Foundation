@@ -17,7 +17,7 @@ public class UtilWorld {
     private static final PaperWorldSearchEngine PAPER_WORLD_SEARCH_ENGINE = new PaperWorldSearchEngine();
 
     public static List<World> getWorlds() {
-        return Bukkit.getServer().getWorlds();
+        return List.copyOf(Bukkit.getServer().getWorlds());
     }
 
     public static Optional<World> getWorldById(final UUID id) {

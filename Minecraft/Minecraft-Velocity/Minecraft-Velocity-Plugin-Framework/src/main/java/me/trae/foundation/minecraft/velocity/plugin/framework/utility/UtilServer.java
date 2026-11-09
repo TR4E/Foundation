@@ -17,16 +17,20 @@ public class UtilServer {
 
     private static final VelocityOnlinePlayerSearchEngine VELOCITY_ONLINE_PLAYER_SEARCH_ENGINE = new VelocityOnlinePlayerSearchEngine();
 
+    public static ProxyServer getProxyServer() {
+        return Injector.INSTANCE.get(ProxyServer.class);
+    }
+
     public static List<Player> getOnlinePlayers() {
-        return List.copyOf(Injector.INSTANCE.get(ProxyServer.class).getAllPlayers());
+        return List.copyOf(getProxyServer().getAllPlayers());
     }
 
     public static Optional<Player> getOnlinePlayerById(final UUID id) {
-        return Injector.INSTANCE.get(ProxyServer.class).getPlayer(id);
+        return getProxyServer().getPlayer(id);
     }
 
     public static Optional<Player> getOnlinePlayerByName(final String name) {
-        return Injector.INSTANCE.get(ProxyServer.class).getPlayer(name);
+        return getProxyServer().getPlayer(name);
     }
 
     public static Optional<Player> searchOnlinePlayer(final CommandSource commandSource, final String input, final boolean inform, final Predicate<Player> predicate) {

@@ -1,16 +1,19 @@
 package me.trae.foundation.minecraft.paper.addon.team.listeners;
 
 import lombok.AllArgsConstructor;
+import me.trae.foundation.minecraft.paper.addon.team.Team;
 import me.trae.foundation.minecraft.paper.addon.team.events.TeamUpdateEvent;
 import me.trae.foundation.minecraft.paper.addon.team.services.TeamService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
-import org.bukkit.Bukkit;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerHideEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerShowEntityEvent;
 
 @AllArgsConstructor
 @AddonSingleton
@@ -22,19 +25,19 @@ public final class TeamListener implements Listener {
     public void onTeamUpdate(final TeamUpdateEvent event) {
         final Player player = event.getPlayer();
 
-        for (final Player viewer : Bukkit.getServer().getOnlinePlayers()) {
-            if (event.getIdentifier() == null) {
-                this.teamService.refresh(player, viewer);
+        for (final Player viewer : UtilServer.getOnlinePlayers()) {
+            final Team eligibleTeam = this.teamService.getEligibleTeam(player, viewer).orElse(null);
+
+            if (eligibleTeam == null) {
+                this.teamService.remove(player, viewer);
                 continue;
             }
 
-            this.teamService.getEligibleTeam(player, viewer)
-                    .filter(team -> team.getIdentifier().equals(event.getIdentifier()))
-                    .ifPresentOrElse(team -> {
-                        this.teamService.create(player, viewer, team);
-                    }, () -> {
-                        this.teamService.remove(player, viewer);
-                    });
+            if (event.getIdentifier() != null && !eligibleTeam.getIdentifier().equals(event.getIdentifier())) {
+                continue;
+            }
+
+            this.teamService.create(player, viewer, eligibleTeam);
         }
     }
 
@@ -42,7 +45,7 @@ public final class TeamListener implements Listener {
     public void onPlayerJoin(final PlayerJoinEvent event) {
         final Player player = event.getPlayer();
 
-        for (final Player viewer : Bukkit.getServer().getOnlinePlayers()) {
+        for (final Player viewer : UtilServer.getOnlinePlayers()) {
             this.teamService.refresh(player, viewer);
 
             if (!player.equals(viewer)) {
@@ -55,12 +58,30 @@ public final class TeamListener implements Listener {
     public void onPlayerQuit(final PlayerQuitEvent event) {
         final Player player = event.getPlayer();
 
-        for (final Player viewer : Bukkit.getServer().getOnlinePlayers()) {
+        for (final Player viewer : UtilServer.getOnlinePlayers()) {
             this.teamService.remove(player, viewer);
 
             if (!player.equals(viewer)) {
                 this.teamService.remove(viewer, player);
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerHideEntity(final PlayerHideEntityEvent event) {
+        if (!(event.getEntity() instanceof final Player player)) {
+            return;
+        }
+
+        this.teamService.remove(player, event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerShowEntity(final PlayerShowEntityEvent event) {
+        if (!(event.getEntity() instanceof final Player player)) {
+            return;
+        }
+
+        this.teamService.refresh(player, event.getPlayer());
     }
 }

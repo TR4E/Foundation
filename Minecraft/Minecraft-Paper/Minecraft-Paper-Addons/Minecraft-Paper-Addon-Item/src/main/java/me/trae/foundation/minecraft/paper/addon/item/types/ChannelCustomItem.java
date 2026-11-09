@@ -2,7 +2,7 @@ package me.trae.foundation.minecraft.paper.addon.item.types;
 
 import lombok.Getter;
 import me.trae.foundation.minecraft.paper.addon.item.enums.ActivateType;
-import org.bukkit.Bukkit;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -10,7 +10,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -43,7 +43,7 @@ public abstract class ChannelCustomItem extends SingleActivatableCustomItem {
     public abstract void onChannel(final Player player, final ItemStack itemStack);
 
     public final List<Player> getChannelingPlayers() {
-        return this.activeChannelSet.stream().map(Bukkit.getServer()::getPlayer).filter(Objects::nonNull).toList();
+        return this.activeChannelSet.stream().map(UtilServer::getOnlinePlayerById).flatMap(Optional::stream).toList();
     }
 
     public final boolean isChanneling(final Player player) {

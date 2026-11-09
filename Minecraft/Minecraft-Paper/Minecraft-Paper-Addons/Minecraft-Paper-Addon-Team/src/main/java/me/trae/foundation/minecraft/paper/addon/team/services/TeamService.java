@@ -6,12 +6,14 @@ import me.trae.foundation.minecraft.paper.addon.team.Team;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilNms;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -31,7 +33,7 @@ public final class TeamService implements Lifecycle {
             return;
         }
 
-        final List<Player> playerList = List.copyOf(Bukkit.getServer().getOnlinePlayers());
+        final List<Player> playerList = UtilServer.getOnlinePlayers();
 
         for (final Player player : playerList) {
             for (final Player viewer : playerList) {
@@ -71,7 +73,13 @@ public final class TeamService implements Lifecycle {
     }
 
     public Optional<Team> getEligibleTeam(final Player player, final Player viewer) {
-        return this.teamList.stream().filter(team -> team.canDisplay() && team.canDisplay(player, viewer)).findFirst();
+        if (!viewer.canSee(player)) {
+            return Optional.empty();
+        }
+
+        return this.teamList.stream()
+                .filter(team -> team.canDisplay() && team.canDisplay(player, viewer))
+                .min(Comparator.comparingInt(Team::getPriority));
     }
 
     private PlayerTeam buildPlayerTeam(final String teamName, final Player player, final Player viewer, final Team team) {

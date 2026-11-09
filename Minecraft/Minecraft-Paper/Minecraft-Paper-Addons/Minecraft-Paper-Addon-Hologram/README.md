@@ -53,7 +53,7 @@ public class WelcomeHologram extends Hologram {
     public List<String> getLines(final Player player) {
         return List.of(
                 "<gold>Welcome, " + player.getName() + "!",
-                "<gray>Online: " + Bukkit.getOnlinePlayers().size()
+                "<gray>Online: %d".formatted(UtilServer.getOnlinePlayers().size())
         );
     }
 

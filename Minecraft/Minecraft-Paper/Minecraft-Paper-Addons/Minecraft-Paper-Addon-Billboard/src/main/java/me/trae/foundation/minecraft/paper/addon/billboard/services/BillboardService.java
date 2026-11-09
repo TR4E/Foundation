@@ -12,11 +12,11 @@ import me.trae.foundation.minecraft.paper.addon.billboard.types.BillboardVideo;
 import me.trae.foundation.minecraft.paper.addon.billboard.utility.UtilMap;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
 import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -28,7 +28,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -169,7 +168,7 @@ public final class BillboardService implements Lifecycle, Listener {
         final double showDistanceSquared = billboard.getViewDistance() * billboard.getViewDistance();
         final double hideDistanceSquared = (billboard.getViewDistance() + DESPAWN_MARGIN) * (billboard.getViewDistance() + DESPAWN_MARGIN);
 
-        for (final Player player : Bukkit.getServer().getOnlinePlayers()) {
+        for (final Player player : UtilServer.getOnlinePlayers()) {
             final boolean viewing = billboard.getViewerSet().contains(player.getUniqueId());
 
             if (!player.getWorld().equals(center.getWorld())) {
@@ -222,7 +221,7 @@ public final class BillboardService implements Lifecycle, Listener {
     }
 
     private List<Player> getViewers(final Billboard billboard) {
-        return billboard.getViewerSet().stream().map(Bukkit::getPlayer).filter(Objects::nonNull).toList();
+        return billboard.getViewerSet().stream().map(UtilServer::getOnlinePlayerById).flatMap(Optional::stream).toList();
     }
 
     private ClientboundMapItemDataPacket createPacket(final int mapId, final int x, final int y, final int width, final int height, final byte[] colors) {

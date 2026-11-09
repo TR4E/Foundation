@@ -308,7 +308,7 @@ final CompletableFuture<MyEvent> future = UtilEvent.supply(event);
 | `UtilMessage` | Extends `BaseUtilMessage` with `broadcast` and `log` methods using `ProxyServer` |
 | `UtilPermission` | Permission checking with wildcard and custom wildcard support |
 | `UtilPlayer` | Extracts IP address from a player's remote address |
-| `UtilServer` | Online player lookups by UUID or name through `ProxyServer`, plus exact and partial username searches |
+| `UtilServer` | Access to the injected proxy through `getProxyServer()`, online-player snapshots, UUID and name lookups, and exact and partial username searches |
 | `UtilTask` | Task scheduling through Velocity's scheduler with `ChronoUnit` time units |
 | `CommandRegistry` | Registers and unregisters root and child commands with Velocity's command manager |
 | `PluginRegistry` | Tracks framework plugins by name, class, and class loader for cross-plugin discovery; searches their `getPluginName()` values |
@@ -335,7 +335,7 @@ UtilMessage.broadcast(prefix, message, ignoredUuids);
 UtilMessage.log("Proxy", "Player connected");
 ```
 
-Broadcast sends to all connected players via `ProxyServer.getAllPlayers()`. Log sends to `ProxyServer.getConsoleCommandSource()`.
+Use `UtilServer.getOnlinePlayers()` for an unmodifiable snapshot of all connected players, and `UtilServer.getProxyServer()` to access the injected proxy. Broadcast sends to the players returned by `UtilServer.getOnlinePlayers()`. Log sends to `UtilServer.getProxyServer().getConsoleCommandSource()`.
 
 ## Installation
 

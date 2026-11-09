@@ -27,13 +27,15 @@ The Team addon manages scoreboard teams through NMS packets, allowing per-viewer
 
 ## How it works
 
-`TeamService` manages registered teams. `TeamListener` handles player join and quit events to create and remove teams, and responds to `TeamUpdateEvent` to refresh team state.
+`TeamService` manages registered teams. `TeamListener` handles player join and quit events to create and remove teams, and responds to `TeamUpdateEvent` to refresh team state. Selection requires `viewer.canSee(player)`: hiding a player removes that player's team for the viewer, and showing the player refreshes the team using current eligibility and priority.
 
 When a player joins:
+
 1. Create this player's team for all online viewers.
 2. Create all online players' teams for this new player.
 
 When a player quits:
+
 1. Remove this player's team from all viewers.
 2. Remove all players' teams from this quitting player.
 
@@ -104,8 +106,10 @@ Each player-viewer pair has its own team, identified as `{playerUUID}:{viewerUUI
 
 `TeamUpdateEvent` extends `CustomEvent` and carries the player and an optional team identifier. Listeners can fire this event to trigger a team refresh:
 
-- With an identifier: creates the normally selected eligible team only if its identifier matches; otherwise removes the player's team for that viewer.
-- Without an identifier: selects the first eligible team for each viewer, or removes the team when none is eligible.
+- With an identifier: creates or updates the normally selected eligible team only if its identifier matches. A mismatch leaves the existing team unchanged; no eligible team removes it.
+- Without an identifier: selects the eligible team with the lowest priority value for each viewer, or removes the team when none is eligible.
+
+Call `team.updatePlayer(player)` to request a synchronous update carrying that team's identifier. `team.updateAllPlayers()` captures the online-player list once and processes all updates in one synchronous task.
 
 ## Installation
 

@@ -10,6 +10,7 @@ import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.Addo
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilNms;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPacket;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import net.kyori.adventure.text.Component;
 import net.minecraft.network.protocol.game.ClientboundResetScorePacket;
 import net.minecraft.network.protocol.game.ClientboundSetDisplayObjectivePacket;
@@ -23,8 +24,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,7 +42,7 @@ public final class SidebarService implements Lifecycle {
 
     private final ConcurrentHashMap<UUID, List<Component>> cachedLinesMap = new ConcurrentHashMap<>();
 
-    private List<Sidebar> sidebarList;
+    private final List<Sidebar> sidebarList;
 
     @Override
     public void onComponentShutdown() {
@@ -50,8 +51,8 @@ public final class SidebarService implements Lifecycle {
         }
 
         List.copyOf(this.activeSidebarMap.keySet()).stream()
-                .map(Bukkit::getPlayer)
-                .filter(Objects::nonNull)
+                .map(UtilServer::getOnlinePlayerById)
+                .flatMap(Optional::stream)
                 .forEach(this::clear);
 
         this.activeSidebarMap.clear();
@@ -61,16 +62,20 @@ public final class SidebarService implements Lifecycle {
 
     @Scheduler(period = 250, unit = TimeUnit.MILLISECONDS, asynchronous = true)
     public void onScheduler() {
-        for (final Player player : Bukkit.getServer().getOnlinePlayers()) {
+        for (final Player player : UtilServer.getOnlinePlayers()) {
             final Sidebar activeSidebar = this.activeSidebarMap.get(player.getUniqueId());
-            if (activeSidebar != null) {
-                if (!activeSidebar.canDisplay() || !activeSidebar.canDisplay(player)) {
-                    UtilEvent.dispatch(new SidebarUpdateEvent(player));
-                    continue;
-                }
+            if (activeSidebar == null) {
+                continue;
             }
 
-            this.updateTitle(player);
+            if (!activeSidebar.canDisplay() || !activeSidebar.canDisplay(player)) {
+                UtilEvent.dispatch(new SidebarUpdateEvent(player));
+                continue;
+            }
+
+            if (!activeSidebar.isStaticTitle()) {
+                this.refreshTitle(player, activeSidebar);
+            }
         }
     }
 
@@ -150,16 +155,9 @@ public final class SidebarService implements Lifecycle {
     }
 
     public Optional<Sidebar> getEligibleSidebar(final Player player) {
-        return this.sidebarList.stream().filter(sidebar -> sidebar.canDisplay() && sidebar.canDisplay(player)).findFirst();
-    }
-
-    private void updateTitle(final Player player) {
-        final Sidebar activeSidebar = this.activeSidebarMap.get(player.getUniqueId());
-        if (activeSidebar == null || activeSidebar.isStaticTitle()) {
-            return;
-        }
-
-        this.refreshTitle(player, activeSidebar);
+        return this.sidebarList.stream()
+                .filter(sidebar -> sidebar.canDisplay() && sidebar.canDisplay(player))
+                .min(Comparator.comparingInt(Sidebar::getPriority));
     }
 
     private void sendLine(final Player player, final String identifier, final int index, final Component line, final int score) {

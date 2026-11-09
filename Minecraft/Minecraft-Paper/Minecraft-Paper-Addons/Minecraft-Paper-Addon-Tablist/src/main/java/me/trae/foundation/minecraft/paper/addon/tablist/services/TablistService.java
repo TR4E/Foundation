@@ -8,15 +8,15 @@ import me.trae.foundation.minecraft.paper.addon.tablist.Tablist;
 import me.trae.foundation.minecraft.paper.addon.tablist.events.TablistUpdateEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -26,7 +26,9 @@ import java.util.concurrent.TimeUnit;
 @AddonSingleton
 public final class TablistService implements Lifecycle {
 
-    private final Set<UUID> activeTablistSet = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<UUID, Tablist> activeTablistMap = new ConcurrentHashMap<>();
+
+    private final ConcurrentHashMap<UUID, Map.Entry<Component, Component>> cachedHeaderFooterMap = new ConcurrentHashMap<>();
 
     private final List<Tablist> tablistList;
 
@@ -36,27 +38,43 @@ public final class TablistService implements Lifecycle {
             return;
         }
 
-        List.copyOf(this.activeTablistSet).stream()
-                .map(Bukkit::getPlayer)
-                .filter(Objects::nonNull)
+        List.copyOf(this.activeTablistMap.keySet()).stream()
+                .map(UtilServer::getOnlinePlayerById)
+                .flatMap(Optional::stream)
                 .forEach(this::remove);
+
+        this.activeTablistMap.clear();
+        this.cachedHeaderFooterMap.clear();
     }
 
     @Scheduler(period = 1, unit = TimeUnit.SECONDS, asynchronous = true)
     public void onScheduler() {
-        for (final Player player : Bukkit.getServer().getOnlinePlayers()) {
+        for (final Player player : UtilServer.getOnlinePlayers()) {
             UtilEvent.dispatch(new TablistUpdateEvent(player));
         }
     }
 
     public void create(final Player player, final Tablist tablist) {
-        player.sendPlayerListHeaderAndFooter(tablist.getHeader(player), tablist.getFooter(player));
+        final Component header = tablist.getHeader(player);
+        final Component footer = tablist.getFooter(player);
 
-        this.activeTablistSet.add(player.getUniqueId());
+        final Map.Entry<Component, Component> cached = this.cachedHeaderFooterMap.get(player.getUniqueId());
+
+        if (cached != null && cached.getKey().equals(header) && cached.getValue().equals(footer)) {
+            return;
+        }
+
+        player.sendPlayerListHeaderAndFooter(header, footer);
+
+        this.cachedHeaderFooterMap.put(player.getUniqueId(), Map.entry(header, footer));
+
+        this.activeTablistMap.put(player.getUniqueId(), tablist);
     }
 
     public void remove(final Player player) {
-        if (!this.activeTablistSet.remove(player.getUniqueId())) {
+        this.cachedHeaderFooterMap.remove(player.getUniqueId());
+
+        if (this.activeTablistMap.remove(player.getUniqueId()) == null) {
             return;
         }
 
@@ -65,8 +83,7 @@ public final class TablistService implements Lifecycle {
 
     public Optional<Tablist> getEligibleTablist(final Player player) {
         return this.tablistList.stream()
-                .sorted(Comparator.comparingInt(Tablist::getPriority))
                 .filter(tablist -> tablist.canDisplay() && tablist.canDisplay(player))
-                .findFirst();
+                .min(Comparator.comparingInt(Tablist::getPriority));
     }
 }

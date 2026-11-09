@@ -370,7 +370,7 @@ The existing `PaperWorldSearchEngine` shows the implementation pattern. Extend `
 public final class PaperWorldSearchEngine extends AbstractPaperSearchEngine<World> {
 
     public PaperWorldSearchEngine() {
-        super("World Search", () -> Bukkit.getServer().getWorlds());
+        super("World Search", UtilWorld::getWorlds);
     }
 
     @Override
@@ -503,7 +503,7 @@ title.send(player);
 
 | Method | Returns | Behaviour |
 | --- | --- | --- |
-| `getWorlds()` | `List<World>` | The server's current loaded worlds |
+| `getWorlds()` | `List<World>` | An unmodifiable snapshot of the server's current loaded worlds |
 | `getWorldById(id)` | `Optional<World>` | Direct UUID lookup; empty when the world is not loaded |
 | `getWorldByName(name)` | `Optional<World>` | Direct Bukkit name lookup; empty when no loaded world matches |
 | `searchWorld(commandSender, input, inform)` | `Optional<World>` | Case-insensitive exact match, then a unique partial name match |

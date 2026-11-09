@@ -9,5 +9,10 @@ import org.bukkit.entity.Player;
 @Getter
 public final class TablistUpdateEvent extends CustomAsynchronousCancellableEvent {
 
+    private final String identifier;
     private final Player player;
+
+    public TablistUpdateEvent(final Player player) {
+        this(null, player);
+    }
 }

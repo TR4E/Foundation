@@ -8,7 +8,7 @@
   <a href="https://papermc.io/"><img alt="Paper" src="https://img.shields.io/badge/Paper-API-44cc11?logo=minecraft&logoColor=white"></a>
 </p>
 
-The Tablist addon customizes the player list header and footer shown when a player presses the tab key. Multiple tablists can be registered with different priorities and eligibility conditions. Each player sees the first eligible tablist, with per-player header and footer content. Updates are sent every second using Bukkit's native `Player.sendPlayerListHeaderAndFooter`.
+The Tablist addon customizes the player list header and footer shown when a player presses the tab key. Multiple tablists can be registered with different priorities and eligibility conditions. Each player sees the eligible tablist with the lowest priority value, with per-player header and footer content. Updates are evaluated every second and sent through `Player.sendPlayerListHeaderAndFooter` only when the header or footer changes.
 
 ## Contents
 
@@ -25,13 +25,14 @@ The Tablist addon customizes the player list header and footer shown when a play
 
 ## How it works
 
-`TablistService` manages registered tablists and runs a one-second scheduler tick. On each tick, `TablistUpdateEvent` is dispatched asynchronously for each online player. `TablistListener` handles the event:
+`TablistService` manages registered tablists and runs a one-second scheduler tick. On each tick, `TablistUpdateEvent` is dispatched asynchronously for each online player. An asynchronous update is also dispatched when a player joins. `TablistListener` handles the event:
 
-1. Find the first eligible tablist (sorted by priority, lowest first).
-2. If found, send the header and footer to the player and track it in `activeTablistSet`.
-3. If none is eligible and the player had an active tablist, clear it by sending empty components.
+1. Clear the active tablist if the event is cancelled.
+2. Select the eligible tablist with the lowest priority value, clearing the active one if none is eligible.
+3. If an identifier is supplied, continue only when it matches the selected tablist.
+4. Compare the header and footer with `cachedHeaderFooterMap`. If either changed, send both components, cache them, and store the tablist in `activeTablistMap`.
 
-Clearing sends empty components to remove the header and footer. The addon tracks active tablists to avoid redundant clear operations.
+Clearing removes the cached components and active tablist, sending empty components when a tablist was active. Unchanged header and footer components skip the send and map updates.
 
 ## Creating a tablist
 
@@ -40,7 +41,7 @@ Clearing sends empty components to remove the header and footer. The addon track
 public class ServerTablist extends Tablist {
 
     public ServerTablist() {
-        super(0);
+        super("server", 0);
     }
 
     @Override
@@ -50,12 +51,12 @@ public class ServerTablist extends Tablist {
 
     @Override
     public Component getFooter(final Player player) {
-        return Component.text("Online: %d".formatted(Bukkit.getOnlinePlayers().size()), NamedTextColor.GRAY);
+        return Component.text("Online: %d".formatted(UtilServer.getOnlinePlayers().size()), NamedTextColor.GRAY);
     }
 }
 ```
 
-The constructor takes an integer priority. Override `getHeader` and `getFooter` to provide per-player content.
+The constructor takes a unique identifier and an integer priority. Override `getHeader` and `getFooter` to provide per-player content.
 
 ## Priority and eligibility
 
@@ -63,7 +64,9 @@ Priority `0` is the highest (checked first), and `Integer.MAX_VALUE` is the lowe
 
 ## Events
 
-`TablistUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player. Cancelling the event clears the player's active header and footer on this tick. A later uncancelled update can display them again.
+`TablistUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional tablist identifier. Use `new TablistUpdateEvent(player)` for normal selection or `new TablistUpdateEvent(identifier, player)` to process only the normally selected tablist with that identifier. A mismatched identifier leaves the current display unchanged; no eligible tablist clears it. Cancelling the event clears the player's active header and footer on this tick. A later uncancelled update can display them again.
+
+Call `tablist.updatePlayer(player)` or `tablist.updateAllPlayers()` to request asynchronous updates carrying that tablist's identifier. The all-player helper captures the online-player list once and processes it in one asynchronous task.
 
 ## Installation
 

@@ -1,7 +1,7 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.search.types;
 
 import me.trae.foundation.minecraft.paper.plugin.framework.search.AbstractPaperSearchEngine;
-import org.bukkit.Bukkit;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilWorld;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 
@@ -10,7 +10,7 @@ import java.util.Locale;
 public final class PaperWorldSearchEngine extends AbstractPaperSearchEngine<World> {
 
     public PaperWorldSearchEngine() {
-        super("World Search", () -> Bukkit.getServer().getWorlds());
+        super("World Search", UtilWorld::getWorlds);
     }
 
     @Override

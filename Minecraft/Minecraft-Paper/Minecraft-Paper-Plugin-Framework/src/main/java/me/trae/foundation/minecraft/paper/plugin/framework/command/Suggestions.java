@@ -1,9 +1,10 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.command;
 
 import lombok.experimental.UtilityClass;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilWorld;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.registry.PluginRegistry;
 import me.trae.foundation.utilities.UtilString;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -51,7 +52,7 @@ public class Suggestions {
 
     public static List<String> players(final Predicate<Player> predicate, final String arg) {
         return filter(
-                Bukkit.getServer().getOnlinePlayers(),
+                UtilServer.getOnlinePlayers(),
                 predicate,
                 Player::getName,
                 arg
@@ -60,7 +61,7 @@ public class Suggestions {
 
     public static List<String> players(final String arg) {
         return filter(
-                Bukkit.getServer().getOnlinePlayers(),
+                UtilServer.getOnlinePlayers(),
                 Player::getName,
                 arg
         );
@@ -68,7 +69,7 @@ public class Suggestions {
 
     public static List<String> worlds(final String arg) {
         return filter(
-                Bukkit.getServer().getWorlds(),
+                UtilWorld.getWorlds(),
                 WorldInfo::getName,
                 arg
         );

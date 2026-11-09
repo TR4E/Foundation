@@ -2,9 +2,8 @@ package me.trae.foundation.minecraft.velocity.plugin.framework.command;
 
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.experimental.UtilityClass;
-import me.trae.foundation.injector.api.Injector;
+import me.trae.foundation.minecraft.velocity.plugin.framework.utility.UtilServer;
 import me.trae.foundation.minecraft.velocity.plugin.framework.utility.registry.PluginRegistry;
 
 import java.util.Collection;
@@ -45,7 +44,7 @@ public class Suggestions {
 
     public static List<String> players(final Predicate<Player> predicate, final String arg) {
         return filter(
-                Injector.INSTANCE.get(ProxyServer.class).getAllPlayers(),
+                UtilServer.getOnlinePlayers(),
                 predicate,
                 Player::getUsername,
                 arg
@@ -54,7 +53,7 @@ public class Suggestions {
 
     public static List<String> players(final String arg) {
         return filter(
-                Injector.INSTANCE.get(ProxyServer.class).getAllPlayers(),
+                UtilServer.getOnlinePlayers(),
                 Player::getUsername,
                 arg
         );

@@ -13,8 +13,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
-import java.util.Optional;
-
 @AllArgsConstructor
 @AddonSingleton
 public final class SidebarListener implements Listener {
@@ -34,23 +32,24 @@ public final class SidebarListener implements Listener {
             return;
         }
 
-        if (event.getIdentifier() != null && (activeSidebar == null || !activeSidebar.getIdentifier().equals(event.getIdentifier()))) {
-            return;
-        }
+        final Sidebar eligibleSidebar = this.sidebarService.getEligibleSidebar(player).orElse(null);
 
-        final Optional<Sidebar> eligibleSidebarOptional = this.sidebarService.getEligibleSidebar(player);
-        if (eligibleSidebarOptional.isEmpty()) {
+        if (eligibleSidebar == null) {
             this.sidebarService.clear(player);
             return;
         }
 
-        final Sidebar eligibleSidebar = eligibleSidebarOptional.get();
+        if (event.getIdentifier() != null && !eligibleSidebar.getIdentifier().equals(event.getIdentifier())) {
+            return;
+        }
 
         if (activeSidebar != null && activeSidebar.getIdentifier().equals(eligibleSidebar.getIdentifier())) {
             this.sidebarService.refreshTitle(player, eligibleSidebar);
+
             this.sidebarService.updateLines(player, eligibleSidebar);
         } else {
             this.sidebarService.clear(player);
+
             this.sidebarService.create(player, eligibleSidebar);
         }
 

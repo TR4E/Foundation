@@ -5,9 +5,12 @@ import lombok.Getter;
 import me.trae.foundation.minecraft.paper.addon.team.events.TeamUpdateEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
 import net.kyori.adventure.text.Component;
 import net.minecraft.ChatFormatting;
 import org.bukkit.entity.Player;
+
+import java.util.List;
 
 @AllArgsConstructor
 @Getter
@@ -21,7 +24,9 @@ public abstract class Team {
     }
 
     public final void updateAllPlayers() {
-        UtilServer.getOnlinePlayers().forEach(this::updatePlayer);
+        final List<Player> playerList = UtilServer.getOnlinePlayers();
+
+        UtilTask.executeSynchronously(() -> playerList.forEach(player -> UtilEvent.dispatch(new TeamUpdateEvent(this.identifier, player))));
     }
 
     public boolean canDisplay() {

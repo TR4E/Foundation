@@ -1,5 +1,6 @@
 package me.trae.foundation.minecraft.paper.plugin.framework.command.wrapper;
 
+import lombok.Getter;
 import me.trae.foundation.minecraft.paper.plugin.framework.command.AbstractCommand;
 import me.trae.foundation.minecraft.paper.plugin.framework.command.events.CommandExecuteEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.command.events.CommandTabCompleteEvent;
@@ -13,14 +14,28 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
+@Getter
 public final class BukkitCommandWrapper extends BukkitCommand {
 
     private final AbstractCommand<?, ?> abstractCommand;
 
-    public BukkitCommandWrapper(final AbstractCommand<?, ?> abstractCommand) {
-        super(abstractCommand.getLabel(), abstractCommand.getDescription(), abstractCommand.getUsage(), abstractCommand.getAliases());
+    private BukkitCommandWrapper(final AbstractCommand<?, ?> abstractCommand, final String label, final List<String> aliasList) {
+        super(label, abstractCommand.getDescription(), abstractCommand.isRoot() ? abstractCommand.getUsage() : "/%s".formatted(label), aliasList);
 
         this.abstractCommand = abstractCommand;
+    }
+
+    public BukkitCommandWrapper(final AbstractCommand<?, ?> abstractCommand) {
+        this(abstractCommand, abstractCommand.getLabel(), abstractCommand.getAliases());
+    }
+
+    public BukkitCommandWrapper(final AbstractCommand<?, ?> abstractCommand, final String shortcut) {
+        this(abstractCommand, shortcut, List.of());
+    }
+
+    @Override
+    public boolean testPermissionSilent(@NotNull final CommandSender commandSender) {
+        return this.abstractCommand.isValidSender(commandSender, false) && this.abstractCommand.hasPermission(commandSender, false);
     }
 
     @Override
@@ -42,7 +57,7 @@ public final class BukkitCommandWrapper extends BukkitCommand {
     }
 
     private AbstractCommand<?, ?> getCommand(final AbstractCommand<?, ?> abstractCommand, final String[] args, final int offset) {
-        final int argStart = abstractCommand.getArgStart();
+        final int argStart = abstractCommand.getArgStart() - this.abstractCommand.getArgStart();
         if (args.length <= argStart + offset) {
             return abstractCommand;
         }
@@ -56,7 +71,7 @@ public final class BukkitCommandWrapper extends BukkitCommand {
     }
 
     private String[] getArgs(final AbstractCommand<?, ?> abstractCommand, final String[] args) {
-        return Arrays.copyOfRange(args, abstractCommand.getArgStart(), args.length);
+        return Arrays.copyOfRange(args, abstractCommand.getArgStart() - this.abstractCommand.getArgStart(), args.length);
     }
 
     private <Sender extends CommandSender> boolean executeBaseCommand(final AbstractCommand<?, Sender> abstractCommand, final CommandSender commandSender, final String[] args) {

@@ -20,16 +20,22 @@ public class CommandRegistry {
             childCommandMap.put(abstractCommand.getLabel(), abstractCommand);
 
             abstractCommand.getAliases().forEach(alias -> childCommandMap.put(alias, abstractCommand));
+
+            abstractCommand.getShortcuts().forEach(shortcut -> registerCommand(plugin, new BukkitCommandWrapper(abstractCommand, shortcut)));
             return;
         }
 
+        registerCommand(plugin, new BukkitCommandWrapper(abstractCommand));
+    }
+
+    private static void registerCommand(final Plugin plugin, final BukkitCommandWrapper bukkitCommandWrapper) {
         final CommandMap commandMap = Bukkit.getServer().getCommandMap();
 
-        removeCommand(commandMap, abstractCommand.getLabel());
+        removeCommand(commandMap, bukkitCommandWrapper.getLabel());
 
-        abstractCommand.getAliases().forEach(alias -> removeCommand(commandMap, alias));
+        bukkitCommandWrapper.getAliases().forEach(alias -> removeCommand(commandMap, alias));
 
-        commandMap.register(abstractCommand.getLabel(), plugin.getName(), new BukkitCommandWrapper(abstractCommand));
+        commandMap.register(bukkitCommandWrapper.getLabel(), plugin.getName(), bukkitCommandWrapper);
     }
 
     public static void unregisterCommand(final AbstractCommand<?, ?> abstractCommand) {
@@ -39,10 +45,15 @@ public class CommandRegistry {
             childCommandMap.remove(abstractCommand.getLabel(), abstractCommand);
 
             abstractCommand.getAliases().forEach(alias -> childCommandMap.remove(alias, abstractCommand));
-            return;
         }
 
-        removeCommand(Bukkit.getServer().getCommandMap(), abstractCommand.getLabel());
+        final CommandMap commandMap = Bukkit.getServer().getCommandMap();
+
+        commandMap.getKnownCommands().values().stream()
+                .filter(command -> command instanceof final BukkitCommandWrapper bukkitCommandWrapper && bukkitCommandWrapper.getAbstractCommand() == abstractCommand)
+                .distinct()
+                .toList()
+                .forEach(command -> removeCommand(commandMap, command));
     }
 
     private static void removeCommand(final CommandMap commandMap, final String label) {
@@ -51,6 +62,10 @@ public class CommandRegistry {
             return;
         }
 
+        removeCommand(commandMap, command);
+    }
+
+    private static void removeCommand(final CommandMap commandMap, final Command command) {
         commandMap.getKnownCommands().values().removeIf(value -> value == command);
 
         command.unregister(commandMap);

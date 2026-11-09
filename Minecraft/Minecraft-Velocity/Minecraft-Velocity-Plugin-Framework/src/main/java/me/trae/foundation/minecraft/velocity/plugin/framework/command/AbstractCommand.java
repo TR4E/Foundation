@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 
 @Getter
@@ -74,6 +75,10 @@ public abstract class AbstractCommand<Parent, Sender extends CommandSource> {
 
     public String getUsage() {
         return "/" + this.getLabel();
+    }
+
+    public Set<String> getShortcuts() {
+        return Collections.emptySet();
     }
 
     public final boolean isValidSender(final CommandSource commandSource, final Class<? extends CommandSource> type, final boolean inform) {

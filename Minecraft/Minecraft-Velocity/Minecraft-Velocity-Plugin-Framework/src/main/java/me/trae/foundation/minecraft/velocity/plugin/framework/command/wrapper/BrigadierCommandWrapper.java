@@ -29,13 +29,18 @@ public final class BrigadierCommandWrapper {
     private final BrigadierCommand brigadierCommand;
 
     public BrigadierCommandWrapper(final AbstractCommand<?, ?> abstractCommand) {
+        this(abstractCommand, abstractCommand.getLabel());
+    }
+
+    public BrigadierCommandWrapper(final AbstractCommand<?, ?> abstractCommand, final String label) {
         this.abstractCommand = abstractCommand;
 
-        this.brigadierCommand = new BrigadierCommand(BrigadierCommand.literalArgumentBuilder(abstractCommand.getLabel())
-                .executes(context -> this.execute(context.getSource(), ""))
+        this.brigadierCommand = new BrigadierCommand(BrigadierCommand.literalArgumentBuilder(label)
+                .requires(commandSource -> this.abstractCommand.isValidSender(commandSource, false) && this.abstractCommand.hasPermission(commandSource, false))
+                .executes(commandContext -> this.execute(commandContext.getSource(), ""))
                 .then(BrigadierCommand.requiredArgumentBuilder("args", StringArgumentType.greedyString())
                         .suggests(this::suggest)
-                        .executes(context -> this.execute(context.getSource(), StringArgumentType.getString(context, "args"))))
+                        .executes(commandContext -> this.execute(commandContext.getSource(), StringArgumentType.getString(commandContext, "args"))))
                 .build());
     }
 
@@ -68,7 +73,7 @@ public final class BrigadierCommandWrapper {
     }
 
     private AbstractCommand<?, ?> getCommand(final AbstractCommand<?, ?> abstractCommand, final String[] args, final int offset) {
-        final int argStart = abstractCommand.getArgStart();
+        final int argStart = abstractCommand.getArgStart() - this.abstractCommand.getArgStart();
         if (args.length <= argStart + offset) {
             return abstractCommand;
         }
@@ -82,7 +87,7 @@ public final class BrigadierCommandWrapper {
     }
 
     private String[] getArgs(final AbstractCommand<?, ?> abstractCommand, final String[] args) {
-        return Arrays.copyOfRange(args, abstractCommand.getArgStart(), args.length);
+        return Arrays.copyOfRange(args, abstractCommand.getArgStart() - this.abstractCommand.getArgStart(), args.length);
     }
 
     private <Sender extends CommandSource> boolean executeBaseCommand(final AbstractCommand<?, Sender> abstractCommand, final CommandSource commandSource, final String[] args) {

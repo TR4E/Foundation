@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilWorld;
-import me.trae.foundation.utilities.UtilJava;
 import org.bukkit.Bukkit;
 import org.bukkit.Keyed;
 import org.bukkit.NamespacedKey;
@@ -16,7 +15,7 @@ import org.bukkit.inventory.RecipeChoice;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -105,15 +104,15 @@ public abstract class AbstractCustomRecipe {
     }
 
     public final Set<NamespacedKey> getConflictingKeys() {
-        return UtilJava.createCollection(new HashSet<>(), set -> {
-            if (!this.removeConflictingRecipes() || UtilItemStack.getUniqueIdByItemStack(this.getResult()).isPresent() || UtilWorld.getWorlds().isEmpty()) {
-                return;
-            }
+        if (!this.removeConflictingRecipes() || UtilItemStack.getUniqueIdByItemStack(this.getResult()).isPresent() || UtilWorld.getWorlds().isEmpty()) {
+            return Collections.emptySet();
+        }
 
-            if (Bukkit.getCraftingRecipe(this.toMatrix(), UtilWorld.getWorlds().getFirst()) instanceof final Keyed keyed && keyed.getKey().getNamespace().equals(NamespacedKey.MINECRAFT)) {
-                set.add(keyed.getKey());
-            }
-        });
+        if (!(Bukkit.getCraftingRecipe(this.toMatrix(), UtilWorld.getWorlds().getFirst()) instanceof final Keyed keyed) || !keyed.getKey().getNamespace().equals(NamespacedKey.MINECRAFT)) {
+            return Collections.emptySet();
+        }
+
+        return Set.of(keyed.getKey());
     }
 
     public abstract ItemStack getResult();

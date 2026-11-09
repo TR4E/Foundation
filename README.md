@@ -1,10 +1,11 @@
 <h1 align="center">Foundation</h1>
 
-<p align="center">A modular Java toolkit for persistence, dependency injection, Minecraft platforms, Spring applications, and everyday utilities.</p>
+<p align="center">A modular Java toolkit for persistence, Discord webhooks, dependency injection, Minecraft platforms, Spring applications, and everyday utilities.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
   <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Multi--module-C71A36?logo=apachemaven&logoColor=white"></a>
+  <a href="https://discord.com/developers/docs/intro"><img alt="Discord" src="https://img.shields.io/badge/Discord-Webhooks-5865F2?logo=discord&logoColor=white"></a>
   <a href="https://www.postgresql.org/"><img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-Supported-4169E1?logo=postgresql&logoColor=white"></a>
   <a href="https://redis.io/"><img alt="Redis" src="https://img.shields.io/badge/Redis-Optional-DC382D?logo=redis&logoColor=white"></a>
   <a href="https://spring.io/projects/spring-boot"><img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-Modules-6DB33F?logo=springboot&logoColor=white"></a>
@@ -17,6 +18,7 @@ Foundation is organized as a Maven reactor. Each module can be used independentl
 
 - [Modules](#modules)
   - [Database](#database)
+  - [Discord](#discord)
   - [Injector](#injector)
   - [Minecraft](#minecraft)
   - [Spring](#spring)
@@ -31,6 +33,7 @@ Foundation is organized as a Maven reactor. Each module can be used independentl
 | Module | What it provides |
 | --- | --- |
 | [Database](Database/README.md) | PostgreSQL persistence with optional Redis storage and caching |
+| [Discord](Discord/README.md) | Discord webhook messages and embeds with synchronous and asynchronous dispatch |
 | [Injector](Injector/README.md) | Constructor-based dependency injection and component lifecycle management |
 | [Minecraft](Minecraft/README.md) | Shared Minecraft support and Paper/Velocity plugin frameworks |
 | [Spring](Spring/README.md) | Reusable Spring Boot web features |
@@ -46,6 +49,16 @@ An entity persistence stack for PostgreSQL, with optional local and Redis cachin
 | [Database-Storage](Database/Database-Storage/README.md) | Local cache, Redis storage, and entity codecs |
 | [Database-Lookup](Database/Database-Lookup/README.md) | Lookups across local cache, Redis, and PostgreSQL |
 | [Database-Core](Database/Database-Core/README.md) | PostgreSQL integration, schema management, repositories, and batched writes |
+
+### Discord
+
+Discord webhook support for plain text and embeds, including authors, footers, fields, and timestamps. Messages use Java's `HttpClient` through Utilities, with synchronous and asynchronous dispatch and optional response and error callbacks. See the [Discord guide](Discord/README.md).
+
+| Maven module | Purpose |
+| --- | --- |
+| [Discord-Webhook](Discord/Discord-Webhook/README.md) | Message and embed objects, nested JSON serialization, and webhook HTTP dispatch |
+
+The [full Webhook example](Discord/Discord-Webhook/README.md#full-example) builds every payload type and shows the complete JSON output.
 
 ### Injector
 
@@ -95,6 +108,7 @@ Choose the module family that matches your application, install it from source, 
 | Goal | Start with | Integration |
 | --- | --- | --- |
 | Persist Java entities | [Database quick start](Database/README.md#quick-start) | Compile against `Database-Core`, which includes the other Database modules |
+| Send Discord webhook messages | [Webhook quick start](Discord/Discord-Webhook/README.md#quick-start) | Add `Discord-Webhook`; Utilities is included transitively |
 | Wire components and control startup | [Injector quick start](Injector/README.md#quick-start) | Compile against `Injector-API`, with `Injector-Core` at runtime |
 | Add configuration, scheduling, or lifecycle annotations | [Injector extensions](Injector/Injector-Extensions/README.md) | Add only the individual extensions used by the application |
 | Add web features to a Spring application | The Spring module guides above | Choose the required feature modules |
@@ -126,6 +140,7 @@ To install only a selected family and its reactor dependencies, run one of these
 
 ```shell
 mvn -pl Database/Database-Core -am clean install
+mvn -pl Discord/Discord-Webhook -am clean install
 mvn -pl Injector/Injector-Core,Injector/Injector-Extensions/Injector-Commons-Extension,Injector/Injector-Extensions/Injector-Scheduler-Extension,Injector/Injector-Extensions/Injector-Configuration-Extension -am clean install
 ```
 
@@ -146,6 +161,7 @@ Database tests can skip cases when their services are unreachable. Use the [isol
 Each family guide introduces its architecture and common usage; individual module guides explain configuration, API behavior, examples, and focused build commands.
 
 - [Database](Database/README.md): entity setup, cache modes, durability, tenant selection, dependency injection, and testing.
+- [Discord](Discord/README.md): module overview and installation; [Webhook](Discord/Discord-Webhook/README.md) covers messages, embeds, callbacks, and complete JSON examples.
 - [Injector](Injector/README.md): application startup, constructor injection, providers, lifecycle, and optional extensions.
 - [Minecraft](Minecraft/README.md): Paper and Velocity plugin frameworks, addon system, commands, and optional features.
 - [Utilities](Utilities/README.md): helper APIs and usage examples.

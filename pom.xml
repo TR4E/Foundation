@@ -17,6 +17,7 @@
 
     <modules>
         <module>Database</module>
+        <module>Discord</module>
         <module>Injector</module>
         <module>Minecraft</module>
         <module>Spring</module>

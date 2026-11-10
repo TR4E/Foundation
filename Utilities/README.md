@@ -20,6 +20,7 @@ Utilities provides general Java helpers and a reusable search engine without dep
 - [Numbers, types, and input](#numbers-types-and-input)
 - [Secure random codes](#secure-random-codes)
 - [Hashing and password storage](#hashing-and-password-storage)
+- [Key derivation](#key-derivation)
 - [Generic type resolution](#generic-type-resolution)
 - [Collection and map helpers](#collection-and-map-helpers)
 - [Reflection helpers](#reflection-helpers)
@@ -40,6 +41,7 @@ Utilities provides general Java helpers and a reusable search engine without dep
 | Numbers and input | [UtilNumber](src/main/java/me/trae/foundation/utilities/UtilNumber.java), [UtilType](src/main/java/me/trae/foundation/utilities/UtilType.java), [UtilInput](src/main/java/me/trae/foundation/utilities/UtilInput.java) | Safe parsing, clamping, and validation without scattered `try/catch` blocks |
 | Codes | [UtilCode](src/main/java/me/trae/foundation/utilities/UtilCode.java) | Cryptographically secure random code generation using `SecureRandom` |
 | Hashing and encoding | [UtilHash](src/main/java/me/trae/foundation/utilities/UtilHash.java), [UtilArgon](src/main/java/me/trae/foundation/utilities/UtilArgon.java), [UtilBase64](src/main/java/me/trae/foundation/utilities/UtilBase64.java) | General digests, HMACs, Argon2id password storage, and Base64 conversions |
+| Key derivation | [KeyDerivation](src/main/java/me/trae/foundation/utilities/KeyDerivation.java) | Deterministic 32-byte output from a context string using HMAC-SHA256 |
 | Reflection | [UtilGeneric](src/main/java/me/trae/foundation/utilities/UtilGeneric.java), [UtilClass](src/main/java/me/trae/foundation/utilities/UtilClass.java), [UtilField](src/main/java/me/trae/foundation/utilities/UtilField.java), [UtilMethod](src/main/java/me/trae/foundation/utilities/UtilMethod.java) | Generic type parameter resolution for frameworks like Injector, and reflective access wrappers |
 | Collections | [UtilJava](src/main/java/me/trae/foundation/utilities/UtilJava.java) | Inline collection and map construction, safe casting |
 | HTTP | [UtilHttp](src/main/java/me/trae/foundation/utilities/UtilHttp.java) | Synchronous and asynchronous HTTP with response classification, built on Java's `HttpClient` |
@@ -230,6 +232,18 @@ final String accountSalt = UtilBase64.encodeToString(saltBytes);
 ```
 
 The 16-byte value is an application input to `UtilArgon`; store it with the account so the same value is available during verification.
+
+## Key derivation
+
+`KeyDerivation.derive(context)` returns a new 32-byte array using HKDF extract and a single expand block with HMAC-SHA256. The context is encoded as UTF-8 and used as the expansion info.
+
+```java
+final byte[] derivedBytes = KeyDerivation.derive("foundation:cache:v1");
+```
+
+The same context produces the same bytes across calls and application restarts. Both the salt and input key material are zero-filled, so the output depends only on the context and is publicly reproducible. This method supplies no secret or random key material for encryption or signing.
+
+The intermediate pseudorandom key is cleared before returning. Cryptographic setup failures are wrapped in a `RuntimeException` with the original exception as its cause.
 
 ## Generic type resolution
 

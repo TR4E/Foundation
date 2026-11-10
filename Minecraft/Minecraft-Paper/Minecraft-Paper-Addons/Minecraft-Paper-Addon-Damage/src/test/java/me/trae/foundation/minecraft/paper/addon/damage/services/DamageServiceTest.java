@@ -41,7 +41,7 @@ class DamageServiceTest extends DamageTestSupport {
     @Test
     void dispatchesExactStagesWithAppliedBetweenHealthAndKnockback() {
         final List<Object> dispatchList = new ArrayList<>();
-        this.utilEventMock.when(() -> UtilEvent.dispatch(any(Event.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.dispatch(any(Event.class))).thenAnswer(invocation -> {
             final Event event = invocation.getArgument(0);
             dispatchList.add(event instanceof final DamageSetupEvent damageSetupEvent ? damageSetupEvent.getStage() : event.getClass());
 
@@ -77,7 +77,7 @@ class DamageServiceTest extends DamageTestSupport {
     void cancellationStopsAtEachCheckpoint(final String checkpoint) {
         final CustomDamageEvent customDamageEvent = damage(entity(), null, mock(DamageSource.class), DamageCause.CUSTOM, 10.0D);
         final List<Object> dispatchList = new ArrayList<>();
-        this.utilEventMock.when(() -> UtilEvent.dispatch(any(Event.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.dispatch(any(Event.class))).thenAnswer(invocation -> {
             final Event event = invocation.getArgument(0);
             final Object stage = event instanceof final DamageSetupEvent damageSetupEvent ? damageSetupEvent.getStage() : "CUSTOM";
             dispatchList.add(stage);

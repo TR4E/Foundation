@@ -55,13 +55,13 @@ class WeaponReductionListenerTest extends DamageTestSupport {
         final AttributeModifier attributeModifier = mock(AttributeModifier.class);
         when(attributeModifier.operation()).thenReturn(AttributeModifier.Operation.ADD_VALUE);
         when(attributeModifier.amount()).thenReturn(6.0D);
-        doAnswer((final var invocation) -> {
+        doAnswer(invocation -> {
             final BiConsumer<Holder<Attribute>, AttributeModifier> biConsumer = invocation.getArgument(1);
             biConsumer.accept(Attributes.ATTACK_DAMAGE, attributeModifier);
 
             return null;
         }).when(itemAttributeModifiers).forEach(eq(EquipmentSlot.MAINHAND), any());
-        this.utilEventMock.when(() -> UtilEvent.supply(any(WeaponReductionEvent.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.supply(any(WeaponReductionEvent.class))).thenAnswer(invocation -> {
             final WeaponReductionEvent weaponReductionEvent = invocation.getArgument(0);
             assertEquals(expected, weaponReductionEvent.getOriginalAmount(), 0.000001D);
             assertEquals(expected, weaponReductionEvent.getAmount(), 0.000001D);

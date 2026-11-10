@@ -47,7 +47,7 @@ class HealthApplicationListenerTest extends DamageTestSupport {
         when(craftPlayer.getHealth()).thenReturn(20.0D);
         final AtomicReference<Float> healthAtomicReference = new AtomicReference<>(20.0F);
         when(serverPlayer.getHealth()).thenAnswer(_ -> healthAtomicReference.get());
-        doAnswer((final var invocation) -> {
+        doAnswer(invocation -> {
             if (dropsHealth) {
                 healthAtomicReference.set(invocation.getArgument(0));
             }

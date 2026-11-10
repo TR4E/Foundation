@@ -22,7 +22,7 @@ final class PageAccessInterceptorTest {
 
     @Test
     void ignoresNonPageHandlers() throws Exception {
-        final var interceptor = interceptor(false, false);
+        final PageAccessInterceptor interceptor = interceptor(false, false);
 
         assertTrue(interceptor.preHandle(new MockHttpServletRequest(), new MockHttpServletResponse(), new Object()));
     }
@@ -30,7 +30,7 @@ final class PageAccessInterceptorTest {
     @Test
     void allowsPublicPagesWithoutConsultingAuthentication() throws Exception {
         final RecordingResolver resolver = new RecordingResolver(false, false);
-        final var interceptor = new PageAccessInterceptor(new PageProperties(), resolver);
+        final PageAccessInterceptor interceptor = new PageAccessInterceptor(new PageProperties(), resolver);
 
         assertTrue(interceptor.preHandle(new MockHttpServletRequest(), new MockHttpServletResponse(), handler(new TestPage(null))));
         assertEquals(0, resolver.authenticationChecks);

@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
@@ -100,8 +101,8 @@ class DamageCriteriaListenerTest extends DamageTestSupport {
         );
         final Map<String, Set<String>> actualOwnerMap = new HashMap<>();
 
-        try (final var pathStream = Files.walk(Path.of("src/main/java/me/trae/foundation/minecraft/paper/addon/damage"))) {
-            for (final Path path : pathStream.filter((final var candidate) -> candidate.toString().endsWith(".java")).toList()) {
+        try (final Stream<Path> pathStream = Files.walk(Path.of("src/main/java/me/trae/foundation/minecraft/paper/addon/damage"))) {
+            for (final Path path : pathStream.filter(candidate -> candidate.toString().endsWith(".java")).toList()) {
                 final String source = Files.readString(path);
 
                 for (final String symbol : expectedOwnerMap.keySet()) {
@@ -112,6 +113,6 @@ class DamageCriteriaListenerTest extends DamageTestSupport {
             }
         }
 
-        expectedOwnerMap.forEach((final var symbol, final var owner) -> assertEquals(Set.of(owner), actualOwnerMap.get(symbol), symbol));
+        expectedOwnerMap.forEach((symbol, owner) -> assertEquals(Set.of(owner), actualOwnerMap.get(symbol), symbol));
     }
 }

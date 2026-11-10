@@ -107,7 +107,7 @@ class WeaponDurabilityListenerTest extends DamageTestSupport {
                 source(mock(DamageSource.class)), DamageCause.ENTITY_ATTACK, 4.0D
         );
         final org.bukkit.inventory.ItemStack bukkitItemStack = mock(org.bukkit.inventory.ItemStack.class);
-        this.utilEventMock.when(() -> UtilEvent.supply(any(WeaponDurabilityEvent.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.supply(any(WeaponDurabilityEvent.class))).thenAnswer(invocation -> {
             final WeaponDurabilityEvent weaponDurabilityEvent = invocation.getArgument(0);
             assertSame(customDamageEvent, weaponDurabilityEvent.getDamageEvent());
             assertSame(bukkitItemStack, weaponDurabilityEvent.getItemStack());

@@ -69,7 +69,7 @@ public abstract class DamageTestSupport {
                     Lifecycle.stable()
             );
             final BootstrapContext<net.minecraft.world.damagesource.DamageType> bootstrapContext = mock(BootstrapContext.class);
-            when(bootstrapContext.register(any(), any())).thenAnswer((final var invocation) -> damageTypeMappedRegistry.register(
+            when(bootstrapContext.register(any(), any())).thenAnswer(invocation -> damageTypeMappedRegistry.register(
                     invocation.getArgument(0),
                     invocation.getArgument(1),
                     RegistrationInfo.BUILT_IN
@@ -78,12 +78,12 @@ public abstract class DamageTestSupport {
             PaperRegistryAccess.instance().registerRegistry(damageTypeMappedRegistry.freeze());
 
             final UnsafeValues unsafeValues = mock(UnsafeValues.class);
-            when(unsafeValues.createDamageSourceBuilder(any())).thenAnswer((final var invocation) -> new CraftDamageSourceBuilder(invocation.getArgument(0)));
-            final Server server = mock(Server.class, (final var invocation) -> {
+            when(unsafeValues.createDamageSourceBuilder(any())).thenAnswer(invocation -> new CraftDamageSourceBuilder(invocation.getArgument(0)));
+            final Server server = mock(Server.class, invocation -> {
                 if (invocation.getMethod().getName().equals("getTag")) {
                     final String key = ((NamespacedKey) invocation.getArgument(1)).getKey();
 
-                    return mock(Tag.class, (final var tagInvocation) -> {
+                    return mock(Tag.class, tagInvocation -> {
                         if (tagInvocation.getMethod().getName().equals("isTagged")) {
                             return tagMap.getOrDefault(key, Set.of()).contains(tagInvocation.getArgument(0));
                         }
@@ -104,7 +104,7 @@ public abstract class DamageTestSupport {
     void openDispatcher() {
         tagMap.clear();
         this.utilEventMock = mockStatic(UtilEvent.class);
-        this.utilEventMock.when(() -> UtilEvent.supply(any(Event.class))).thenAnswer((final var invocation) -> invocation.getArgument(0));
+        this.utilEventMock.when(() -> UtilEvent.supply(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @AfterEach

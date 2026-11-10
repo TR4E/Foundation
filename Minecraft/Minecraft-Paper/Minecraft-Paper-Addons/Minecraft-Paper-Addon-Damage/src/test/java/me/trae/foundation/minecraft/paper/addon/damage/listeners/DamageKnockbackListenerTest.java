@@ -168,7 +168,7 @@ class DamageKnockbackListenerTest extends DamageTestSupport {
                 craft(livingEntity, mock(ServerLevel.class)), null,
                 source(mock(DamageSource.class)), DamageCause.CUSTOM, 4.0D
         );
-        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer(invocation -> {
             final DamageKnockbackEvent damageKnockbackEvent = invocation.getArgument(0);
             damageKnockbackEvent.setDirectionX(directionX);
             damageKnockbackEvent.setDirectionZ(directionZ);
@@ -223,7 +223,7 @@ class DamageKnockbackListenerTest extends DamageTestSupport {
                 craft(livingEntity, serverLevel), craftPlayer,
                 source(mock(DamageSource.class)), DamageCause.ENTITY_ATTACK, 4.0D
         );
-        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer(invocation -> {
             final DamageKnockbackEvent damageKnockbackEvent = invocation.getArgument(0);
             damageKnockbackEvent.setSprintReset(true);
             damageKnockbackEvent.setCancelled(true);
@@ -246,7 +246,7 @@ class DamageKnockbackListenerTest extends DamageTestSupport {
                 craft(mock(LivingEntity.class), serverLevel), craftPlayer,
                 source(mock(DamageSource.class)), DamageCause.ENTITY_ATTACK, 4.0D
         );
-        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer(invocation -> {
             final DamageKnockbackEvent damageKnockbackEvent = invocation.getArgument(0);
             assertEquals(0.4D, damageKnockbackEvent.getStrength());
             assertFalse(damageKnockbackEvent.isSprintReset());
@@ -278,7 +278,7 @@ class DamageKnockbackListenerTest extends DamageTestSupport {
         assertEquals(EventPriority.LOW, defaultPriority);
         final TreeMap<EventPriority, Consumer<DamageKnockbackEvent>> eventHandlerTreeMap = new TreeMap<>();
         eventHandlerTreeMap.put(defaultPriority, attackKnockbackListener::onDamageKnockback);
-        eventHandlerTreeMap.put(pluginPriority, (final DamageKnockbackEvent damageKnockbackEvent) -> {
+        eventHandlerTreeMap.put(pluginPriority, damageKnockbackEvent -> {
             assertTrue(damageKnockbackEvent.isSprintReset());
             assertEquals(0.4D, damageKnockbackEvent.getStrength());
 
@@ -286,9 +286,9 @@ class DamageKnockbackListenerTest extends DamageTestSupport {
                 damageKnockbackEvent.setSprintReset(false);
             }
         });
-        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer((final var invocation) -> {
+        this.utilEventMock.when(() -> UtilEvent.supply(any(DamageKnockbackEvent.class))).thenAnswer(invocation -> {
             final DamageKnockbackEvent damageKnockbackEvent = invocation.getArgument(0);
-            eventHandlerTreeMap.values().forEach((final var consumer) -> consumer.accept(damageKnockbackEvent));
+            eventHandlerTreeMap.values().forEach(consumer -> consumer.accept(damageKnockbackEvent));
 
             return damageKnockbackEvent;
         });

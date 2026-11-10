@@ -31,7 +31,7 @@ class AbsorptionReductionListenerTest extends DamageTestSupport {
         final LivingEntity livingEntity = mock(LivingEntity.class);
         final AtomicReference<Double> absorptionAmountAtomicReference = new AtomicReference<>(absorption);
         when(livingEntity.getAbsorptionAmount()).thenAnswer(_ -> absorptionAmountAtomicReference.get());
-        doAnswer((final var invocation) -> {
+        doAnswer(invocation -> {
             absorptionAmountAtomicReference.set(invocation.getArgument(0));
 
             return null;

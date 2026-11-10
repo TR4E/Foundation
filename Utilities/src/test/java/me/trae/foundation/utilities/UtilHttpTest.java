@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
@@ -112,8 +113,8 @@ final class UtilHttpTest {
     private static void respond(final com.sun.net.httpserver.HttpExchange exchange, final int status, final String body) throws IOException {
         final byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(status, bytes.length);
-        try (final var responseBody = exchange.getResponseBody()) {
-            responseBody.write(bytes);
+        try (final OutputStream outputStream = exchange.getResponseBody()) {
+            outputStream.write(bytes);
         }
     }
 }

@@ -111,7 +111,7 @@ class SweepingAttackListenerTest extends DamageTestSupport {
         final AttackSnapshotListener attackSnapshotListener = mock(AttackSnapshotListener.class);
         when(attackSnapshotListener.getSnapshot(customDamageEvent)).thenReturn(new AttackSnapshot(0.8F, false, true, true));
         final DamageService damageService = mock(DamageService.class);
-        doAnswer((final var invocation) -> {
+        doAnswer(invocation -> {
             final CustomDamageEvent sweepingCustomDamageEvent = invocation.getArgument(0);
             sweepingCustomDamageEvent.setCancelled(outcome.equals("cancelled"));
             sweepingCustomDamageEvent.setBlockedDamage(outcome.equals("blocked") ? 1.0D : 0.0D);
@@ -158,8 +158,8 @@ class SweepingAttackListenerTest extends DamageTestSupport {
         if (outcome.equals("applied")) {
             inOrder.verify(firstLivingEntity).knockback(
                     eq(0.4D),
-                    doubleThat((final var direction) -> Math.abs(direction - 1.0D) < 0.00001D),
-                    doubleThat((final var direction) -> Math.abs(direction) < 0.00001D),
+                    doubleThat(direction -> Math.abs(direction - 1.0D) < 0.00001D),
+                    doubleThat(direction -> Math.abs(direction) < 0.00001D),
                     eq(attackerServerPlayer),
                     eq(EntityKnockbackEvent.Cause.SWEEP_ATTACK)
             );
@@ -170,8 +170,8 @@ class SweepingAttackListenerTest extends DamageTestSupport {
         if (outcome.equals("applied")) {
             inOrder.verify(secondLivingEntity).knockback(
                     eq(0.4D),
-                    doubleThat((final var direction) -> Math.abs(direction - 1.0D) < 0.00001D),
-                    doubleThat((final var direction) -> Math.abs(direction) < 0.00001D),
+                    doubleThat(direction -> Math.abs(direction - 1.0D) < 0.00001D),
+                    doubleThat(direction -> Math.abs(direction) < 0.00001D),
                     eq(attackerServerPlayer),
                     eq(EntityKnockbackEvent.Cause.SWEEP_ATTACK)
             );

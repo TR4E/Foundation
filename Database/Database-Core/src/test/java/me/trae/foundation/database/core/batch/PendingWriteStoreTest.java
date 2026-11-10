@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -81,7 +82,7 @@ final class PendingWriteStoreTest {
 
         final AtomicInteger acceptedCount = new AtomicInteger();
 
-        try (final var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int index = 0; index < registrationCount; index++) {
                 executorService.submit(() -> {
                     readyLatch.countDown();

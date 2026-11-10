@@ -94,8 +94,8 @@ class AttackKnockbackListenerTest extends DamageTestSupport {
             if (expectedKnockback > 0.0D) {
                 verify(livingEntity).knockback(
                         eq(expectedKnockback),
-                        doubleThat((final var direction) -> Math.abs(direction - Math.sin(Math.toRadians(yaw))) < 0.00001D),
-                        doubleThat((final var direction) -> Math.abs(direction + Math.cos(Math.toRadians(yaw))) < 0.00001D),
+                        doubleThat(direction -> Math.abs(direction - Math.sin(Math.toRadians(yaw))) < 0.00001D),
+                        doubleThat(direction -> Math.abs(direction + Math.cos(Math.toRadians(yaw))) < 0.00001D),
                         eq(serverPlayer),
                         eq(EntityKnockbackEvent.Cause.ENTITY_ATTACK)
                 );

@@ -58,7 +58,7 @@ class CustomDeathListenerTest extends DamageTestSupport {
 
         try (final MockedStatic<UtilTask> utilTaskMockedStatic = mockStatic(UtilTask.class)) {
             utilTaskMockedStatic.when(() -> UtilTask.executeLaterSynchronously(eq(50), eq(ChronoUnit.MILLIS), any(Runnable.class)))
-                    .thenAnswer((final var invocation) -> {
+                    .thenAnswer(invocation -> {
                         runnableList.add(invocation.getArgument(2));
                         return null;
                     });

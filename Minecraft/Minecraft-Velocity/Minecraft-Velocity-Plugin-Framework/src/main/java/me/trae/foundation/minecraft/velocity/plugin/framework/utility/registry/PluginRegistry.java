@@ -20,7 +20,7 @@ public class PluginRegistry {
     private static final VelocityInternalPluginSearchEngine VELOCITY_INTERNAL_PLUGIN_SEARCH_ENGINE = new VelocityInternalPluginSearchEngine();
 
     private static final LinkedHashMap<String, VelocityPlugin> internalPluginMap = new LinkedHashMap<>();
-    private static final Map<ClassLoader, VelocityPlugin> classLoaderMap = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<ClassLoader, VelocityPlugin> classLoaderMap = new ConcurrentHashMap<>();
 
     public static List<VelocityPlugin> getInternalPlugins() {
         return List.copyOf(internalPluginMap.values());
@@ -44,16 +44,16 @@ public class PluginRegistry {
         return Optional.ofNullable(internalPluginMap.get(name.toUpperCase(Locale.ROOT)));
     }
 
-    public static <T extends VelocityPlugin> T getInternalPluginByClass(final Class<T> type) {
+    public static <Plugin extends VelocityPlugin> Plugin getInternalPluginByClass(final Class<Plugin> type) {
         return Optional.ofNullable(internalPluginMap.get(type.getSimpleName().toUpperCase(Locale.ROOT))).filter(type::isInstance).map(type::cast).orElse(null);
     }
 
     public static VelocityPlugin getSelfPlugin() {
         final String frameworkPackage = VelocityPlugin.class.getPackageName();
 
-        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk((final var frames) -> frames
+        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk(frames -> frames
                         .map(StackWalker.StackFrame::getDeclaringClass)
-                        .filter((final var type) -> !type.getPackageName().startsWith(frameworkPackage))
+                        .filter(type -> !type.getPackageName().startsWith(frameworkPackage))
                         .map(Class::getClassLoader)
                         .filter(Objects::nonNull)
                         .map(classLoaderMap::get)

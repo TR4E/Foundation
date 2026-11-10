@@ -191,7 +191,32 @@ public final class AccountManager {
 }
 ```
 
-Forces the listed components to be created first, even when the constructor does not need them. It is read through superclasses and interfaces, so `@DependsOn` on a shared base class or interface applies to every implementation. A listed component that cannot be found throws `MissingDependencyException`.
+Forces the listed components to be created first, even when the constructor does not need them. It is read through superclasses and interfaces, so `@DependsOn` on a shared base class or interface applies to every implementation. An abstract class or interface target also acts as a condition: if no assignable component is available, the annotated component is skipped. Missing concrete targets still throw `MissingDependencyException`, and failures while constructing available implementations still propagate. Skipped components are not automatically retried when another application starts; include them explicitly in a later `attach` call if needed.
+
+For example, a component can depend on an implementation supplied by an optional module:
+
+```java
+@NoArgsConstructor
+public abstract class AbstractService {
+
+}
+
+@NoArgsConstructor
+@Singleton
+public final class DefaultService extends AbstractService {
+
+}
+
+@AllArgsConstructor
+@DependsOn(AbstractService.class)
+@Singleton
+public final class ServiceConsumer {
+
+    private final AbstractService abstractService;
+}
+```
+
+When `DefaultService` is discovered, the Injector creates it before `ServiceConsumer` and injects it through the abstract type. If no component extending `AbstractService` is available, `ServiceConsumer` is not constructed and application startup continues. Interface targets follow the same rule. A matching component from an application that is already running also satisfies the condition.
 
 ### Lifecycle
 

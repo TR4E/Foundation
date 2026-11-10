@@ -12,6 +12,7 @@ import me.trae.foundation.injector.core.resolver.abstracts.AbstractResolver;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -59,7 +60,11 @@ public final class ConstructorResolver extends AbstractResolver {
         try {
             final LinkedHashSet<Type> dependencyTypeSet = new LinkedHashSet<>();
 
-            this.dependsOnResolver.resolve(type).forEach(dependency -> this.require(type, dependency, dependencyTypeSet));
+            for (final Class<?> dependency : this.dependsOnResolver.resolve(type)) {
+                if (!this.require(type, dependency, dependencyTypeSet)) {
+                    return;
+                }
+            }
 
             final Object instance = this.extensionRegistry.instantiate(this.applicationContext, type).orElseGet(() -> this.construct(type, dependencyTypeSet));
 
@@ -91,16 +96,22 @@ public final class ConstructorResolver extends AbstractResolver {
         this.providerResolver.findOwner(dependencyType).ifPresent(this::create);
     }
 
-    private void require(final Class<?> type, final Class<?> dependency, final Set<Type> dependencyTypeSet) {
+    private boolean require(final Class<?> type, final Class<?> dependency, final Set<Type> dependencyTypeSet) {
         this.ensure(dependency);
 
         final List<ComponentRegistration> registrationList = this.getComponentContainer().getAssignableRegistrations(dependency);
 
         if (registrationList.isEmpty()) {
+            if (Modifier.isAbstract(dependency.getModifiers())) {
+                return false;
+            }
+
             throw new MissingDependencyException("%s depends on %s but none was found".formatted(type.getName(), dependency.getName()));
         }
 
         registrationList.stream().map(ComponentRegistration::getType).forEach(dependencyTypeSet::add);
+
+        return true;
     }
 
     private Object construct(final Class<?> type, final Set<Type> dependencyTypeSet) {

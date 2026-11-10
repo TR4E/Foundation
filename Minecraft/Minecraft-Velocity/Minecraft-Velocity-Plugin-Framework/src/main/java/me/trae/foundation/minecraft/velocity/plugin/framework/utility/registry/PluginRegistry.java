@@ -8,7 +8,6 @@ import me.trae.foundation.minecraft.velocity.plugin.framework.search.types.Veloc
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;

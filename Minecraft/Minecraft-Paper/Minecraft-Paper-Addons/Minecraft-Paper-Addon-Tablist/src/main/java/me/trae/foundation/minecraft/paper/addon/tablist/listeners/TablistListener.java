@@ -23,6 +23,10 @@ public final class TablistListener implements Listener {
     public void onTablistUpdate(final TablistUpdateEvent event) {
         final Player player = event.getPlayer();
 
+        if (!player.isOnline()) {
+            return;
+        }
+
         if (event.isCancelled()) {
             this.tablistService.remove(player);
             return;
@@ -49,6 +53,6 @@ public final class TablistListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(final PlayerQuitEvent event) {
-        this.tablistService.getActiveTablistMap().remove(event.getPlayer().getUniqueId());
+        this.tablistService.remove(event.getPlayer());
     }
 }

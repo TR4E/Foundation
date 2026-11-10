@@ -23,12 +23,17 @@ public final class SidebarListener implements Listener {
     public void onSidebarUpdate(final SidebarUpdateEvent event) {
         final Player player = event.getPlayer();
 
+        if (!player.isOnline()) {
+            return;
+        }
+
         final Sidebar activeSidebar = this.sidebarService.getActiveSidebarMap().get(player.getUniqueId());
 
         if (event.isCancelled()) {
             if (activeSidebar != null) {
                 this.sidebarService.clear(player);
             }
+
             return;
         }
 
@@ -45,11 +50,9 @@ public final class SidebarListener implements Listener {
 
         if (activeSidebar != null && activeSidebar.getIdentifier().equals(eligibleSidebar.getIdentifier())) {
             this.sidebarService.refreshTitle(player, eligibleSidebar);
-
             this.sidebarService.updateLines(player, eligibleSidebar);
         } else {
             this.sidebarService.clear(player);
-
             this.sidebarService.create(player, eligibleSidebar);
         }
 

@@ -25,6 +25,10 @@ public final class TeamListener implements Listener {
     public void onTeamUpdate(final TeamUpdateEvent event) {
         final Player player = event.getPlayer();
 
+        if (!player.isOnline()) {
+            return;
+        }
+
         for (final Player viewer : UtilServer.getOnlinePlayers()) {
             final Team eligibleTeam = this.teamService.getEligibleTeam(player, viewer).orElse(null);
 

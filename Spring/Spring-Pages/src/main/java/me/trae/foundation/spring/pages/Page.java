@@ -2,8 +2,8 @@ package me.trae.foundation.spring.pages;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.cache.CacheControlData;
-import me.trae.foundation.spring.pages.role.PageRole;
 
 import java.util.Collections;
 import java.util.Set;
@@ -13,7 +13,7 @@ import java.util.Set;
 public abstract class Page {
 
     private final String route;
-    private final PageRole requiredRole;
+    private final AccountRoleDefinition requiredRole;
 
     public Set<String> getAssetPaths() {
         return Collections.emptySet();

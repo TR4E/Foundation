@@ -28,6 +28,11 @@ public final class SecurityHeadersFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
+    @Override
     protected void doFilterInternal(final @NonNull HttpServletRequest httpServletRequest, final @NonNull HttpServletResponse httpServletResponse, final @NonNull FilterChain filterChain) throws ServletException, IOException {
         this.setHeader(httpServletResponse, "X-Content-Type-Options", this.securityHeadersProperties.getContentTypeOptions());
         this.setHeader(httpServletResponse, "Referrer-Policy", this.securityHeadersProperties.getReferrerPolicy());

@@ -12,13 +12,19 @@ public final class IpAddressResolver {
 
     private final FoundationProperties foundationProperties;
     private final List<String> headerList;
+    private final List<IpAddressRange> trustedProxyList;
 
     public IpAddressResolver(final FoundationProperties foundationProperties, final IpAddressProperties ipAddressProperties) {
         this.foundationProperties = foundationProperties;
         this.headerList = List.copyOf(this.foundationProperties.isProduction() ? ipAddressProperties.getProxyHeaderList() : ipAddressProperties.getHeaderList());
+        this.trustedProxyList = ipAddressProperties.getTrustedProxyList().stream().map(IpAddressRange::parse).toList();
     }
 
     public Optional<String> getIpAddressByRequest(final HttpServletRequest httpServletRequest) {
+        if (!this.isTrustedPeer(httpServletRequest)) {
+            return this.getPeerAddress(httpServletRequest);
+        }
+
         for (final String header : this.headerList) {
             final String value = httpServletRequest.getHeader(header);
 
@@ -38,6 +44,38 @@ public final class IpAddressResolver {
         }
 
         return Optional.empty();
+    }
+
+    private boolean isTrustedPeer(final HttpServletRequest httpServletRequest) {
+        if (this.trustedProxyList.isEmpty()) {
+            return true;
+        }
+
+        return this.matchesTrustedProxy(this.parseLiteral(httpServletRequest.getRemoteAddr()));
+    }
+
+    private boolean matchesTrustedProxy(final InetAddress peer) {
+        if (peer == null) {
+            return false;
+        }
+
+        for (final IpAddressRange range : this.trustedProxyList) {
+            if (range.contains(peer)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Optional<String> getPeerAddress(final HttpServletRequest httpServletRequest) {
+        final String address = httpServletRequest.getRemoteAddr();
+
+        if (address == null || !this.isAcceptable(address)) {
+            return Optional.empty();
+        }
+
+        return Optional.of(address);
     }
 
     private boolean isAcceptable(final String address) {

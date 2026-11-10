@@ -2,15 +2,17 @@ package me.trae.foundation.spring.pages.navbar;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.AllArgsConstructor;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.Page;
 import me.trae.foundation.spring.pages.registry.PageRegistry;
 import me.trae.foundation.spring.pages.registry.PageRegistryBuilder;
 import me.trae.foundation.spring.pages.role.PageAccessResolver;
-import me.trae.foundation.spring.pages.role.PageRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class NavbarServiceTest {
 
-    private static final PageRole MEMBER = () -> "MEMBER";
+    private static final AccountRoleDefinition MEMBER = TestRole.MEMBER;
 
     @Test
     void returnsVisibleNavbarPagesSortedAndMarksTheMatchingPrefixActive() {
@@ -59,12 +61,22 @@ final class NavbarServiceTest {
         assertTrue(entries.getFirst().isActive());
     }
 
+    @Test
+    void theHomeNavbarEntryIsActiveOnlyAtRoot() {
+        final PageRegistry pageRegistry = new PageRegistry();
+        pageRegistry.register(PageRegistryBuilder.build(Collections.singletonList(new NavPage("/", null, 1, "Home")), Collections.emptyList()));
+        final NavbarService navbarService = new NavbarService(pageRegistry, new FixedResolver(true));
+
+        assertTrue(navbarService.getNavbarEntryList(new MockHttpServletRequest("GET", "/"), new MockHttpServletResponse()).getFirst().isActive());
+        assertFalse(navbarService.getNavbarEntryList(new MockHttpServletRequest("GET", "/orders"), new MockHttpServletResponse()).getFirst().isActive());
+    }
+
     private static final class NavPage extends Page implements Navbar {
 
         private final int position;
         private final String name;
 
-        private NavPage(final String route, final PageRole requiredRole, final int position, final String name) {
+        private NavPage(final String route, final AccountRoleDefinition requiredRole, final int position, final String name) {
             super(route, requiredRole);
             this.position = position;
             this.name = name;
@@ -86,7 +98,10 @@ final class NavbarServiceTest {
         }
     }
 
-    private record FixedResolver(boolean allowed) implements PageAccessResolver {
+    @AllArgsConstructor
+    private static final class FixedResolver implements PageAccessResolver {
+
+        private final boolean allowed;
 
         @Override
         public boolean isAuthenticated(final HttpServletRequest request, final HttpServletResponse response) {
@@ -94,8 +109,13 @@ final class NavbarServiceTest {
         }
 
         @Override
-        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final PageRole pageRole) {
+        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final AccountRoleDefinition requiredRole) {
             return this.allowed;
         }
+    }
+
+    enum TestRole implements AccountRoleDefinition {
+
+        MEMBER
     }
 }

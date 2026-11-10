@@ -8,13 +8,16 @@
   <a href="https://jakarta.ee/specifications/servlet/"><img alt="Jakarta Servlet" src="https://img.shields.io/badge/Jakarta-Servlet-0769AD?logo=jakartaee&logoColor=white"></a>
 </p>
 
-Spring-Pages models each page as a class rather than a controller method. A page declares its own route, the role needed to see it, the assets it owns, and how it caches, all in one place. The route string appears once. Routes are registered at boot through `ContextRefreshedEvent`, role enforcement runs as an interceptor, and four filters handle cache control, trailing-slash redirects, robots tags, and static resource gating. Depends on [Spring-Common](../Spring-Common/README.md) only.
+Spring-Pages models each page as a class rather than a controller method. A page declares its own route, the role needed to see it, the assets it owns, and how it caches, all in one place. The route string appears once. Routes are registered at boot through `ContextRefreshedEvent`, role enforcement runs as an interceptor, and four filters handle cache control, trailing-slash redirects, robots tags, and static resource gating. Depends on [Spring-Security](../Spring-Security/README.md), which brings Spring-Common transitively.
+
+Follow [Installation](INSTALLATION.md) for complete compiling setup examples, settings and troubleshooting.
 
 ## Contents
 
 <details>
 <summary>On this page</summary>
 
+- [Installation](INSTALLATION.md)
 - [At a glance](#at-a-glance)
 - [The role contract](#the-role-contract)
 - [Writing a page](#writing-a-page)
@@ -27,6 +30,7 @@ Spring-Pages models each page as a class rather than a controller method. A page
 - [Filter and interceptor order](#filter-and-interceptor-order)
 - [Configuration](#configuration)
 - [Auto-configuration](#auto-configuration)
+- [Security model](SECURITY.md)
 - [Installation and build](#installation-and-build)
 
 </details>
@@ -36,9 +40,9 @@ Spring-Pages models each page as a class rather than a controller method. A page
 | Type | Purpose |
 | --- | --- |
 | `Page` | Base class every page extends; holds the route, required role, and asset/cache settings |
-| `@Render` | Marks the one method that renders the page, equivalent to `@GetMapping` |
-| `PageRole` | Marker interface your role enum implements |
-| `PageAccessResolver` | How the module asks your application who is logged in and what they can see |
+| `@Render` | Marks the one method that renders the page, used to register a GET handler, with a required String return type |
+| `AccountRoleDefinition` | Shared interface your role enum implements |
+| `PageAccessResolver` | Resolves page authentication and role access |
 | `PageRegistry` | Routes, assets, roles, and cache policies, built once at boot |
 | `PageAccessInterceptor` | Enforces the required role before the page renders |
 | `StaticResourceFilter` | Gates assets belonging to role-protected pages |
@@ -50,104 +54,33 @@ Spring-Pages models each page as a class rather than a controller method. A page
 | `Pagination` / `PaginationService` | Page numbers, offsets, and the window to render |
 | `UtilRedirect` | Open redirect guard for login bounce targets |
 
+See the [security model](SECURITY.md) for authorization boundaries and cache behavior.
+
 ## The role contract
 
-The library never learns what a role means. Your enum implements `PageRole`:
+Use your application's role enum implementing `AccountRoleDefinition` when constructing pages and assets.
 
-```java
-public enum AccountRole implements PageRole {
+Register a `SecurityAccountProvider<Account>` bean with your account implementing `AccountIdentity<AccountRole>` and your role enum implementing `AccountRoleDefinition`. The default `AccountPageAccessResolver` uses the provider. Custom `PageAccessResolver` beans remain supported. Account data lookup by UUID remains in Common; authenticated request lookup belongs to Security.
 
-    STANDARD,
-    MODERATOR,
-    ADMIN,
-    OWNER;
+Pages passes the actual response through request resolution so JWT refresh can write cookies. The default `AccountPageAccessResolver` resolves the provider once per request, caching authenticated and anonymous results for later checks.
 
-    public boolean hasRole(final AccountRole accountRole) {
-        return this.ordinal() >= accountRole.ordinal();
-    }
-}
-```
+Pages calls `PageAccessResolver.isAuthenticated(request, response)` and `hasRole(request, response, requiredRole)`. The default resolver looks up the account through `SecurityAccountProvider.getAccountByRequest(request, response)` and delegates to its `hasRole` method. Anonymous page requests redirect to login; unauthorized authenticated viewers receive `403`. Protected assets return `404` without authorization, and unauthorized navbar entries are omitted.
 
-An enum satisfies `PageRole` with no implementation, since `Enum.name()` already provides the `name()` method. Note that `name()` is `final` on `Enum`, so what a template reads from a role is the constant name in caps. Add your own display method if you want `Owner` rather than `OWNER`.
+`AccountIdentity.hasRole` compares the current and required ordinals by default. Declare enum values in ascending privilege order, such as `MEMBER, MODERATOR, ADMIN, OWNER`, or override the account method for custom authorization. The default `EmptySecurityAccountProvider` returns no account.
 
-Then one bean answers both questions the module needs:
-
-```java
-@AllArgsConstructor
-@Component
-public final class MyPageAccessResolver implements PageAccessResolver {
-
-    private final MyJwtService jwtService;
-
-    @Override
-    public boolean isAuthenticated(final HttpServletRequest httpServletRequest, final HttpServletResponse httpServletResponse) {
-        return this.jwtService.isAuthenticated(httpServletRequest, httpServletResponse);
-    }
-
-    @Override
-    public boolean hasRole(final HttpServletRequest httpServletRequest, final HttpServletResponse httpServletResponse, final PageRole pageRole) {
-        return this.jwtService.getAccountByRequest(httpServletRequest, httpServletResponse)
-                .map(account -> account.getRole().hasRole(AccountRole.class.cast(pageRole)))
-                .orElse(false);
-    }
-}
-```
-
-Two methods rather than one, because the answers differ: not authenticated redirects to the login page; authenticated but underprivileged gets `403` rather than a pointless login bounce.
-
-Without this bean, the default `DenyPageAccessResolver` reports every request as unauthenticated. Gated page requests redirect to the configured login path, and gated assets return `404`. Provide an access resolver to allow authenticated viewers through.
+See the [complete Security provider implementation and bean example](../Spring-Security/README.md#creating-a-security-account-provider), plus the [Common lookup provider examples](../Spring-Common/README.md#creating-a-common-account-provider). Register these providers once in your application; Pages and Ratelimit share the Security provider.
 
 ## Writing a page
 
-```java
-@Component
-public final class OrdersPage extends Page {
-
-    private final OrderManager orderManager;
-    private final PaginationService paginationService;
-
-    public OrdersPage(final OrderManager orderManager, final PaginationService paginationService) {
-        super("/orders", AccountRole.STANDARD);
-
-        this.orderManager = orderManager;
-        this.paginationService = paginationService;
-    }
-
-    @Override
-    public Set<String> getAssetPaths() {
-        return Set.of("/js/orders.js", "/css/orders.css");
-    }
-
-    @Render
-    public String render(@RequestParam(name = "page", defaultValue = "1") final int page, final Model model) {
-        final long totalCount = this.orderManager.getTotalCount();
-
-        final Pagination pagination = this.paginationService.getPagination(page, totalCount);
-
-        model.addAttribute("pagination", pagination);
-        model.addAttribute("orderList", this.orderManager.getPage(pagination.getPage(), pagination.getSize()));
-
-        return "orders";
-    }
-}
-```
+See the [complete application files](INSTALLATION.md#minimal-working-setup).
 
 `super(route, requiredRole)` with a `null` role makes the page public. The `@Render` method takes anything a normal `@GetMapping` method takes (`@RequestParam`, `@PathVariable`, `Model`, `HttpServletRequest`) and returns the view name as a `String`.
 
 **Path variables** go in the route:
 
-```java
-public OrderPage(final OrderManager orderManager) {
-    super("/order/{id}", AccountRole.STANDARD);
-}
+See the [complete application files](INSTALLATION.md#minimal-working-setup).
 
-@Render
-public String render(@PathVariable("id") final UUID id, final Model model) {
-    return "order";
-}
-```
-
-`getBaseRoute()` cuts at the first brace, so `/order/{id}` contributes `/order` to navbar matching and asset prefix resolution.
+`getBaseRoute()` cuts at the first brace, so `/order/{id}` contributes `/order` to navbar matching. Assets are registered by their explicit canonical paths, not by that base route.
 
 **Validation at boot:** a page with no `@Render` method, more than one, or one that does not return `String` throws `PageRegistrationException`. A duplicate route or an asset path claimed by two owners also throws at startup.
 
@@ -156,28 +89,27 @@ public String render(@PathVariable("id") final UUID id, final Model model) {
 `getAssetPaths()` declares the files a page owns. Two things follow:
 
 1. Those paths inherit the page's cache policy.
-2. If the page requires a role, so do its assets. An unauthorized request for a gated asset gets `404` rather than `403`, so nobody learns what exists.
+2. If the page requires a role, so do its declared assets. An unauthorized request for a gated asset gets `404` rather than `403`, to avoid explicitly distinguishing a forbidden asset from an absent one.
 
-Paths must be unique across the whole application. A collision throws at boot and names both owners, because two pages claiming the same asset means one of their role requirements silently loses.
+Canonical asset declarations must be unique across the application; exact and wildcard declarations remain distinct. A collision throws at boot and names both owners, because two pages claiming the same asset means one of their role requirements silently loses.
 
 Files used by more than one page go through `AssetProvider`:
 
-```java
-@Component
-public final class SharedAssetProvider implements AssetProvider {
-
-    @Override
-    public Collection<PageAsset> getAssets() {
-        return List.of(
-                new PageAsset("/css/root.css"),
-                new PageAsset("/js/root.js"),
-                new PageAsset("/js/dashboard-widget.js", AccountRole.STANDARD, CacheControlData.PRIVATE_NO_STORE)
-        );
-    }
-}
-```
+See the [complete application files](INSTALLATION.md#minimal-working-setup).
 
 The one-argument `PageAsset` constructor creates a public asset cached for five minutes (`SHARED_SHORT`, no role).
+
+### Whole asset directories
+
+Use a terminal `/**` to declare a directory and every descendant at the page's own role and asset cache policy:
+
+See the [complete application files](INSTALLATION.md#minimal-working-setup).
+
+`/assets/admin/**` covers `/assets/admin`, `/assets/admin/x.js` and `/assets/admin/deep/y.css`, but not `/assets/administrator.js`. `/**` covers the root and all descendants. Matching is segment-aware, not a plain string prefix. Declarations are canonicalized, including dot segments.
+
+Asset role gating is case-insensitive: `/js/account.js` also gates `/js/Account.JS`, and `/assets/admin/**` also gates `/ASSETS/Admin/x.js`. Duplicate declarations, including case aliases, fail registration. Exact and wildcard declarations of the same base path can coexist: an exact protected entry wins for that path, otherwise the longest matching protected prefix supplies the role. Cache lookup likewise checks exact entries before the longest matching prefix, using the declared cache-key case. The original exact-map getters remain exact indexes; prefix entries have separate map getters and the registry lookup methods combine them.
+
+This does not broaden page routes. Page route keys remain exact and case-sensitive, so `/orders` and `/Orders` can both register. Existing MVC route templates still work. Asset declarations do not create files or MVC handlers; an authorized request still needs a downstream resource to serve.
 
 ## Cache control
 
@@ -193,40 +125,23 @@ The one-argument `PageAsset` constructor creates a public asset cached for five 
 
 Override `getRouteCacheControlData()` on a page to change its policy. Asset policy follows the page's role automatically: public assets get `SHARED_SHORT`, protected assets get `PRIVATE_NO_STORE`. Override `getAssetCacheControlData()` when needed.
 
-Anything under `foundation.pages.system-path-list` gets `NO_STORE` regardless.
+System prefixes select `NO_STORE` before other cache lookup. The later asset gate forces `PRIVATE_NO_STORE` for protected assets. Preserve private policies in downstream handlers and infrastructure.
 
 ## Navigation
 
-Optional. Add `implements Navbar` to the `OrdersPage` class above and include these methods to make it appear in navigation. Pages that do not implement `Navbar` are excluded.
+Optional. Implement Navbar on a Page bean to make it appear in navigation; the installation example includes all methods. Pages that do not implement `Navbar` are excluded.
 
-```java
-@Override
-public int getNavbarPosition() {
-    return 2;
-}
+See the [complete application files](INSTALLATION.md#minimal-working-setup).
 
-@Override
-public String getNavbarName() {
-    return "Orders";
-}
+`NavbarService.getNavbarEntryList(request, response)` returns entries the current viewer may actually reach, sorted by position, with entries whose base route matches the current path marked active. Each `NavbarEntry` carries your required role enum, the route, the name, the description list, and whether it is active.
 
-@Override
-public List<String> getNavbarDescription() {
-    return List.of("Every order and its current status.", "Create orders and change where they are up to.");
-}
-```
-
-`NavbarService.getNavbarEntryList(request, response)` returns entries the current viewer may actually reach, sorted by position, with the one matching the current path marked active. Each `NavbarEntry` carries the `PageRole`, the route, the name, the description list, and whether it is active.
-
-The service calls `hasRole` once per navbar page. If your resolver queries a database, cache the resolved account on the request.
+The service calls `PageAccessResolver.hasRole` once per protected navbar page. The default `AccountPageAccessResolver` caches the account or anonymous result on the request, so authentication, role and navbar checks share one provider resolution. Custom resolvers must manage their own lookup costs.
 
 ## Pagination
 
 `PaginationService` reads the default page size and window size from configuration:
 
-```java
-final Pagination pagination = this.paginationService.getPagination(page, totalCount);
-```
+See the [complete application files](INSTALLATION.md#minimal-working-setup).
 
 `Pagination` clamps the requested page into range: `?page=999` shows the last page and `?page=-1` the first. It exposes:
 
@@ -247,7 +162,7 @@ An overloaded `getPagination(page, totalCount, size)` accepts a custom page size
 
 ## Path canonicalization and trailing slashes
 
-Every component compares canonical paths, via `UtilRequestPath` from [Spring-Common](../Spring-Common/README.md): slash runs collapsed, trailing slash stripped, leading slash guaranteed, case untouched. `PageTrailingSlashFilter` then `308` redirects anything non-canonical to its canonical form, preserving the query string, so `/orders/` and `//orders` resolve to one URL.
+Path comparisons use `UtilRequestPath` from [Spring-Common](../Spring-Common/README.md): slash runs collapse, `.` and `..` segments resolve with traversal clamped at root, trailing slash is stripped and a leading slash is guaranteed. Canonicalization preserves case; asset role lookup separately ignores it. `PageTrailingSlashFilter` then `308` redirects anything non-canonical to its canonical form, preserving the query string, so `/orders/` and `//orders` resolve to one URL.
 
 This only holds while every component uses canonical paths. One filter reading `getRequestURI()` directly reopens the mismatch.
 
@@ -259,16 +174,9 @@ When an unauthenticated viewer hits a gated page, `PageAccessInterceptor` redire
 
 The login page must run that parameter through `UtilRedirect` before using it, or the application has an open redirect:
 
-```java
-@Render
-public String render(@RequestParam(name = "redirect", required = false) final String redirect, final Model model) {
-    model.addAttribute("redirect", UtilRedirect.sanitise(redirect));
+See the [complete application files](INSTALLATION.md#minimal-working-setup).
 
-    return "auth";
-}
-```
-
-`sanitise` returns the value when it is a safe same-site path and `null` otherwise. It rejects anything not starting with a single slash, which covers `//evil.example.com` and `/\evil.example.com`, plus header injection attempts and unexpanded path variables (strings containing `{`).
+`sanitise` returns the value when it passes its local leading-slash path predicate and `null` otherwise. It rejects anything not starting with a single slash, which covers `//evil.example.com` and `/\evil.example.com`, plus literal CR/LF and opening braces. It does not reject every embedded backslash or decode percent-encoded input. Validate the value actually redirected, without decoding again afterwards.
 
 `isSafe(redirect)` performs the same check and returns a boolean.
 
@@ -320,10 +228,10 @@ foundation:
 
 ## Auto-configuration
 
-`PagesAutoConfiguration` is conditional on a servlet web application and runs after `CommonAutoConfiguration`. It registers:
+`PagesAutoConfiguration` is conditional on a servlet web application and runs after `SecurityAutoConfiguration`. It registers:
 
 - `PageRegistry`, `NavbarService`, `PaginationService`
-- `PageAccessResolver` (default: `DenyPageAccessResolver`, replaceable with `@ConditionalOnMissingBean`)
+- `PageAccessResolver` (default: `AccountPageAccessResolver`, replaceable with an application bean)
 - A `ContextRefreshedEvent` listener that scans `Page` beans, validates `@Render` methods, builds the registry, and registers routes through `RequestMappingHandlerMapping`
 - A `WebMvcConfigurer` adding `PageAccessInterceptor`
 - Four `FilterRegistrationBean` instances for the page filters
@@ -334,11 +242,15 @@ Adding the JAR to a non-web or reactive application registers nothing.
 
 **Setup checklist:**
 
-1. Have your role enum implement `PageRole` and declare a `PageAccessResolver` bean. Without a resolver, gated page requests redirect to the login path and gated assets return `404`.
+1. Register your `SecurityAccountProvider<Account>` bean and pass role enum values implementing `AccountRoleDefinition` to pages. Without application wiring, gated page requests redirect to login and gated assets return `404`.
 2. Write pages as `@Component` classes extending `Page`, each with exactly one `@Render` method returning a view name.
 3. Point `foundation.pages.login-path` at your login page and run its redirect parameter through `UtilRedirect.sanitise`.
 
 Optional: implement `Navbar` on pages for navigation, and declare an `AssetProvider` bean for shared assets.
+
+## Security model
+
+Read the [security model](SECURITY.md) for the controls, design trade-offs, configuration risks and application responsibilities. Vulnerability reporting guidance is included there.
 
 ## Installation and build
 
@@ -350,7 +262,7 @@ Optional: implement `Navbar` on pages for navigation, and declare an `AssetProvi
 </dependency>
 ```
 
-Spring-Common comes in transitively. From the repository root with JDK 25 and Maven:
+Spring-Security and Spring-Common come in transitively. From the repository root with JDK 25 and Maven:
 
 ```shell
 mvn -pl Spring/Spring-Pages -am install

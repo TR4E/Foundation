@@ -4,6 +4,7 @@ import me.trae.foundation.spring.common.FoundationProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -131,6 +132,103 @@ final class IpAddressResolverTest {
         request.addHeader("True-Client-IP", "203.0.113.9");
 
         assertEquals(Optional.of("203.0.113.9"), new IpAddressResolver(foundationProperties, ipAddressProperties).getIpAddressByRequest(request));
+    }
+
+    @Test
+    void emptyTrustListPreservesHeadersFromAnyPeerInProduction() {
+        assertTrue(new IpAddressProperties().getTrustedProxyList().isEmpty());
+
+        for (final String peer : new String[]{"203.0.113.1", "10.0.0.1", "not-a-peer"}) {
+            assertEquals(Optional.of("203.0.113.9"), proxyResolver(true, Collections.emptyList()).getIpAddressByRequest(proxyRequest(peer, "CF-Connecting-IP", "203.0.113.9")));
+        }
+    }
+
+    @Test
+    void emptyTrustListPreservesDevelopmentHeaderPrecedence() {
+        final MockHttpServletRequest httpServletRequest = proxyRequest("198.51.100.1", "X-Forwarded-For", "192.168.1.2");
+        httpServletRequest.addHeader("X-Real-IP", "203.0.113.9");
+
+        assertEquals(Optional.of("192.168.1.2"), proxyResolver(false, Collections.emptyList()).getIpAddressByRequest(httpServletRequest));
+    }
+
+    @Test
+    void peersInAnyConfiguredRangeCanSupplyForwardedHeaders() {
+        final IpAddressResolver ipAddressResolver = proxyResolver(true, List.of("192.0.2.0/24", "198.51.100.0/24"));
+
+        assertEquals(Optional.of("203.0.113.9"), ipAddressResolver.getIpAddressByRequest(proxyRequest("198.51.100.8", "CF-Connecting-IP", "203.0.113.9")));
+    }
+
+    @Test
+    void untrustedPublicPeersCannotForgeTheirIdentityThroughHeaders() {
+        assertEquals(Optional.of("198.51.100.8"), proxyResolver(true, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("198.51.100.8", "CF-Connecting-IP", "203.0.113.9")));
+    }
+
+    @Test
+    void untrustedPrivatePeersAreRejectedInProduction() {
+        assertTrue(proxyResolver(true, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("10.0.0.8", "CF-Connecting-IP", "203.0.113.9")).isEmpty());
+    }
+
+    @Test
+    void untrustedPrivatePeersAreReturnedInDevelopment() {
+        assertEquals(Optional.of("10.0.0.8"), proxyResolver(false, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("10.0.0.8", "X-Forwarded-For", "203.0.113.9")));
+    }
+
+    @Test
+    void unparseablePeersAreUntrustedAndHaveNoFallbackIdentity() {
+        assertTrue(proxyResolver(true, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("not-a-peer", "CF-Connecting-IP", "203.0.113.9")).isEmpty());
+    }
+
+    @Test
+    void aTrustedPeerWithoutTheExpectedHeaderFailsClosed() {
+        final MockHttpServletRequest httpServletRequest = new MockHttpServletRequest();
+        httpServletRequest.setRemoteAddr("192.0.2.8");
+
+        assertTrue(proxyResolver(true, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(httpServletRequest).isEmpty());
+    }
+
+    @Test
+    void commaSeparatedHeadersSkipInvalidEntriesAndKeepTheFirstAcceptableOne() {
+        assertEquals(Optional.of("203.0.113.9"), proxyResolver(true, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("192.0.2.8", "CF-Connecting-IP", "bad, 10.0.0.1, 203.0.113.9, 198.51.100.8")));
+        assertEquals(Optional.of("10.0.0.1"), proxyResolver(false, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("192.0.2.8", "X-Forwarded-For", "bad, 10.0.0.1, 203.0.113.9")));
+    }
+
+    @Test
+    void productionRejectsEveryNonPublicHeaderAddressCategory() {
+        for (final String address : new String[]{"127.0.0.1", "::1", "0.0.0.0", "::", "10.0.0.1", "192.168.0.1", "169.254.0.1", "fe80::1", "fc00::1", "fd00::1", "::ffff:192.168.0.1"}) {
+            assertTrue(proxyResolver(true, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("192.0.2.8", "CF-Connecting-IP", address)).isEmpty(), address);
+        }
+    }
+
+    @Test
+    void mappedPublicAddressesAreAcceptedAfterPublicAddressValidation() {
+        assertEquals(Optional.of("::ffff:8.8.8.8"), proxyResolver(true, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("192.0.2.8", "CF-Connecting-IP", "::ffff:8.8.8.8")));
+    }
+
+    @Test
+    void developmentAcceptsPrivateAddressesFromTrustedPeers() {
+        assertEquals(Optional.of("192.168.0.8"), proxyResolver(false, Collections.singletonList("192.0.2.0/24")).getIpAddressByRequest(proxyRequest("192.0.2.8", "X-Forwarded-For", "192.168.0.8")));
+    }
+
+    @Test
+    void ipv6TrustedRangesMatchIpv6Peers() {
+        assertEquals(Optional.of("2001:db8:9::1"), proxyResolver(true, Collections.singletonList("2001:db8:7::/48")).getIpAddressByRequest(proxyRequest("2001:db8:7:8::1", "CF-Connecting-IP", "2001:db8:9::1")));
+    }
+
+    private static IpAddressResolver proxyResolver(final boolean production, final List<String> trustedProxyList) {
+        final FoundationProperties foundationProperties = new FoundationProperties();
+        foundationProperties.setProduction(production);
+        final IpAddressProperties ipAddressProperties = new IpAddressProperties();
+        ipAddressProperties.setTrustedProxyList(trustedProxyList);
+
+        return new IpAddressResolver(foundationProperties, ipAddressProperties);
+    }
+
+    private static MockHttpServletRequest proxyRequest(final String peer, final String header, final String address) {
+        final MockHttpServletRequest httpServletRequest = new MockHttpServletRequest();
+        httpServletRequest.setRemoteAddr(peer);
+        httpServletRequest.addHeader(header, address);
+
+        return httpServletRequest;
     }
 
     private static Optional<String> resolve(final boolean production, final String address) {

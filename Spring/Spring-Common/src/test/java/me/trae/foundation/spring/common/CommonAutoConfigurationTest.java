@@ -1,5 +1,6 @@
 package me.trae.foundation.spring.common;
 
+import me.trae.foundation.spring.common.account.CommonAccountProvider;
 import me.trae.foundation.spring.common.address.IpAddressProperties;
 import me.trae.foundation.spring.common.address.IpAddressResolver;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,6 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "foundation.ip-address.proxy-header-list[1]=True-Client-IP"
 })
 final class CommonAutoConfigurationTest {
+
+    @Autowired
+    private CommonAccountProvider<?> accountProvider;
 
     @Autowired
     private IpAddressResolver ipAddressResolver;
@@ -34,6 +39,11 @@ final class CommonAutoConfigurationTest {
     @Test
     void theResolverIsRegisteredOnTheClasspathAlone() {
         assertTrue(this.ipAddressResolver != null);
+    }
+
+    @Test
+    void theDefaultAccountProviderReturnsAnonymous() {
+        assertTrue(this.accountProvider.getAccountById(UUID.randomUUID()).isEmpty());
     }
 
     @Test

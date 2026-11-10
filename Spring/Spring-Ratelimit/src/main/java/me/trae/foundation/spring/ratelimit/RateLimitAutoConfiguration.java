@@ -1,13 +1,12 @@
 package me.trae.foundation.spring.ratelimit;
 
-import me.trae.foundation.spring.common.CommonAutoConfiguration;
 import me.trae.foundation.spring.common.address.IpAddressResolver;
-import me.trae.foundation.spring.ratelimit.account.EmptyRateLimitAccountResolver;
-import me.trae.foundation.spring.ratelimit.account.RateLimitAccountResolver;
 import me.trae.foundation.spring.ratelimit.interceptor.RateLimitInterceptor;
 import me.trae.foundation.spring.ratelimit.registry.RateLimitRegistry;
 import me.trae.foundation.spring.ratelimit.store.MemoryRateLimitStore;
 import me.trae.foundation.spring.ratelimit.store.RateLimitStore;
+import me.trae.foundation.spring.security.SecurityAutoConfiguration;
+import me.trae.foundation.spring.security.account.SecurityAccountProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -19,19 +18,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-@AutoConfiguration(after = CommonAutoConfiguration.class)
+@AutoConfiguration(after = SecurityAutoConfiguration.class)
 public class RateLimitAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
     public RateLimitStore rateLimitStore() {
         return new MemoryRateLimitStore();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public RateLimitAccountResolver rateLimitAccountResolver() {
-        return new EmptyRateLimitAccountResolver();
     }
 
     @Bean
@@ -45,11 +38,11 @@ public class RateLimitAutoConfiguration {
     }
 
     @Bean
-    public WebMvcConfigurer rateLimitWebMvcConfigurer(final RateLimitRegistry rateLimitRegistry, final RateLimitStore rateLimitStore, final IpAddressResolver ipAddressResolver, final RateLimitAccountResolver rateLimitAccountResolver) {
+    public WebMvcConfigurer rateLimitWebMvcConfigurer(final RateLimitRegistry rateLimitRegistry, final RateLimitStore rateLimitStore, final IpAddressResolver ipAddressResolver, final SecurityAccountProvider<?> accountProvider) {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(final InterceptorRegistry interceptorRegistry) {
-                interceptorRegistry.addInterceptor(new RateLimitInterceptor(rateLimitRegistry, rateLimitStore, ipAddressResolver, rateLimitAccountResolver));
+                interceptorRegistry.addInterceptor(new RateLimitInterceptor(rateLimitRegistry, rateLimitStore, ipAddressResolver, accountProvider));
             }
         };
     }

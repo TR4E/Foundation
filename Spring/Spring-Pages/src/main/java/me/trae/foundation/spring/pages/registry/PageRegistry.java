@@ -1,8 +1,8 @@
 package me.trae.foundation.spring.pages.registry;
 
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.Page;
 import me.trae.foundation.spring.pages.cache.CacheControlData;
-import me.trae.foundation.spring.pages.role.PageRole;
 
 import java.util.List;
 
@@ -19,10 +19,10 @@ public final class PageRegistry {
     }
 
     public CacheControlData getCacheControlData(final String path) {
-        return this.data.getCacheControlDataMap().get(path);
+        return this.data.getCacheControlData(path);
     }
 
-    public PageRole getAssetRole(final String path) {
-        return this.data.getProtectedAssetMap().get(path);
+    public AccountRoleDefinition getAssetRole(final String path) {
+        return this.data.getAssetRole(path);
     }
 }

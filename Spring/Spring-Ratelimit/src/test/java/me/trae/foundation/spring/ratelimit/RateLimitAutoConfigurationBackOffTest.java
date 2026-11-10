@@ -1,9 +1,17 @@
 package me.trae.foundation.spring.ratelimit;
 
-import me.trae.foundation.spring.ratelimit.account.RateLimitAccountResolver;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import me.trae.foundation.spring.common.account.AccountIdentity;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.ratelimit.annotation.RateLimit;
 import me.trae.foundation.spring.ratelimit.scope.RateLimitScope;
 import me.trae.foundation.spring.ratelimit.store.RateLimitStore;
+import me.trae.foundation.spring.security.account.EmptySecurityAccountProvider;
+import me.trae.foundation.spring.security.account.SecurityAccountProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -18,15 +26,17 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
@@ -43,7 +53,7 @@ final class RateLimitAutoConfigurationBackOffTest {
     private RateLimitStore rateLimitStore;
 
     @Autowired
-    private RateLimitAccountResolver rateLimitAccountResolver;
+    private SecurityAccountProvider<?> accountProvider;
 
     @Test
     void anApplicationStoreReplacesTheDefault() {
@@ -52,16 +62,18 @@ final class RateLimitAutoConfigurationBackOffTest {
     }
 
     @Test
-    void anApplicationAccountResolverReplacesTheDefault() {
-        assertEquals(1, this.applicationContext.getBeansOfType(RateLimitAccountResolver.class).size());
-        assertSame(TestConfiguration.ACCOUNT_RESOLVER, this.rateLimitAccountResolver);
+    void anApplicationAccountProviderReplacesTheDefault() {
+        assertEquals(1, this.applicationContext.getBeansOfType(SecurityAccountProvider.class).size());
+        assertSame(TestConfiguration.ACCOUNT_PROVIDER, this.accountProvider);
     }
 
     @Test
     void theApplicationStoreIsTheOneTheInterceptorCalls() throws Exception {
         final int before = TestConfiguration.STORE.callCount.get();
 
-        this.mockMvc.perform(get("/account/limited").header("X-Forwarded-For", "203.0.113.1")).andExpect(status().isOk());
+        this.mockMvc.perform(get("/account/limited").header("X-Forwarded-For", "203.0.113.1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"));
 
         assertEquals(before + 1, TestConfiguration.STORE.callCount.get());
     }
@@ -72,6 +84,8 @@ final class RateLimitAutoConfigurationBackOffTest {
         this.mockMvc.perform(get("/account/scoped").header("X-Forwarded-For", "203.0.113.3")).andExpect(status().isOk());
 
         this.mockMvc.perform(get("/account/scoped").header("X-Forwarded-For", "203.0.113.4")).andExpect(status().isTooManyRequests());
+
+        assertTrue(TestConfiguration.STORE.keyList.stream().anyMatch(key -> key.endsWith(":account:00000000-0000-0000-0000-000000000001")));
     }
 
     @SpringBootConfiguration
@@ -79,7 +93,13 @@ final class RateLimitAutoConfigurationBackOffTest {
     static class TestConfiguration {
 
         static final CountingRateLimitStore STORE = new CountingRateLimitStore();
-        static final RateLimitAccountResolver ACCOUNT_RESOLVER = httpServletRequest -> Optional.of("alice");
+        static final SecurityAccountProvider<?> ACCOUNT_PROVIDER = new EmptySecurityAccountProvider() {
+
+            @Override
+            public Optional<TestAccount> getAccountByRequest(final HttpServletRequest httpServletRequest, final HttpServletResponse httpServletResponse) {
+                return Optional.of(new TestAccount(UUID.fromString("00000000-0000-0000-0000-000000000001"), TestRole.MEMBER));
+            }
+        };
 
         @Bean
         public RateLimitStore rateLimitStore() {
@@ -87,8 +107,8 @@ final class RateLimitAutoConfigurationBackOffTest {
         }
 
         @Bean
-        public RateLimitAccountResolver rateLimitAccountResolver() {
-            return ACCOUNT_RESOLVER;
+        public SecurityAccountProvider<?> accountProvider() {
+            return ACCOUNT_PROVIDER;
         }
 
         @Bean
@@ -100,7 +120,7 @@ final class RateLimitAutoConfigurationBackOffTest {
     static final class CountingRateLimitStore implements RateLimitStore {
 
         private final AtomicInteger callCount = new AtomicInteger();
-        private final List<String> keyList = new CopyOnWriteArrayList<>();
+        private final CopyOnWriteArrayList<String> keyList = new CopyOnWriteArrayList<>();
 
         @Override
         public long tryConsume(final String key, final RateLimitData rateLimitData) {
@@ -126,5 +146,21 @@ final class RateLimitAutoConfigurationBackOffTest {
         public ResponseEntity<Void> scoped() {
             return ResponseEntity.ok().build();
         }
+    }
+
+    @EqualsAndHashCode(onlyExplicitlyIncluded = true)
+    @AllArgsConstructor
+    @Getter
+    static final class TestAccount implements AccountIdentity<TestRole> {
+
+        @EqualsAndHashCode.Include
+        private final UUID id;
+
+        private final TestRole role;
+    }
+
+    enum TestRole implements AccountRoleDefinition {
+
+        MEMBER
     }
 }

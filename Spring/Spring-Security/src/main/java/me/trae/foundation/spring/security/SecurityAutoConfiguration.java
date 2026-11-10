@@ -4,12 +4,15 @@ import jakarta.servlet.DispatcherType;
 import me.trae.foundation.spring.common.CommonAutoConfiguration;
 import me.trae.foundation.spring.common.FoundationProperties;
 import me.trae.foundation.spring.common.constants.FilterOrderConstants;
+import me.trae.foundation.spring.security.account.EmptySecurityAccountProvider;
+import me.trae.foundation.spring.security.account.SecurityAccountProvider;
 import me.trae.foundation.spring.security.csrf.CsrfProperties;
 import me.trae.foundation.spring.security.csrf.filter.CsrfFilter;
 import me.trae.foundation.spring.security.csrf.registry.CsrfRegistry;
 import me.trae.foundation.spring.security.csrf.service.CsrfTokenService;
 import me.trae.foundation.spring.security.headers.SecurityHeadersFilter;
 import me.trae.foundation.spring.security.headers.SecurityHeadersProperties;
+import me.trae.foundation.spring.security.jwt.JwtProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -22,10 +25,16 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import java.util.EnumSet;
 
-@EnableConfigurationProperties({SecurityHeadersProperties.class, CsrfProperties.class})
+@EnableConfigurationProperties({SecurityHeadersProperties.class, CsrfProperties.class, JwtProperties.class})
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @AutoConfiguration(after = CommonAutoConfiguration.class)
 public class SecurityAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SecurityAccountProvider<?> securityAccountProvider() {
+        return new EmptySecurityAccountProvider();
+    }
 
     @Bean
     @ConditionalOnMissingBean

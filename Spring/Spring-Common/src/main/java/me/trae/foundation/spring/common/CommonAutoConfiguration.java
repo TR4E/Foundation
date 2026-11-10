@@ -1,5 +1,7 @@
 package me.trae.foundation.spring.common;
 
+import me.trae.foundation.spring.common.account.CommonAccountProvider;
+import me.trae.foundation.spring.common.account.EmptyCommonAccountProvider;
 import me.trae.foundation.spring.common.address.IpAddressProperties;
 import me.trae.foundation.spring.common.address.IpAddressResolver;
 import me.trae.foundation.spring.common.cookie.CookieHelper;
@@ -13,6 +15,12 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @AutoConfiguration
 public class CommonAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CommonAccountProvider<?> commonAccountProvider() {
+        return new EmptyCommonAccountProvider();
+    }
 
     @Bean
     @ConditionalOnMissingBean

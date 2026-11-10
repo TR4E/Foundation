@@ -2,8 +2,8 @@ package me.trae.foundation.spring.pages.navbar;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.Page;
-import me.trae.foundation.spring.pages.role.PageRole;
 
 import java.util.List;
 
@@ -15,7 +15,7 @@ public final class NavbarEntry {
     private final String name, route;
     private final List<String> description;
     private final boolean active;
-    private final PageRole requiredRole;
+    private final AccountRoleDefinition requiredRole;
 
     public NavbarEntry(final Page page, final Navbar navbar, final boolean active) {
         this(

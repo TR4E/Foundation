@@ -5,10 +5,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import me.trae.foundation.spring.common.address.IpAddressResolver;
 import me.trae.foundation.spring.ratelimit.RateLimitData;
-import me.trae.foundation.spring.ratelimit.account.RateLimitAccountResolver;
 import me.trae.foundation.spring.ratelimit.registry.RateLimitRegistry;
 import me.trae.foundation.spring.ratelimit.scope.RateLimitScope;
 import me.trae.foundation.spring.ratelimit.store.RateLimitStore;
+import me.trae.foundation.spring.security.account.SecurityAccountProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,7 +25,7 @@ public final class RateLimitInterceptor implements HandlerInterceptor {
     private final RateLimitRegistry registry;
     private final RateLimitStore store;
     private final IpAddressResolver ipAddressResolver;
-    private final RateLimitAccountResolver accountResolver;
+    private final SecurityAccountProvider<?> accountProvider;
 
     @Override
     public boolean preHandle(final HttpServletRequest httpServletRequest, final HttpServletResponse httpServletResponse, final Object handler) throws IOException {
@@ -41,7 +41,7 @@ public final class RateLimitInterceptor implements HandlerInterceptor {
 
         final RateLimitData rateLimitData = rateLimitDataOptional.get();
 
-        final Optional<String> identifierOptional = this.getIdentifier(httpServletRequest, rateLimitData);
+        final Optional<String> identifierOptional = this.getIdentifier(httpServletRequest, httpServletResponse, rateLimitData);
 
         if (identifierOptional.isEmpty()) {
             this.reject(httpServletResponse, 0L);
@@ -59,15 +59,17 @@ public final class RateLimitInterceptor implements HandlerInterceptor {
         return false;
     }
 
-    private Optional<String> getIdentifier(final HttpServletRequest httpServletRequest, final RateLimitData rateLimitData) {
-        if (rateLimitData.getScope() == RateLimitScope.ACCOUNT) {
-            final Optional<String> accountOptional = this.accountResolver.getAccountIdByRequest(httpServletRequest);
-
-            if (accountOptional.isPresent()) {
-                return accountOptional.map(accountId -> "account:" + accountId);
-            }
+    private Optional<String> getIdentifier(final HttpServletRequest httpServletRequest, final HttpServletResponse httpServletResponse, final RateLimitData rateLimitData) {
+        if (rateLimitData.getScope() != RateLimitScope.ACCOUNT) {
+            return this.getIpAddressIdentifier(httpServletRequest);
         }
 
+        return this.accountProvider.getAccountByRequest(httpServletRequest, httpServletResponse)
+                .map(accountIdentity -> "account:%s".formatted(accountIdentity.getId()))
+                .or(() -> this.getIpAddressIdentifier(httpServletRequest));
+    }
+
+    private Optional<String> getIpAddressIdentifier(final HttpServletRequest httpServletRequest) {
         return this.ipAddressResolver.getIpAddressByRequest(httpServletRequest).map(address -> "ip:" + address);
     }
 

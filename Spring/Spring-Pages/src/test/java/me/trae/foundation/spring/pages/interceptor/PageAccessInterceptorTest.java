@@ -2,11 +2,11 @@ package me.trae.foundation.spring.pages.interceptor;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.Page;
 import me.trae.foundation.spring.pages.PageProperties;
 import me.trae.foundation.spring.pages.annotation.Render;
 import me.trae.foundation.spring.pages.role.PageAccessResolver;
-import me.trae.foundation.spring.pages.role.PageRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class PageAccessInterceptorTest {
 
-    private static final PageRole MEMBER = () -> "MEMBER";
+    private static final AccountRoleDefinition MEMBER = TestRole.MEMBER;
 
     @Test
     void ignoresNonPageHandlers() throws Exception {
@@ -82,7 +82,7 @@ final class PageAccessInterceptorTest {
 
     private static final class TestPage extends Page {
 
-        private TestPage(final PageRole requiredRole) {
+        private TestPage(final AccountRoleDefinition requiredRole) {
             super("/orders/{id}", requiredRole);
         }
 
@@ -111,9 +111,14 @@ final class PageAccessInterceptorTest {
         }
 
         @Override
-        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final PageRole pageRole) {
+        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final AccountRoleDefinition requiredRole) {
             this.roleChecks++;
             return this.hasRole;
         }
+    }
+
+    enum TestRole implements AccountRoleDefinition {
+
+        MEMBER
     }
 }

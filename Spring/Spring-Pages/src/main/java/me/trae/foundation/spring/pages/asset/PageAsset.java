@@ -2,15 +2,15 @@ package me.trae.foundation.spring.pages.asset;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.cache.CacheControlData;
-import me.trae.foundation.spring.pages.role.PageRole;
 
 @AllArgsConstructor
 @Getter
 public final class PageAsset {
 
     private final String path;
-    private final PageRole requiredRole;
+    private final AccountRoleDefinition requiredRole;
     private final CacheControlData cacheControlData;
 
     public PageAsset(final String path) {

@@ -3,19 +3,22 @@ package me.trae.foundation.spring.pages.filter;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.AllArgsConstructor;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.Page;
 import me.trae.foundation.spring.pages.PageProperties;
+import me.trae.foundation.spring.pages.asset.PageAsset;
 import me.trae.foundation.spring.pages.cache.CacheControlData;
 import me.trae.foundation.spring.pages.registry.PageRegistry;
 import me.trae.foundation.spring.pages.registry.PageRegistryBuilder;
 import me.trae.foundation.spring.pages.role.PageAccessResolver;
-import me.trae.foundation.spring.pages.role.PageRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -25,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 final class PageFiltersTest {
 
-    private static final PageRole MEMBER = () -> "MEMBER";
+    private static final AccountRoleDefinition MEMBER = TestRole.MEMBER;
 
     @Test
     void trailingSlashRedirectCanonicalisesThePathAndPreservesTheQuery() throws Exception {
@@ -143,6 +146,34 @@ final class PageFiltersTest {
         return response.getHeader("X-Robots-Tag");
     }
 
+    @Test
+    void dotSegmentsResolvingToAProtectedAssetCannotBypassItsRole() throws Exception {
+        final MockHttpServletResponse httpServletResponse = new MockHttpServletResponse();
+        final MockFilterChain deniedFilterChain = new MockFilterChain();
+
+        new StaticResourceFilter(registry(), new FixedResolver(false)).doFilter(new MockHttpServletRequest("GET", "/js/deep/../orders.js"), httpServletResponse, deniedFilterChain);
+
+        assertEquals(404, httpServletResponse.getStatus());
+        assertEquals(CacheControlData.PRIVATE_NO_STORE.getValue(), httpServletResponse.getHeader(HttpHeaders.CACHE_CONTROL));
+        assertNull(deniedFilterChain.getRequest());
+        final MockFilterChain allowedFilterChain = new MockFilterChain();
+
+        new StaticResourceFilter(registry(), new FixedResolver(true)).doFilter(new MockHttpServletRequest("GET", "/js/deep/../orders.js"), new MockHttpServletResponse(), allowedFilterChain);
+
+        assertNotNull(allowedFilterChain.getRequest());
+    }
+
+    @Test
+    void cacheControlResolvesWildcardsExactOverridesAndUnknownPathFallback() throws Exception {
+        final PageRegistry pageRegistry = new PageRegistry();
+        pageRegistry.register(PageRegistryBuilder.build(Collections.emptyList(), Collections.singletonList(() -> List.of(new PageAsset("/assets/**", null, CacheControlData.SHARED_SHORT), new PageAsset("/assets/exact.js", MEMBER, CacheControlData.NO_STORE)))));
+
+        assertEquals(CacheControlData.SHARED_SHORT.getValue(), cacheHeader(new PageProperties(), pageRegistry, "/assets/deep/x.js"));
+        assertEquals(CacheControlData.NO_STORE.getValue(), cacheHeader(new PageProperties(), pageRegistry, "/assets/exact.js"));
+        assertEquals(CacheControlData.PRIVATE_REVALIDATE.getValue(), cacheHeader(new PageProperties(), pageRegistry, "/unknown.js"));
+        assertEquals(CacheControlData.PRIVATE_REVALIDATE.getValue(), cacheHeader(new PageProperties(), pageRegistry, "/assetsx/x.js"));
+    }
+
     private static String cacheHeader(final PageProperties properties, final PageRegistry registry, final String path) throws Exception {
         final MockHttpServletResponse response = new MockHttpServletResponse();
         new PageCacheControlFilter(properties, registry).doFilter(new MockHttpServletRequest("GET", path), response, new MockFilterChain());
@@ -167,7 +198,10 @@ final class PageFiltersTest {
         }
     }
 
-    private record FixedResolver(boolean allowed) implements PageAccessResolver {
+    @AllArgsConstructor
+    private static final class FixedResolver implements PageAccessResolver {
+
+        private final boolean allowed;
 
         @Override
         public boolean isAuthenticated(final HttpServletRequest request, final HttpServletResponse response) {
@@ -175,8 +209,13 @@ final class PageFiltersTest {
         }
 
         @Override
-        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final PageRole pageRole) {
+        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final AccountRoleDefinition requiredRole) {
             return this.allowed;
         }
+    }
+
+    enum TestRole implements AccountRoleDefinition {
+
+        MEMBER
     }
 }

@@ -51,4 +51,37 @@ final class UtilRequestPathTest {
         assertFalse(UtilRequestPath.matchesPrefix("/apifoo", "/api"));
         assertFalse(UtilRequestPath.matchesPrefix("/ap", "/api"));
     }
+
+    @Test
+    void canonicaliseResolvesDotSegmentsWithoutEscapingRoot() {
+        assertEquals("/a/b", UtilRequestPath.canonicalise("/a/./b"));
+        assertEquals("/a/c", UtilRequestPath.canonicalise("/a/b/../c"));
+        assertEquals("/b", UtilRequestPath.canonicalise("/a/../../b"));
+        assertEquals("/", UtilRequestPath.canonicalise("/.."));
+        assertEquals("/", UtilRequestPath.canonicalise("/../.."));
+    }
+
+    @Test
+    void canonicalisePreservesDotsInsideSegments() {
+        for (final String path : new String[]{"/assets/app.js", "/assets/..js", "/assets/.hidden"}) {
+            assertEquals(path, UtilRequestPath.canonicalise(path));
+        }
+    }
+
+    @Test
+    void canonicaliseStillNormalisesSlashesAndRelativePaths() {
+        assertEquals("/a/b", UtilRequestPath.canonicalise("//a//b//"));
+        assertEquals("/a/b", UtilRequestPath.canonicalise("a/b"));
+        assertEquals("/a/b", UtilRequestPath.canonicalise("/a/b/"));
+        assertTrue(UtilRequestPath.matchesPrefix("/assets", "/assets"));
+        assertTrue(UtilRequestPath.matchesPrefix("/assets/x", "/assets"));
+        assertFalse(UtilRequestPath.matchesPrefix("/assetsx", "/assets"));
+    }
+
+    @Test
+    void rootIsAPrefixOfEveryAbsolutePathButNotRelativePaths() {
+        assertTrue(UtilRequestPath.matchesPrefix("/", "/"));
+        assertTrue(UtilRequestPath.matchesPrefix("/assets/x.js", "/"));
+        assertFalse(UtilRequestPath.matchesPrefix("assets/x.js", "/"));
+    }
 }

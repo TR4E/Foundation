@@ -2,11 +2,11 @@ package me.trae.foundation.spring.pages;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.annotation.Render;
 import me.trae.foundation.spring.pages.cache.CacheControlData;
 import me.trae.foundation.spring.pages.registry.PageRegistry;
 import me.trae.foundation.spring.pages.role.PageAccessResolver;
-import me.trae.foundation.spring.pages.role.PageRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 final class PagesIntegrationTest {
 
-    private static final PageRole MEMBER = () -> "MEMBER";
+    private static final AccountRoleDefinition MEMBER = TestRole.MEMBER;
 
     @Autowired
     private MockMvc mockMvc;
@@ -57,6 +57,7 @@ final class PagesIntegrationTest {
     void publicPageRendersWithItsCachePolicyAndRobotsExclusion() throws Exception {
         this.mockMvc.perform(get("/public"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(content().string("public page"))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlData.PRIVATE_REVALIDATE.getValue()))
                 .andExpect(header().doesNotExist("X-Robots-Tag"));
@@ -157,8 +158,13 @@ final class PagesIntegrationTest {
         }
 
         @Override
-        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final PageRole pageRole) {
+        public boolean hasRole(final HttpServletRequest request, final HttpServletResponse response, final AccountRoleDefinition requiredRole) {
             return "true".equals(request.getHeader("X-Member"));
         }
+    }
+
+    enum TestRole implements AccountRoleDefinition {
+
+        MEMBER
     }
 }

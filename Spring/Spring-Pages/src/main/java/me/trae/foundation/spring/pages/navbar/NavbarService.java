@@ -32,7 +32,8 @@ public final class NavbarService {
                 continue;
             }
 
-            entryList.add(new NavbarEntry(page, navbar, UtilRequestPath.matchesPrefix(path, UtilRequestPath.canonicalise(page.getBaseRoute()))));
+            final String baseRoute = UtilRequestPath.canonicalise(page.getBaseRoute());
+            entryList.add(new NavbarEntry(page, navbar, "/".equals(baseRoute) ? "/".equals(path) : UtilRequestPath.matchesPrefix(path, baseRoute)));
         }
 
         entryList.sort(Comparator.comparingInt(NavbarEntry::getPosition));

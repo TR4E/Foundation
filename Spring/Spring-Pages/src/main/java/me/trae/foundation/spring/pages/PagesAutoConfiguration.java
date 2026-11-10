@@ -2,7 +2,6 @@ package me.trae.foundation.spring.pages;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
-import me.trae.foundation.spring.common.CommonAutoConfiguration;
 import me.trae.foundation.spring.common.constants.FilterOrderConstants;
 import me.trae.foundation.spring.pages.asset.AssetProvider;
 import me.trae.foundation.spring.pages.filter.PageCacheControlFilter;
@@ -15,8 +14,10 @@ import me.trae.foundation.spring.pages.pagination.PaginationService;
 import me.trae.foundation.spring.pages.registry.PageRegistrar;
 import me.trae.foundation.spring.pages.registry.PageRegistry;
 import me.trae.foundation.spring.pages.registry.PageRegistryBuilder;
-import me.trae.foundation.spring.pages.role.DenyPageAccessResolver;
+import me.trae.foundation.spring.pages.role.AccountPageAccessResolver;
 import me.trae.foundation.spring.pages.role.PageAccessResolver;
+import me.trae.foundation.spring.security.SecurityAutoConfiguration;
+import me.trae.foundation.spring.security.account.SecurityAccountProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -35,13 +36,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @EnableConfigurationProperties(PageProperties.class)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-@AutoConfiguration(after = CommonAutoConfiguration.class)
+@AutoConfiguration(after = SecurityAutoConfiguration.class)
 public class PagesAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public PageAccessResolver pageAccessResolver() {
-        return new DenyPageAccessResolver();
+    public PageAccessResolver pageAccessResolver(final SecurityAccountProvider<?> accountProvider) {
+        return new AccountPageAccessResolver(accountProvider);
     }
 
     @Bean

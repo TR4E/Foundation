@@ -1,7 +1,7 @@
 package me.trae.foundation.spring.pages;
 
+import me.trae.foundation.spring.common.account.AccountRoleDefinition;
 import me.trae.foundation.spring.pages.cache.CacheControlData;
-import me.trae.foundation.spring.pages.role.PageRole;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class PageTest {
 
-    private static final PageRole MEMBER = () -> "MEMBER";
+    private static final AccountRoleDefinition MEMBER = TestRole.MEMBER;
 
     @Test
     void publicPageUsesSharedAssetCaching() {
@@ -37,7 +37,12 @@ final class PageTest {
         assertEquals("/", page("/{section}", null).getBaseRoute());
     }
 
-    private static Page page(final String route, final PageRole role) {
+    private static Page page(final String route, final AccountRoleDefinition role) {
         return new Page(route, role) {};
+    }
+
+    enum TestRole implements AccountRoleDefinition {
+
+        MEMBER
     }
 }

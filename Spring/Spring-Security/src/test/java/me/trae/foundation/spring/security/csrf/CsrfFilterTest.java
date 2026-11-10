@@ -177,6 +177,28 @@ final class CsrfFilterTest {
         assertNotNull(filterChain.getRequest());
     }
 
+    @Test
+    void dotSegmentsCannotCarryAnExclusionToADifferentPath() throws Exception {
+        final MockFilterChain mockFilterChain = new MockFilterChain();
+        final MockHttpServletResponse httpServletResponse = new MockHttpServletResponse();
+
+        filter(excludedRegistry()).doFilter(write("POST", "/api/webhook/payment/../../order/create", null, null, null), httpServletResponse, mockFilterChain);
+
+        assertEquals(403, httpServletResponse.getStatus());
+        assertNull(mockFilterChain.getRequest());
+    }
+
+    @Test
+    void dotSegmentsResolvingToTheExcludedPathStillSkipCsrfChecks() throws Exception {
+        final MockFilterChain mockFilterChain = new MockFilterChain();
+        final MockHttpServletResponse httpServletResponse = new MockHttpServletResponse();
+
+        filter(excludedRegistry()).doFilter(write("POST", "/api/orders/../webhook/./payment", null, null, null), httpServletResponse, mockFilterChain);
+
+        assertEquals(200, httpServletResponse.getStatus());
+        assertNotNull(mockFilterChain.getRequest());
+    }
+
     private static CsrfRegistry excludedRegistry() {
         final CsrfRegistry csrfRegistry = new CsrfRegistry();
         final WebhookController controller = new WebhookController();

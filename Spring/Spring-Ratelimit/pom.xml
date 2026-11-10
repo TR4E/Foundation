@@ -13,10 +13,10 @@
     <artifactId>Spring-Ratelimit</artifactId>
 
     <dependencies>
-        <!-- Spring Common -->
+        <!-- Spring Security -->
         <dependency>
             <groupId>me.trae.foundation.spring</groupId>
-            <artifactId>Spring-Common</artifactId>
+            <artifactId>Spring-Security</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
 

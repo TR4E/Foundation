@@ -1,5 +1,6 @@
 package me.trae.foundation.spring.security.headers;
 
+import jakarta.servlet.DispatcherType;
 import me.trae.foundation.spring.common.FoundationProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -58,6 +59,17 @@ final class SecurityHeadersFilterTest {
         new SecurityHeadersFilter(new FoundationProperties(), new SecurityHeadersProperties()).doFilter(request, response, filterChain);
 
         assertNotNull(filterChain.getRequest());
+    }
+
+    @Test
+    void asynchronousDispatchesStillReceiveSecurityHeaders() throws Exception {
+        final MockHttpServletRequest httpServletRequest = new MockHttpServletRequest();
+        httpServletRequest.setDispatcherType(DispatcherType.ASYNC);
+        final MockHttpServletResponse httpServletResponse = new MockHttpServletResponse();
+
+        new SecurityHeadersFilter(new FoundationProperties(), new SecurityHeadersProperties()).doFilter(httpServletRequest, httpServletResponse, new MockFilterChain());
+
+        assertEquals("nosniff", httpServletResponse.getHeader("X-Content-Type-Options"));
     }
 
     private static MockHttpServletResponse filter(final boolean production, final SecurityHeadersProperties securityHeadersProperties) throws Exception {

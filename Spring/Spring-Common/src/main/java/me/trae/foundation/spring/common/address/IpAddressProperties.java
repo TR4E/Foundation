@@ -14,4 +14,5 @@ public class IpAddressProperties {
 
     private List<String> proxyHeaderList = Collections.singletonList("CF-Connecting-IP");
     private List<String> headerList = List.of("X-Forwarded-For", "X-Real-IP", "X-Client-IP", "Forwarded");
+    private List<String> trustedProxyList = Collections.emptyList();
 }

@@ -2,6 +2,7 @@ package me.trae.foundation.minecraft.paper.addon.team;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import me.trae.foundation.minecraft.paper.addon.team.belowname.BelowName;
 import me.trae.foundation.minecraft.paper.addon.team.events.TeamUpdateEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
@@ -46,6 +47,10 @@ public abstract class Team {
     }
 
     public Component getSuffix(final Player player, final Player viewer) {
+        return null;
+    }
+
+    public BelowName getBelowName(final Player player, final Player viewer) {
         return null;
     }
 

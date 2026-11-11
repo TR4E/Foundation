@@ -30,14 +30,20 @@ public final class TeamListener implements Listener {
         }
 
         for (final Player viewer : UtilServer.getOnlinePlayers()) {
-            final Team eligibleTeam = this.teamService.getEligibleTeam(player, viewer).orElse(null);
+            final String identifier = event.getIdentifier();
 
-            if (eligibleTeam == null) {
-                this.teamService.remove(player, viewer);
-                continue;
+            if (identifier != null) {
+                final Team activeTeam = this.teamService.getActiveTeam(player, viewer).orElse(null);
+
+                if (activeTeam == null || !identifier.equals(activeTeam.getIdentifier())) {
+                    continue;
+                }
             }
 
-            if (event.getIdentifier() != null && !eligibleTeam.getIdentifier().equals(event.getIdentifier())) {
+            final Team eligibleTeam = this.teamService.getEligibleTeam(player, viewer).orElse(null);
+
+            if (eligibleTeam == null || (identifier != null && !identifier.equals(eligibleTeam.getIdentifier()))) {
+                this.teamService.remove(player, viewer);
                 continue;
             }
 
@@ -60,15 +66,7 @@ public final class TeamListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(final PlayerQuitEvent event) {
-        final Player player = event.getPlayer();
-
-        for (final Player viewer : UtilServer.getOnlinePlayers()) {
-            this.teamService.remove(player, viewer);
-
-            if (!player.equals(viewer)) {
-                this.teamService.remove(viewer, player);
-            }
-        }
+        this.teamService.cleanup(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

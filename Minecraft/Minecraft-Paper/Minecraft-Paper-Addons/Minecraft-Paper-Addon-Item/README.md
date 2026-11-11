@@ -399,6 +399,7 @@ public class TemporaryOre extends PlaceableCustomItem<CustomBlockData> {
 
     public TemporaryOre(final BlockService blockService) {
         super(Material.DIAMOND_ORE, "b6d27ca3-4733-4128-a483-9e60e38c5e56", "TEMPORARY_ORE");
+
         this.blockService = blockService;
     }
 
@@ -415,7 +416,8 @@ public class TemporaryOre extends PlaceableCustomItem<CustomBlockData> {
     @Override
     public CustomBlockData createBlockData(final Player player, final Block block) {
         final CustomBlockData customBlockData = new CustomBlockData(this, player);
-        customBlockData.setExpiry(java.util.concurrent.TimeUnit.MINUTES.toMillis(5L));
+
+        customBlockData.setExpiry(Duration.ofMinutes(5).toMillis());
 
         return customBlockData;
     }
@@ -436,17 +438,13 @@ public class TemporaryOre extends PlaceableCustomItem<CustomBlockData> {
     }
 
     @Override
-    public boolean canRemove(
-            final Block block,
-            final CustomBlockData customBlockData,
-            final BlockRemoveReason blockRemoveReason
-    ) {
+    public boolean canRemove(final Block block, final CustomBlockData customBlockData, final BlockRemoveReason blockRemoveReason) {
         return blockRemoveReason != BlockRemoveReason.EXPLOSION;
     }
 
     @Override
     public void onExpire(final Block block, final CustomBlockData customBlockData) {
-        this.blockService.resetBlock(block);
+        UtilMessage.broadcast("Block", "A temporary ore block has expired!");
     }
 }
 ```
@@ -538,12 +536,14 @@ public class OreBlockData extends CustomBlockData {
 
     public OreBlockData(final PersistentDataContainer persistentDataContainer) {
         super(persistentDataContainer);
+        
         this.damageCount = persistentDataContainer.getOrDefault(DAMAGE_COUNT_KEY, PersistentDataType.INTEGER, 0);
     }
 
     @Override
     public void write(final PersistentDataContainer persistentDataContainer) {
         super.write(persistentDataContainer);
+        
         persistentDataContainer.set(DAMAGE_COUNT_KEY, PersistentDataType.INTEGER, this.damageCount);
     }
 }
@@ -579,7 +579,8 @@ For example, extend an existing block's lifetime and queue persistence, with an 
 
 ```java
 this.blockService.getBlockDataByBlock(CustomBlockData.class, block).ifPresent(customBlockData -> {
-    customBlockData.setExpiry(java.util.concurrent.TimeUnit.MINUTES.toMillis(10L));
+    customBlockData.setExpiry(Duration.ofMinutes(10).toMillis());
+    
     this.blockService.updateBlockData(block);
 });
 ```

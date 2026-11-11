@@ -27,19 +27,25 @@ public final class TablistListener implements Listener {
             return;
         }
 
+        final Tablist activeTablist = this.tablistService.getActiveTablistMap().get(player.getUniqueId());
+
+        final String identifier = event.getIdentifier();
+
+        if (identifier != null && (activeTablist == null || !identifier.equals(activeTablist.getIdentifier()))) {
+            return;
+        }
+
         if (event.isCancelled()) {
-            this.tablistService.remove(player);
+            if (activeTablist != null) {
+                this.tablistService.remove(player);
+            }
             return;
         }
 
         final Tablist eligibleTablist = this.tablistService.getEligibleTablist(player).orElse(null);
 
-        if (eligibleTablist == null) {
+        if (eligibleTablist == null || (identifier != null && !identifier.equals(eligibleTablist.getIdentifier()))) {
             this.tablistService.remove(player);
-            return;
-        }
-
-        if (event.getIdentifier() != null && !eligibleTablist.getIdentifier().equals(event.getIdentifier())) {
             return;
         }
 

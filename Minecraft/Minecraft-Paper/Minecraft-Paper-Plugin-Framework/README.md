@@ -488,7 +488,8 @@ title.send(player);
 | `UtilItemStack` | Reads item persistent data and custom item unique IDs; provides inventory insert/remove/contains, item comparison, and display names |
 | `UtilMaterial` | Classifies materials as interactable, interactable-by-hand, or usable; searches non-legacy material names |
 | `UtilMessage` | Extends `BaseUtilMessage` with `broadcast` and `log` methods |
-| `UtilNms` | Converts Adventure components to NMS components and sends raw packets |
+| `UtilNms` | Converts Adventure components, Bukkit entities, worlds, vectors, damage sources, and item stacks to NMS types; converts NMS vectors and sound events to Bukkit types |
+| `UtilPacket` | Sends raw packets to online `CraftPlayer` instances |
 | `UtilPdc` | Reads, writes, and removes values in a `PersistentDataContainer`; retrieves or creates nested containers |
 | `UtilPermission` | Permission checking with OP, wildcard, and custom wildcard support |
 | `UtilServer` | Online and offline player lookups by UUID or name, plus exact and partial name searches |

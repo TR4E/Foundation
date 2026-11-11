@@ -28,11 +28,11 @@ The Sidebar addon displays scoreboard sidebars using NMS packets. Multiple sideb
 
 `SidebarService` checks active sidebars asynchronously every 250 milliseconds. It dispatches `SidebarUpdateEvent` when an active sidebar becomes ineligible; otherwise it refreshes only non-static titles. Players without an active sidebar are skipped. Joining players receive an asynchronous update event, and explicit updates can be requested through `sidebar.updatePlayer(player)` or `sidebar.updateAllPlayers()`. `SidebarListener` handles update events and determines which sidebar to display:
 
-1. Clear the current sidebar if the update event is cancelled.
-2. Select the eligible sidebar with the lowest priority value, clearing the current one if none is eligible.
-3. If an identifier is supplied, process the update only when it matches the selected eligible sidebar.
-4. If it differs from the current one, switch by clearing the old and creating the new.
-5. If it is the same, update the title and lines if they changed.
+1. If an identifier is supplied, ignore the event unless it matches the currently active sidebar.
+2. Clear the current sidebar if the accepted event is cancelled.
+3. Select the eligible sidebar with the lowest priority value. Clear the current one if none is eligible, or if a scoped event would select a different identifier; scoped events never create a different fallback.
+4. For an unscoped update selecting a different definition, clear the old and create the new.
+5. Otherwise, update the active sidebar's title and lines if they changed.
 
 Sidebars are created, updated, and cleared through NMS scoreboard packets:
 
@@ -82,11 +82,11 @@ Override `isStaticTitle()` to return `false` if the title changes over time. Sta
 
 ## Caching
 
-Titles and lines are cached per player in `cachedTitleMap` and `cachedLinesMap`. Title refreshes send packets only when the title changes. Line updates resend changed lines and any lines whose scores shift when the line count changes, and remove excess lines. The scheduler uses the title cache during non-static title refreshes; update events use both caches.
+Titles and lines are cached per player in `cachedTitleMap` and `cachedLinesMap`. Cached lines are immutable snapshots, so modifying and reusing the source list still produces an update. Title refreshes send packets only when the title changes. Line updates resend changed lines and any lines whose scores shift when the line count changes, and remove excess lines. The scheduler uses the title cache during non-static title refreshes; update events use both caches.
 
 ## Events
 
-`SidebarUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional sidebar identifier. Cancel the event to clear the sidebar for that player. An identifier allows the update only when the normally selected eligible sidebar has that identifier, including when it is not yet active. A mismatched identifier leaves the current display unchanged; no eligible sidebar clears it. An update without an identifier reevaluates normal eligibility and priority.
+`SidebarUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional sidebar identifier. Cancel the event to clear the sidebar for that player. An identifier scopes all actions, including cancellation and removal, to the currently active sidebar with that identifier. If none is active or the identifier differs, the event does nothing. If the matching active sidebar is no longer selected and eligible, it is cleared without creating another definition. An update without an identifier reevaluates normal eligibility and priority and may select any eligible sidebar.
 
 ## Installation
 

@@ -6,6 +6,8 @@ import me.trae.foundation.minecraft.paper.addon.sidebar.services.SidebarService;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -18,9 +20,63 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 final class SidebarListenerTest {
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void onlyUnscopedUpdatesCanReplaceTheActiveDefinitionWithAFallback(final boolean scoped) {
+        final Player player = mock(Player.class);
+        when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(player.isOnline()).thenReturn(true);
+
+        final Sidebar originalSidebar = mock(Sidebar.class);
+        final Sidebar fallbackSidebar = mock(Sidebar.class);
+        when(originalSidebar.getIdentifier()).thenReturn("original");
+        when(fallbackSidebar.getIdentifier()).thenReturn("fallback");
+        final ConcurrentHashMap<UUID, Sidebar> activeSidebarMap = new ConcurrentHashMap<>();
+        activeSidebarMap.put(player.getUniqueId(), originalSidebar);
+        final SidebarService sidebarService = mock(SidebarService.class);
+        when(sidebarService.getActiveSidebarMap()).thenReturn(activeSidebarMap);
+        when(sidebarService.getEligibleSidebar(player)).thenReturn(Optional.of(fallbackSidebar));
+
+        new SidebarListener(sidebarService).onSidebarUpdate(new SidebarUpdateEvent(scoped ? "original" : null, player));
+
+        verify(sidebarService).clear(player);
+
+        if (scoped) {
+            verify(sidebarService, never()).create(player, fallbackSidebar);
+        } else {
+            verify(sidebarService).create(player, fallbackSidebar);
+            assertSame(fallbackSidebar, activeSidebarMap.get(player.getUniqueId()));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void scopedCancellationDoesNothingWithoutAMatchingActiveSidebar(final boolean active) {
+        final Player player = mock(Player.class);
+        when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(player.isOnline()).thenReturn(true);
+        final Sidebar activeSidebar = mock(Sidebar.class);
+        when(activeSidebar.getIdentifier()).thenReturn("active");
+        final ConcurrentHashMap<UUID, Sidebar> activeSidebarMap = new ConcurrentHashMap<>();
+
+        if (active) {
+            activeSidebarMap.put(player.getUniqueId(), activeSidebar);
+        }
+
+        final SidebarService sidebarService = mock(SidebarService.class);
+        when(sidebarService.getActiveSidebarMap()).thenReturn(activeSidebarMap);
+        final SidebarUpdateEvent sidebarUpdateEvent = new SidebarUpdateEvent("other", player);
+        sidebarUpdateEvent.setCancelled(true);
+        new SidebarListener(sidebarService).onSidebarUpdate(sidebarUpdateEvent);
+
+        verify(sidebarService).getActiveSidebarMap();
+        verifyNoMoreInteractions(sidebarService);
+    }
 
     @Test
     void offlineUpdateDoesNotTouchSidebarState() {

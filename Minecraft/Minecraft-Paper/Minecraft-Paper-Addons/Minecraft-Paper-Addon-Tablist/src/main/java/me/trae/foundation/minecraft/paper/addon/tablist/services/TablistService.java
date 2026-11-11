@@ -61,6 +61,7 @@ public final class TablistService implements Lifecycle {
         final Map.Entry<Component, Component> cached = this.cachedHeaderFooterMap.get(player.getUniqueId());
 
         if (cached != null && cached.getKey().equals(header) && cached.getValue().equals(footer)) {
+            this.activeTablistMap.put(player.getUniqueId(), tablist);
             return;
         }
 

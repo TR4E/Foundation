@@ -27,12 +27,12 @@ The Tablist addon customizes the player list header and footer shown when a play
 
 `TablistService` manages registered tablists and runs a one-second scheduler tick. On each tick, `TablistUpdateEvent` is dispatched asynchronously for each online player. An asynchronous update is also dispatched when a player joins. `TablistListener` handles the event:
 
-1. Clear the active tablist if the event is cancelled.
-2. Select the eligible tablist with the lowest priority value, clearing the active one if none is eligible.
-3. If an identifier is supplied, continue only when it matches the selected tablist.
-4. Compare the header and footer with `cachedHeaderFooterMap`. If either changed, send both components, cache them, and store the tablist in `activeTablistMap`.
+1. If an identifier is supplied, ignore the event unless it matches the currently active tablist.
+2. Clear the active tablist if the accepted event is cancelled.
+3. Select the eligible tablist with the lowest priority value. Clear the current one if none is eligible, or if a scoped event would select a different identifier; scoped events never create a different fallback.
+4. Store the selected tablist in `activeTablistMap`. Compare the header and footer with `cachedHeaderFooterMap`; send and cache both components only when either changed.
 
-Clearing removes the cached components and active tablist, sending empty components when a tablist was active. Unchanged header and footer components skip the send and map updates.
+Clearing removes the cached components and active tablist, sending empty components when a tablist was active. Unchanged header and footer components skip sending while still updating the active definition.
 
 ## Creating a tablist
 
@@ -64,7 +64,7 @@ Priority `0` is the highest (checked first), and `Integer.MAX_VALUE` is the lowe
 
 ## Events
 
-`TablistUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional tablist identifier. Use `new TablistUpdateEvent(player)` for normal selection or `new TablistUpdateEvent(identifier, player)` to process only the normally selected tablist with that identifier. A mismatched identifier leaves the current display unchanged; no eligible tablist clears it. Cancelling the event clears the player's active header and footer on this tick. A later uncancelled update can display them again.
+`TablistUpdateEvent` extends `CustomAsynchronousCancellableEvent` and carries the player and an optional tablist identifier. Use `new TablistUpdateEvent(player)` for normal selection or `new TablistUpdateEvent(identifier, player)` to process only the currently active tablist with that identifier. If none is active or the identifier differs, the event does nothing, including cancellation. A matching active definition that is no longer selected and eligible is removed without creating a different fallback. Unscoped updates may select any eligible tablist. Cancelling the event clears the player's active header and footer on this tick. A later uncancelled update can display them again.
 
 Call `tablist.updatePlayer(player)` or `tablist.updateAllPlayers()` to request asynchronous updates carrying that tablist's identifier. The all-player helper captures the online-player list once and processes it in one asynchronous task.
 

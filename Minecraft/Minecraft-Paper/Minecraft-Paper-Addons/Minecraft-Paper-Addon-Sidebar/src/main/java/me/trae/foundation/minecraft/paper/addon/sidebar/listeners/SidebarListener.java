@@ -29,22 +29,23 @@ public final class SidebarListener implements Listener {
 
         final Sidebar activeSidebar = this.sidebarService.getActiveSidebarMap().get(player.getUniqueId());
 
+        final String identifier = event.getIdentifier();
+
+        if (identifier != null && (activeSidebar == null || !identifier.equals(activeSidebar.getIdentifier()))) {
+            return;
+        }
+
         if (event.isCancelled()) {
             if (activeSidebar != null) {
                 this.sidebarService.clear(player);
             }
-
             return;
         }
 
         final Sidebar eligibleSidebar = this.sidebarService.getEligibleSidebar(player).orElse(null);
 
-        if (eligibleSidebar == null) {
+        if (eligibleSidebar == null || (identifier != null && !identifier.equals(eligibleSidebar.getIdentifier()))) {
             this.sidebarService.clear(player);
-            return;
-        }
-
-        if (event.getIdentifier() != null && !eligibleSidebar.getIdentifier().equals(event.getIdentifier())) {
             return;
         }
 

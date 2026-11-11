@@ -30,7 +30,7 @@ Minecraft provides a common library for Adventure text components, color handlin
 | --- | --- | --- |
 | [Minecraft-Common](Minecraft-Common/README.md) | `me.trae.foundation.minecraft:Minecraft-Common` | Shared code: Adventure text, color translation, Mojang API, message formatting, and search feedback |
 | [Minecraft-Paper-Plugin-Framework](Minecraft-Paper/Minecraft-Paper-Plugin-Framework/README.md) | `me.trae.foundation.minecraft.paper:Minecraft-Paper-Plugin-Framework` | Paper plugin framework integrated with Injector |
-| [Minecraft-Paper-Addons](Minecraft-Paper/Minecraft-Paper-Addons/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addons` | Optional Paper features: billboards, chat, damage, death, holograms, items, NPCs, recipes, sidebars, tab lists, teams, and windows |
+| [Minecraft-Paper-Addons](Minecraft-Paper/Minecraft-Paper-Addons/README.md) | `me.trae.foundation.minecraft.paper.addons:Minecraft-Paper-Addons` | Optional Paper features: billboards, chat, damage, death, holograms, items, NPCs, recipes, resource packs, sidebars, tab lists, teams, and windows |
 | [Minecraft-Velocity-Plugin-Framework](Minecraft-Velocity/Minecraft-Velocity-Plugin-Framework/README.md) | `me.trae.foundation.minecraft.velocity:Minecraft-Velocity-Plugin-Framework` | Velocity plugin framework integrated with Injector |
 
 `Minecraft`, `Minecraft-Paper`, `Minecraft-Paper-Addons`, and `Minecraft-Velocity` are Maven aggregators with `pom` packaging. Applications depend on the library artifacts listed above; each addon's artifact is listed in the [Addons README](Minecraft-Paper/Minecraft-Paper-Addons/README.md).

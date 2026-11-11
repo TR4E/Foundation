@@ -32,10 +32,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @AllArgsConstructor
+@Getter
 @AddonSingleton
 public final class SidebarService implements Lifecycle {
 
-    @Getter
     private final ConcurrentHashMap<UUID, Sidebar> activeSidebarMap = new ConcurrentHashMap<>();
 
     private final ConcurrentHashMap<UUID, Component> cachedTitleMap = new ConcurrentHashMap<>();
@@ -96,7 +96,7 @@ public final class SidebarService implements Lifecycle {
         }
 
         this.cachedTitleMap.put(player.getUniqueId(), title);
-        this.cachedLinesMap.put(player.getUniqueId(), lines);
+        this.cachedLinesMap.put(player.getUniqueId(), List.copyOf(lines));
     }
 
     public void refreshTitle(final Player player, final Sidebar sidebar) {
@@ -136,7 +136,7 @@ public final class SidebarService implements Lifecycle {
             this.removeLine(player, sidebar.getIdentifier(), index);
         }
 
-        this.cachedLinesMap.put(player.getUniqueId(), newLines);
+        this.cachedLinesMap.put(player.getUniqueId(), List.copyOf(newLines));
     }
 
     public void clear(final Player player) {

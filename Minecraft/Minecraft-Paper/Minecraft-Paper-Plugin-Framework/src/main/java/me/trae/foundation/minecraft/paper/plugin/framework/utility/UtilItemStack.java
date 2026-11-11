@@ -15,6 +15,7 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 @UtilityClass
 public class UtilItemStack {
@@ -37,8 +38,12 @@ public class UtilItemStack {
         return UtilPdc.getPersistentData(itemStack.getItemMeta().getPersistentDataContainer(), UNIQUE_ID_KEY, PersistentDataType.STRING);
     }
 
+    public static void insert(final Player player, final ItemStack itemStack, final Consumer<ItemStack> leftOverConsumer) {
+        player.getInventory().addItem(itemStack).values().forEach(leftOverConsumer);
+    }
+
     public static void insert(final Player player, final ItemStack itemStack) {
-        player.getInventory().addItem(itemStack).values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+        insert(player, itemStack, leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
     }
 
     public static boolean contains(final Player player, final ItemStack itemStack, final int amount) {

@@ -2,10 +2,12 @@ package me.trae.foundation.minecraft.paper.addon.item.listeners;
 
 import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.item.services.ItemService;
+import me.trae.foundation.minecraft.paper.addon.item.types.ActivatableCustomItem;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.enchantment.EnchantItemEvent;
 import org.bukkit.event.enchantment.PrepareItemEnchantEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
@@ -61,6 +63,19 @@ public final class ItemPreventionListener implements Listener {
         final ItemStack secondary = event.getInventory() instanceof final EnchantingInventory enchantingInventory ? enchantingInventory.getSecondary() : null;
 
         if (!this.isCustomItem(event.getItem(), secondary)) {
+            return;
+        }
+
+        event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onBlockPlace(final BlockPlaceEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
+
+        if (!(this.itemService.getItemByItemStack(event.getItemInHand()).orElse(null) instanceof ActivatableCustomItem)) {
             return;
         }
 

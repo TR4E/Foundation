@@ -533,7 +533,29 @@ Time values are converted from `ChronoUnit` to Minecraft ticks (duration in mill
 
 `UtilItemStack.UNIQUE_ID_KEY` is `NamespacedKey("custom", "item_unique_id")`. `getUniqueIdByItemStack` reads a custom item's persistent definition unique ID. When both stacks carry unique IDs, `isSimilar` compares those values; otherwise it compares material, display name, lore, and enchantments. The [Item addon](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#custom-item) keeps this identity separate from the typable `identifier` and raw display name returned by `getName()`.
 
-`insert` adds an item to a player's inventory and drops overflow naturally. `contains` and `remove` check and remove items by count, using `isSimilar` for matching.
+`insert` adds an item to a player's inventory. Choose the overload for how overflow should be handled:
+
+| Method | Overflow behaviour |
+| --- | --- |
+| `insert(player, itemStack)` | Drop remaining stacks naturally at the player's location |
+| `insert(player, itemStack, leftOverConsumer)` | Pass each remaining stack to the supplied `Consumer<ItemStack>` |
+
+The consumer runs only for stacks returned by `player.getInventory().addItem(itemStack)` that did not fit. It replaces the default overflow drop; it is not called for successfully inserted items. Both overloads return `void`.
+
+For example, insert a reward but drop overflow at a block's center:
+
+```java
+final Location location = block.getLocation().toCenterLocation();
+UtilItemStack.insert(
+        player,
+        itemStack,
+        leftOverItemStack -> block.getWorld().dropItemNaturally(location, leftOverItemStack)
+);
+```
+
+The [Item addon's block drops](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#placement-damage-breaking-and-drops) use this overload when `insertOnDrop(...)` returns `true`.
+
+`contains` and `remove` check and remove items by count, using `isSimilar` for matching.
 
 ### UtilPdc
 

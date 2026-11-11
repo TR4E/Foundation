@@ -29,7 +29,7 @@ public final class ItemService implements Lifecycle {
 
     private final CustomItemSearchEngine customItemSearchEngine = new CustomItemSearchEngine(this);
 
-    private final Map<Material, DefaultItem> defaultItemMap = new EnumMap<>(Material.class);
+    private final EnumMap<Material, DefaultItem> defaultItemMap = new EnumMap<>(Material.class);
 
     private final List<CustomItem> itemList;
     private final ItemAddonSettings settings;

@@ -21,6 +21,7 @@ The Window addon defines inventory menus as classes. A window owns one viewer an
 - [Paginated layout](#paginated-layout)
 - [Elements](#elements)
 - [Buttons](#buttons)
+- [Skull builtins](#skull-builtins)
 - [Lifecycle](#lifecycle)
 - [Asynchronous rendering](#asynchronous-rendering)
 - [Refreshing](#refreshing)
@@ -324,7 +325,7 @@ public final class FillerElement extends Element<Window<?>> {
 
 `toItemStack()` is called on the main thread for each placement during a full window render or refresh, and for the targeted element during a single-element update. This is where the description is resolved. That makes `getDescription()` the hook for anything that changes between updates, such as a page counter or a live total. A non-empty description is appended to the base stack's lore, with a blank line separating it from any existing lore. A `null` or empty description leaves that lore unchanged and adds no separator. Description lines are deserialized, default to white, and have italics turned off.
 
-The base stack is cloned on every call, so an element never mutates the stack it was constructed with and the same stack can back several elements.
+`toItemStack()` clones the base stack before applying its display name, marker, and description. Custom build hooks can still edit the base stack itself; the skull builtins use that behavior to prepare the profile before rendering. Give independently updated elements their own base stacks.
 
 An element's `build()` runs only when explicitly requested through `element.render()` or `window.render(element)`. A full window render calls the window's `build()`, then registers and displays elements without calling their individual `build()` hooks. Initialize the data needed for their first display through the window build and element constructor, or request a separate element render afterward.
 
@@ -365,6 +366,88 @@ public final class CancelOrderButton extends Button<OrderWindow> {
 | `getClickSoundStash(player, clickType)` | `SoundStash` | `null` | Sound played after `onClick` and before `ButtonPostClickEvent` |
 
 Button callbacks run inside `InventoryClickEvent`. The Window API does not defer `close()` or schedule `open()` checks internally. Defer inventory transitions from a click to the next tick with `UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, runnable)`, as in the close example above.
+
+## Skull builtins
+
+`SkullElement<Window>` and `SkullButton<Window>` live in `me.trae.foundation.minecraft.paper.addon.window.builtin`. Both are abstract and provide these constructors:
+
+| Constructor | Base stack |
+| --- | --- |
+| `(window)` | A new `Material.PLAYER_HEAD` stack |
+| `(window, itemStack)` | The supplied stack; use a head with skull metadata |
+
+Implement `protected void applySkull(final ItemStack itemStack)` to apply the profile or texture. Their final `build()` calls `applySkull(this.getItemStack())`, editing the base stack before `toItemStack()` clones it. Override `getDescription()` for lore. `SkullButton` also requires `onClick(player, clickType)` and inherits the normal click checks, events, and sound hooks. Display names use the inherited `getDisplayName()` hook.
+
+Use the framework's [UtilSkull](../../Minecraft-Paper-Plugin-Framework/README.md#utilskull) inside `applySkull`. For a decorative texture head (imports omitted):
+
+```java
+public final class TextureSkullElement extends SkullElement<Window<?>> {
+
+    private final String texture;
+
+    public TextureSkullElement(final Window<?> window, final String texture) {
+        super(window);
+
+        this.texture = texture;
+    }
+
+    @Override
+    protected void applySkull(final ItemStack itemStack) {
+        UtilSkull.applyWithTexture(itemStack, this.texture);
+    }
+
+    @Override
+    public List<String> getDescription() {
+        return List.of("A custom texture head.");
+    }
+}
+```
+
+For a clickable player head, resolve its owner by UUID during the build:
+
+```java
+public final class ProfileSkullButton extends SkullButton<Window<?>> {
+
+    private final UUID uniqueId;
+
+    public ProfileSkullButton(final Window<?> window, final UUID uniqueId) {
+        super(window);
+
+        this.uniqueId = uniqueId;
+    }
+
+    @Override
+    protected void applySkull(final ItemStack itemStack) {
+        UtilSkull.applyWithUniqueId(itemStack, this.uniqueId);
+    }
+
+    @Override
+    public List<String> getDescription() {
+        return List.of("Click to select this player.");
+    }
+
+    @Override
+    public void onClick(final Player player, final ClickType clickType) {
+        UtilMessage.message(player, "Profile", "Selected player %s".formatted(this.uniqueId));
+    }
+}
+```
+
+A full window render does not automatically call element build hooks. To prepare a skull for its first display, retain the element in a window field initialized by the window's constructor, call its `build()` from the window's asynchronous `build()`, then place it in `registerElements`. For example, with a `ProfileSkullButton profileSkullButton` field:
+
+```java
+@Override
+protected void build() {
+    this.profileSkullButton.build();
+}
+
+@Override
+protected void registerElements(final Layout layout) {
+    layout.set(13, this.profileSkullButton);
+}
+```
+
+For later profile updates, call `profileSkullButton.render()` on the main thread: its skull build runs asynchronously, followed by a main-thread slot refresh. `refresh()` alone redraws the prepared head without calling `applySkull`. Player-profile completion may perform a lookup, so keep those builds off the main thread. If completion fails, `UtilSkull` retains the existing base-stack profile, or leaves a newly created head without one.
 
 ## Lifecycle
 

@@ -493,6 +493,7 @@ title.send(player);
 | `UtilPdc` | Reads, writes, and removes values in a `PersistentDataContainer`; retrieves or creates nested containers |
 | `UtilPermission` | Permission checking with OP, wildcard, and custom wildcard support |
 | `UtilServer` | Online and offline player lookups by UUID or name, plus exact and partial name searches |
+| `UtilSkull` | Apply encoded textures or player profiles to skull item stacks, with UUID and player-name helpers |
 | `UtilTask` | Task scheduling with `ChronoUnit` time conversion, delayed and repeating variants, and optional cancellation suppliers |
 | `UtilWorld` | Loaded worlds, direct UUID and name lookups, and exact and partial world-name searches |
 | `CommandRegistry` | Registers and unregisters root and child commands with Bukkit's command map |
@@ -556,6 +557,34 @@ UtilItemStack.insert(
 The [Item addon's block drops](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#placement-interaction-breaking-and-drops) use this overload when `insertOnDrop(...)` returns `true`.
 
 `contains` and `remove` check and remove items by count, using `isSimilar` for matching.
+
+### UtilSkull
+
+[UtilSkull](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/utility/UtilSkull.java) edits an existing skull stack in place. Supply an `ItemStack` with `SkullMeta`, normally `Material.PLAYER_HEAD`. All methods return `void`; they do not create or return the stack.
+
+| Method | Behaviour |
+| --- | --- |
+| `applyWithTexture(itemStack, texture)` | Create a profile with a UUID derived from the texture's UTF-8 bytes and set its `textures` property to the supplied value |
+| `applyWithPlayerProfile(itemStack, playerProfile)` | Apply an already complete profile, or attempt cache completion followed by `complete(true)` before applying it |
+| `applyWithUniqueId(itemStack, uniqueId)` | Create a profile for the UUID and pass it through the profile completion path |
+| `applyWithName(itemStack, name)` | Create a profile for the player name and pass it through the profile completion path |
+
+`texture` is the encoded profile `textures` property value, commonly Base64-encoded skin JSON. The helper stores it directly without converting a texture URL or resolving a player. Its UUID is deterministic for the same texture value.
+
+```java
+final ItemStack itemStack = ItemStack.of(Material.PLAYER_HEAD);
+UtilSkull.applyWithTexture(itemStack, texture);
+```
+
+The profile overload uses `com.destroystokyo.paper.profile.PlayerProfile`. If an incomplete profile cannot be completed from cache or by `complete(true)`, the stack is left unchanged. Completion runs synchronously in the calling method and can perform a profile lookup; run that work off the main thread. These methods do not schedule tasks themselves.
+
+For example, in an asynchronous item-loading step with an existing head stack and player UUID:
+
+```java
+UtilSkull.applyWithUniqueId(itemStack, uniqueId);
+```
+
+The Window addon supplies [SkullElement and SkullButton](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Window/README.md#skull-builtins) to perform this work through an element's build hook.
 
 ### UtilPdc
 

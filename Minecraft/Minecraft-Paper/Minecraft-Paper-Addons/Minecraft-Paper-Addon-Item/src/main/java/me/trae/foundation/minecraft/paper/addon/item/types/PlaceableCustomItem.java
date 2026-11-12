@@ -55,6 +55,9 @@ public abstract class PlaceableCustomItem<BlockData extends CustomBlockData> ext
     public void onDamage(final Player player, final Block block, final ItemStack itemInHand, final BlockData blockData) {
     }
 
+    public void onTick(final Block block, final BlockData blockData) {
+    }
+
     public void onExpire(final Block block, final BlockData blockData) {
     }
 

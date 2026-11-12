@@ -8,7 +8,7 @@ import me.trae.foundation.minecraft.paper.addon.item.types.PlaceableCustomItem;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPdc;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
-import org.bukkit.Bukkit;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilWorld;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -37,7 +37,7 @@ public final class BlockService {
     @Scheduler(period = 50, unit = TimeUnit.MILLISECONDS)
     public void onScheduler() {
         for (final Map.Entry<UUID, ConcurrentHashMap<Long, ConcurrentHashMap<Integer, CustomBlockData>>> worldEntry : this.blockDataMap.entrySet()) {
-            final World world = Bukkit.getWorld(worldEntry.getKey());
+            final World world = UtilWorld.getWorldById(worldEntry.getKey()).orElse(null);
             if (world == null) {
                 continue;
             }
@@ -206,11 +206,19 @@ public final class BlockService {
     }
 
     private void tickBlockData(final Block block, final CustomBlockData blockData) {
+        final PlaceableCustomItem<CustomBlockData> placeableCustomItem = this.getItemByBlock(block).orElse(null);
+
         if (blockData.hasExpired()) {
-            this.getItemByBlock(block).ifPresent(placeableCustomItem -> placeableCustomItem.onExpire(block, blockData));
+            if (placeableCustomItem != null) {
+                placeableCustomItem.onExpire(block, blockData);
+            }
 
             this.deleteBlockData(block);
             return;
+        }
+
+        if (placeableCustomItem != null) {
+            placeableCustomItem.onTick(block, blockData);
         }
 
         if (!blockData.isDirty()) {

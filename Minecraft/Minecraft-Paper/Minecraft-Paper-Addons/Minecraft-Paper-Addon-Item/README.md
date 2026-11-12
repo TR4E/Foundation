@@ -501,6 +501,18 @@ public ToolRequirement getToolRequirement() {
 
 Returning `false` cancels a single-block removal event. For explosions and structure growth, protected entries are removed from the affected list so other positions can still change. Piston extension and retraction are cancelled whenever their moved-block list contains a tracked custom block; they do not call `canRemove` or relocate its data.
 
+### Tick callbacks
+
+Override `onTick(final Block block, final BlockData blockData)` on `PlaceableCustomItem` for recurring block behavior. It returns `void` and defaults to a no-op. `BlockService` runs its scheduler every 50 milliseconds and calls this hook for each unexpired, tracked block in a loaded chunk whose placeable definition still resolves. The callback receives the definition's typed block data and runs even when that data is not dirty. Unloaded chunks are skipped, including entries retained with `shouldUnloadChunk(...)` returning `false`.
+
+Each block's scheduler pass follows this order:
+
+1. Check expiry. If expired, call `onExpire(...)` when the definition resolves, delete the data, and return without calling `onTick(...)`.
+2. Call `onTick(block, blockData)` when the definition resolves.
+3. Write the data if it is dirty, then clear its dirty flag.
+
+If `onTick(...)` changes persistent fields, call `this.blockService.updateBlockData(block)` to mark the data dirty; those changes are then written in the same scheduler pass. Setters alone do not request persistence. The service does not automatically update `lastTickedAt` when calling `onTick`; that timestamp is set during chunk unload preparation.
+
 ### Block data and persistence
 
 `CustomBlockData` exposes Lombok getters and setters for mutable fields. Its constructors either capture a new placement or restore the saved fields:

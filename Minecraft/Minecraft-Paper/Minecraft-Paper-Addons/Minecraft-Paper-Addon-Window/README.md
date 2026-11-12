@@ -154,6 +154,7 @@ Create it with `Layout.of(size)`. The constructor is protected for layout subcla
 | `column(column, element)` | `void` | Place the element down one zero-based column, from `0` through `8` |
 | `clear()` | `void` | Drop every static placement; subclasses can extend the cleanup |
 | `getElementBySlot(slot)` | `Optional<Element<?>>` | Resolve the element at a slot |
+| `getSlotByElement(element)` | `Optional<Integer>` | Resolve the slot recorded for an element, used by single-element updates |
 | `applyTo(inventory)` | `void` | Clear the inventory and write every element's item stack |
 
 `fill` skips occupied slots, so calling it after `border` and `set` leaves the earlier placements intact. `set` and `row` ignore slots outside the layout; `column` ignores column numbers outside `0` through `8` and visits each complete row.
@@ -162,9 +163,11 @@ Create it with `Layout.of(size)`. The constructor is protected for layout subcla
 
 The element map is a `ConcurrentHashMap`. Element registration, inventory rendering, and click routing run on the main thread. Keep asynchronous data loading in `build()` rather than modifying the layout there.
 
+The layout also tracks an element-to-slot map. `set`, `fill`, `border`, `row`, and `column` update it, and `clear()` clears both maps. When one element instance is placed in several slots, only its last assigned slot is recorded for single-element updates; use distinct instances when each slot needs its own update. Replacing a slot does not remove the previous element's reverse entry, so request individual updates only for elements still registered at their recorded slot.
+
 ## Paginated layout
 
-`PaginatedLayout` adds a content region on top of the static placements. Create it with `PaginatedLayout.of(size, contentSlots)`. Load the current page in `build()`, then supply its total matching item count with `setTotal(total)` and its elements with `setContent(content)` in `registerElements`.
+`PaginatedLayout` adds page navigation and a set of content slots to `Layout`. Create it with `PaginatedLayout.of(size, contentSlots)`. Load the current page in `build()`, then supply its total matching item count with `setTotal(total)` and its elements with `setContent(content)` in `registerElements`. Content elements become ordinary layout placements, so they support the same slot lookup, click routing, and single-element updates.
 
 The example uses Database's `EntityRepository<Order>` and `EntityPage<Order>`. Supply an application query that filters the intended orders and uses a deterministic, unique ordering. Database pages start at `1`, while layout pages start at `0`: request `getPage() + 1` with `getLimit()` as the page size. The repository counts matches and clamps the requested page, so apply the returned total before setting the returned page minus one. This keeps the menu aligned when the last page disappears after deletions.
 
@@ -234,8 +237,7 @@ The layout total is an `int`, while the database total is a `long`; the example 
 | --- | --- | --- |
 | `of(size, contentSlots)` | `PaginatedLayout` | Create a paginated layout with the given content slots |
 | `getContentSlots()` | `int[]` | Slots the content flows into, in order |
-| `getContent()` | `List<Element<?>>` | Elements loaded for the current page |
-| `setContent(content)` | `void` | Replace the current page's elements without changing the total or page |
+| `setContent(content)` | `void` | Place supplied elements into the content slots in order, without changing the total or page |
 | `getTotal()` | `int` | Total matching item count across all pages; initially `0` |
 | `setTotal(total)` | `void` | Clamp the total to at least `0` and the current page to the available range |
 | `getPage()` | `int` | Current page, zero based |
@@ -247,17 +249,17 @@ The layout total is an `int`, while the database total is a `long`; the example 
 | `hasPreviousPage()` | `boolean` | Whether the current page is greater than `0`, without changing it |
 | `nextPage()` | `boolean` | Advance a page; `false` when already on the last |
 | `previousPage()` | `boolean` | Go back a page; `false` when already on the first |
-| `clear()` | `void` | Drop static placements and replace the content with an empty list; retain the total and page |
+| `clear()` | `void` | Inherited: clear all placements and reverse slot mappings; retain the total and page |
 
 The factory rejects an empty content-slot array and any slot that falls outside the layout size. Supply distinct content slots so rendering and click resolution agree.
 
-`setContent` copies the current page's list. Rendering and click resolution use its indices starting at `0`, with no page offset applied to the list. Supply at most `getLimit()` elements; entries beyond the content-slot count are not displayed. Loading content does not update the total, so call `setTotal` explicitly even when the first page contains all results.
+`setContent` reads the supplied list immediately, placing each element through `set(contentSlots[index], element)` starting at index `0`; it does not retain a separate content list or expose `getContent()`. No page offset is applied to the list. Supply at most `getLimit()` elements; entries beyond the content-slot count are ignored. Loading content does not update the total, so call `setTotal` explicitly even when the first page contains all results.
 
-`clear()` removes static placements and resets the loaded content to an empty list. The total and page stay unchanged. Each render loads data in `build()` first, then clears the layout before `registerElements` supplies the new page's elements.
+`clear()` removes every placement, including content, and clears reverse slot mappings. The total and page stay unchanged. Each full window render loads data in `build()` first, then clears the layout before `registerElements` supplies the new page's elements.
 
-Content is written after the static placements, so an element placed in a content slot shows through wherever the current page runs short. A filler behind the content region fills the gaps on the last page without any extra work. The same rule applies to click resolution: a content slot past the end of the list resolves to whatever static element sits underneath it.
+Placement order determines what occupies each slot. Place fillers first, then call `setContent` to overwrite populated content slots; later `set` calls can overwrite those content elements. Slots beyond the supplied list are left untouched. Calling `setContent` again with fewer elements does not clear earlier entries in the remaining slots, and passing an empty list clears nothing. Clear and rebuild the layout when replacing a page, as a full window render does.
 
-Changing the page updates the query offset without loading content. After `nextPage()`, `previousPage()`, or `setPage(page)`, call `render()` to fetch and render that page. `refresh()` redraws the already loaded list, so it does not load a different page.
+Changing the page updates the query offset without loading content. After `nextPage()`, `previousPage()`, or `setPage(page)`, call `render()` to fetch and render that page. `refresh()` redraws the current placements, so it does not load a different page.
 
 The click listener ignores button clicks while the window is rendering, so navigation buttons do not need their own rendering check. A previous-page button uses `previousPage()` followed by `render()` in the same way as the next-page button below.
 
@@ -314,11 +316,17 @@ public final class FillerElement extends Element<Window<?>> {
 | `getDescription()` | `List<String>` | _abstract_ | Lines appended to the item's lore; `null` or an empty list leaves existing lore unchanged |
 | `getWindow()` | `Window` | n/a | The owning window, typed to the generic parameter |
 | `getItemStack()` | `ItemStack` | n/a | The base stack supplied to the constructor |
+| `getDisplayName()` | `Component` | `null` | Display name applied only when the base stack has no custom display name |
+| `build()` | `void` | no-op | Public hook run off-thread by a single-element render |
+| `render()` | `void` | n/a | Delegate to the owning window's `render(this)` |
+| `refresh()` | `void` | n/a | Delegate to the owning window's `refresh(this)` |
 | `toItemStack()` | `ItemStack` | n/a | Clone the base stack, stamp it, and apply the description |
 
-`toItemStack()` is called on the main thread during every render, which is where the description is resolved. That makes `getDescription()` the hook for anything that changes between renders, such as a page counter or a live total. A non-empty description is appended to the base stack's lore, with a blank line separating it from any existing lore. A `null` or empty description leaves that lore unchanged and adds no separator. Description lines are deserialized, default to white, and have italics turned off.
+`toItemStack()` is called on the main thread for each placement during a full window render or refresh, and for the targeted element during a single-element update. This is where the description is resolved. That makes `getDescription()` the hook for anything that changes between updates, such as a page counter or a live total. A non-empty description is appended to the base stack's lore, with a blank line separating it from any existing lore. A `null` or empty description leaves that lore unchanged and adds no separator. Description lines are deserialized, default to white, and have italics turned off.
 
 The base stack is cloned on every call, so an element never mutates the stack it was constructed with and the same stack can back several elements.
+
+An element's `build()` runs only when explicitly requested through `element.render()` or `window.render(element)`. A full window render calls the window's `build()`, then registers and displays elements without calling their individual `build()` hooks. Initialize the data needed for their first display through the window build and element constructor, or request a separate element render afterward.
 
 ## Buttons
 
@@ -366,7 +374,11 @@ Button callbacks run inside `InventoryClickEvent`. The Window API does not defer
 | `close()` | Close immediately if this window is still on top; does not cancel an unfinished open |
 | `render()` | Run `build()` off-thread, then clear, register, and apply elements on the main thread |
 | `render(runnable)` | Same as `render()`, then run the supplied callback on the main thread; accepts `null` |
+| `render(element)` | Run only the element's `build()` off-thread, then schedule its single-slot refresh on the main thread |
 | `refresh()` | Rewrite the current elements immediately with no rebuild; skipped while rendering; call on the main thread |
+| `refresh(element)` | Rewrite only the element's recorded slot immediately, without rebuilding; call on the main thread |
+
+Use `render()` for a full render without a callback. A bare `render(null)` is ambiguous between the `Runnable` and `Element<?>` overloads; use an explicit type if passing null to the callback overload.
 
 Call `open()`, `close()`, `render()`, `refresh()`, and `getInventory()` on the main thread. `open()` returns when the viewer is offline. It dispatches `WindowOpenEvent`, checks `canOpen`, and captures the viewer's current top inventory before starting a render. Cancelling the event or returning `false` prevents the build. If this instance is already rendering, the new render and its open callback are dropped.
 
@@ -382,7 +394,7 @@ The open listener handles uncancelled Bukkit open events at `MONITOR` priority, 
 
 ## Asynchronous rendering
 
-`build()` runs off the main thread on every render. Use it to query a database, read a cache, or fetch a profile, storing the result in window fields for `registerElements`. Keep Bukkit operations that require the main thread out of `build()`.
+The window's `build()` runs off the main thread on every full render. Use it to query a database, read a cache, or fetch a profile, storing the result in window fields for `registerElements`. Keep Bukkit operations that require the main thread out of either window or element `build()` hooks.
 
 After `build()` returns, the framework schedules the apply phase on the main thread: clear the layout, call `registerElements(layout)`, write the items with `applyTo`, then run the optional render callback. Element constructors and `toItemStack()` therefore run on the main thread when elements are created in `registerElements`. The loaded fields are handed over through the scheduled apply task; do not mutate them from unrelated asynchronous work.
 
@@ -398,13 +410,35 @@ protected void registerElements(final Layout layout) {
 }
 ```
 
-The snippet assumes window fields `CustomerRepository customerRepository` and `Customer customer`. A render in flight blocks another from starting on the same window instance. A render requested while one is running is dropped.
+The snippet assumes window fields `CustomerRepository customerRepository` and `Customer customer`. A full render in flight blocks another render from starting on the same window instance. A render requested while a full render is running is dropped.
 
 If `build()` throws a `RuntimeException` or `Error`, the normal apply and callback steps are skipped and an abort is scheduled on the main thread. Exceptions in `registerElements`, item application, or the callback abort immediately in the main-thread apply phase. The abort clears the layout, resets the rendering flag, and closes this window with reason `CANT_USE` if it is still visible. The original exception is rethrown for the scheduler to report.
 
-Treat `registerElements` as a rebuild from an empty layout. Static placements are cleared before it runs, and `PaginatedLayout.clear()` also clears loaded content while retaining the page and total. The previous items can remain visible during a rebuild, but button clicks are ignored while `isRendering()` is `true`.
+Treat `registerElements` as a rebuild from an empty layout. All placements and reverse slot mappings are cleared before it runs, including paginated content; the page and total are retained. The previous items can remain visible during a rebuild, but button clicks are ignored while `isRendering()` is `true`.
 
 On a successful render, the rendering flag stays set until after the callback returns. Calls to `render()` or `refresh()` from that callback are therefore skipped, including from `onOpen` invoked while `open()` shows the inventory. Defer another render or an inventory transition from a lifecycle callback to the next tick when needed.
+
+### Single-element rendering
+
+Call `element.render()` or `window.render(element)` to reload one element's data without rebuilding the window or its layout. It calls `element.build()` asynchronously, then schedules `window.refresh(element)` on the main thread. Both the initial request and the scheduled refresh are skipped during a full window render or before the backing inventory exists. The final refresh also requires a recorded slot for that element.
+
+Single-element rendering does not set `isRendering()`, block button clicks, or serialize other element builds. Repeated requests can overlap, so arrange dependent updates in your consuming code. It does not check whether the window is currently visible. Unlike a full render, an element build or refresh failure does not run the window's abort cleanup.
+
+For example, in an element that already holds `OrderRepository orderRepository`, `String orderId`, and an initialized `Order order`, reload its description data with these overrides (application types are illustrative):
+
+```java
+@Override
+public void build() {
+    this.order = this.orderRepository.findOrderById(this.orderId);
+}
+
+@Override
+public List<String> getDescription() {
+    return List.of("Status: %s".formatted(this.order.getStatus()));
+}
+```
+
+Call that element's `render()` on the main thread when its order needs reloading. This calls neither the window's `build()` nor `registerElements(...)`.
 
 ## Refreshing
 
@@ -413,6 +447,8 @@ On a successful render, the rendering flag stays set until after the callback re
 Use `refresh()` when the item stacks should change but the element set should not, such as a counter in a description or a toggle whose state lives on the element. Use `render()` when the element set itself has to be rebuilt, including page navigation, a list that gained an entry, or a slot that became available.
 
 `refresh()` is a no-op while rendering or until the backing inventory has been created. Calling `getInventory()` creates it even before the first `open()`. Exceptions from item rendering propagate directly to the caller; `refresh()` does not run the render abort cleanup.
+
+For one element, call `element.refresh()` or `window.refresh(element)` on the main thread. It resolves `layout.getSlotByElement(element)` and writes that element's `toItemStack()` to the recorded slot, leaving other slots untouched. It does not call either `build()` hook or re-register elements. It shares the full-refresh guards and does nothing if no slot is recorded for the element. For an element instance shared by several slots, use a full `window.refresh()` to redraw every placement.
 
 ## Click handling
 

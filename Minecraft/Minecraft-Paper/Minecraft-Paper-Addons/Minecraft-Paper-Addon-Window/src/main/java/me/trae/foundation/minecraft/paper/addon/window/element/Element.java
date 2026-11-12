@@ -25,6 +25,17 @@ public abstract class Element<Window extends me.trae.foundation.minecraft.paper.
     private final Window window;
     private final ItemStack itemStack;
 
+    public final void refresh() {
+        this.getWindow().refresh(this);
+    }
+
+    public final void render() {
+        this.getWindow().render(this);
+    }
+
+    public void build() {
+    }
+
     public final ItemStack toItemStack() {
         final ItemStack itemStack = this.itemStack.clone();
 

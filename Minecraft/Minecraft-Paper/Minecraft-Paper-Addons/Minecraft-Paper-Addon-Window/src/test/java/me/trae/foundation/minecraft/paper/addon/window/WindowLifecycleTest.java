@@ -22,6 +22,7 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MenuType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -65,6 +66,7 @@ final class WindowLifecycleTest {
     private final Inventory craftingInventory = mock(Inventory.class);
 
     private final AtomicReference<InventoryView> inventoryViewAtomicReference = new AtomicReference<>();
+
     private final AtomicBoolean primaryThreadAtomicBoolean = new AtomicBoolean(true);
 
     private final ArrayDeque<Runnable> delayedRunnableDeque = new ArrayDeque<>();
@@ -74,7 +76,9 @@ final class WindowLifecycleTest {
     private final UUID viewerId = UUID.randomUUID();
 
     private WindowService windowService;
+
     private WindowOpenListener windowOpenListener;
+
     private WindowCloseListener windowCloseListener;
 
     private MockedStatic<UtilTask> utilTaskMockedStatic;
@@ -122,6 +126,7 @@ final class WindowLifecycleTest {
         this.utilTaskMockedStatic.when(() -> UtilTask.executeSynchronously(any(Runnable.class)))
                 .thenAnswer(invocationOnMock -> {
                     final Runnable runnable = invocationOnMock.getArgument(0);
+
                     if (this.primaryThreadAtomicBoolean.get()) {
                         runnable.run();
                     } else {
@@ -145,20 +150,24 @@ final class WindowLifecycleTest {
         });
 
         doAnswer(invocationOnMock -> {
-            final Inventory inventory = invocationOnMock.getArgument(0);
-            this.openInventory(inventory);
+            this.openInventory(invocationOnMock.getArgument(0));
 
             return this.inventoryViewAtomicReference.get();
         }).when(this.player).openInventory(any(Inventory.class));
         doAnswer(invocationOnMock -> {
-            final InventoryCloseEvent.Reason reason = invocationOnMock.getArgument(0);
+            final InventoryCloseEvent.Reason inventoryCloseReason = invocationOnMock.getArgument(0);
             this.windowCloseListener.onInventoryClose(new InventoryCloseEvent(
-                    this.inventoryViewAtomicReference.get(), reason
+                    this.inventoryViewAtomicReference.get(), inventoryCloseReason
             ));
             this.inventoryViewAtomicReference.set(this.inventoryView(this.craftingInventory));
 
             return null;
         }).when(this.player).closeInventory(any(InventoryCloseEvent.Reason.class));
+        doAnswer(_ -> {
+            this.player.closeInventory(InventoryCloseEvent.Reason.PLUGIN);
+
+            return null;
+        }).when(this.player).closeInventory();
     }
 
     @AfterEach
@@ -170,46 +179,43 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void closeDefersTheInventoryChangeUntilAfterTheClick() {
+    void closeChangesTheInventoryImmediately() {
         final TestWindow testWindow = this.window();
         this.openInventory(testWindow.getInventory());
 
         testWindow.close();
 
-        verify(this.player, never()).closeInventory(any(InventoryCloseEvent.Reason.class));
-        assertSame(testWindow.getInventory(), this.player.getOpenInventory().getTopInventory());
-
-        this.runDelayedTasks();
-
+        verify(this.player).closeInventory();
         verify(this.player).closeInventory(InventoryCloseEvent.Reason.PLUGIN);
         assertSame(this.craftingInventory, this.player.getOpenInventory().getTopInventory());
+        assertTrue(this.delayedRunnableDeque.isEmpty());
         assertTrue(this.windowService.getWindowByInventoryMap().isEmpty());
     }
 
     @Test
-    void anOldCloseCannotCloseAReplacementInventory() {
+    void closeDoesNotCloseAReplacementInventory() {
         final TestWindow testWindow = this.window();
         this.openInventory(testWindow.getInventory());
-        testWindow.close();
 
         final Inventory inventory = this.inventory();
         this.openInventory(inventory);
-        this.runDelayedTasks();
+        testWindow.close();
 
-        verify(this.player, never()).closeInventory(any(InventoryCloseEvent.Reason.class));
+        verify(this.player, never()).closeInventory();
         assertSame(inventory, this.player.getOpenInventory().getTopInventory());
     }
 
     @Test
-    void openDefersItsChecksAndRenderUntilAfterTheClick() {
+    void openChecksImmediatelyAndDisplaysAfterRendering() {
         final TestWindow testWindow = this.window();
 
         testWindow.open();
 
-        assertTrue(this.asynchronousRunnableDeque.isEmpty());
+        verify(testWindow).canOpen(this.player);
+        assertFalse(this.asynchronousRunnableDeque.isEmpty());
+        assertTrue(this.delayedRunnableDeque.isEmpty());
         verify(this.player, never()).openInventory(any(Inventory.class));
 
-        this.runDelayedTasks();
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
@@ -219,51 +225,45 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void aSlowOpenCannotReturnAfterANewerWindowOpenedAndClosed() {
+    void aSlowOpenCanCompleteAfterReturningToItsCapturedInventory() {
         final TestWindow firstTestWindow = this.window();
         final TestWindow secondTestWindow = this.window();
         firstTestWindow.open();
-        this.runDelayedTasks();
         secondTestWindow.open();
-        this.runDelayedTasks();
 
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeLast());
         this.synchronousRunnableDeque.removeFirst().run();
         this.player.closeInventory(InventoryCloseEvent.Reason.PLAYER);
-
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
-        verify(this.player, never()).openInventory(firstTestWindow.getInventory());
-        assertSame(this.craftingInventory, this.player.getOpenInventory().getTopInventory());
+        assertSame(firstTestWindow.getInventory(), this.player.getOpenInventory().getTopInventory());
     }
 
     @Test
-    void anExternalInventoryRoundTripCancelsAnOlderOpen() {
+    void aDifferentInventoryPreventsAnOlderOpen() {
         final TestWindow testWindow = this.window();
         testWindow.open();
-        this.runDelayedTasks();
 
-        this.openInventory(this.inventory());
-        this.player.closeInventory(InventoryCloseEvent.Reason.PLAYER);
+        final Inventory inventory = this.inventory();
+        this.openInventory(inventory);
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
         verify(this.player, never()).openInventory(testWindow.getInventory());
+        assertSame(inventory, this.player.getOpenInventory().getTopInventory());
     }
 
     @Test
-    void closeCancelsTheSameWindowsUnfinishedOpen() {
+    void closeDoesNotCancelTheSameWindowsUnfinishedOpen() {
         final TestWindow testWindow = this.window();
         testWindow.open();
-        this.runDelayedTasks();
 
         testWindow.close();
-        this.runDelayedTasks();
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
-        verify(this.player, never()).openInventory(testWindow.getInventory());
+        assertSame(testWindow.getInventory(), this.player.getOpenInventory().getTopInventory());
         assertTrue(this.windowService.getRequestIdMap().isEmpty());
     }
 
@@ -309,7 +309,7 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void aRequestMadeFromOnOpenSurvivesThePreviousOpenCompletion() {
+    void anOpenMadeFromOnOpenStartsAnIndependentRender() {
         final TestWindow firstTestWindow = this.window();
         final TestWindow secondTestWindow = this.window();
         doAnswer(_ -> {
@@ -319,13 +319,12 @@ final class WindowLifecycleTest {
         }).when(firstTestWindow).onOpen(this.player);
 
         firstTestWindow.open();
-        this.runDelayedTasks();
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
-        assertFalse(this.windowService.getRequestIdMap().isEmpty());
+        assertTrue(secondTestWindow.isRendering());
+        assertTrue(this.windowService.getRequestIdMap().isEmpty());
 
-        this.runDelayedTasks();
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
@@ -333,7 +332,7 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void closeCanBeCalledDirectlyFromOnOpen() {
+    void closeFromOnOpenChangesTheInventoryImmediately() {
         final TestWindow testWindow = this.window();
         doAnswer(_ -> {
             testWindow.close();
@@ -342,17 +341,13 @@ final class WindowLifecycleTest {
         }).when(testWindow).onOpen(this.player);
 
         testWindow.open();
-        this.runDelayedTasks();
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
-        assertSame(testWindow.getInventory(), this.player.getOpenInventory().getTopInventory());
-        verify(this.player, never()).closeInventory(any(InventoryCloseEvent.Reason.class));
-
-        this.runDelayedTasks();
-
+        verify(this.player).closeInventory();
         assertSame(this.craftingInventory, this.player.getOpenInventory().getTopInventory());
-        assertTrue(this.windowService.getRequestIdMap().isEmpty());
+        assertTrue(this.delayedRunnableDeque.isEmpty());
+        assertTrue(this.windowService.getWindowByPlayerMap().isEmpty());
     }
 
     @Test
@@ -376,7 +371,7 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void aCancelledOpenDoesNotBuildAndClearsItsRequest() {
+    void aCancelledOpenDoesNotStartRendering() {
         final TestWindow testWindow = this.window();
         this.utilEventMockedStatic.when(() -> UtilEvent.supply(any(WindowOpenEvent.class)))
                 .thenAnswer(invocationOnMock -> {
@@ -395,7 +390,7 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void closeAllCancelsPendingOpensAndBypassesCloseVetoes() {
+    void closeAllBypassesVetoesAndChangesTheInventoryCapturedByAPendingOpen() {
         final TestWindow firstTestWindow = this.window();
         final TestWindow secondTestWindow = this.window();
         doReturn(false).when(firstTestWindow).canClose(this.player);
@@ -449,12 +444,13 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void disconnectCleanupInvalidatesAnUnfinishedOpen() {
+    void anOfflineViewerPreventsAnUnfinishedOpen() {
         final TestWindow testWindow = this.window();
         testWindow.open();
-        this.runDelayedTasks();
 
         this.windowService.cleanup(this.player);
+        this.utilServerMockedStatic.when(() -> UtilServer.getOnlinePlayerById(this.viewerId))
+                .thenReturn(Optional.empty());
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
         this.synchronousRunnableDeque.removeFirst().run();
 
@@ -462,37 +458,38 @@ final class WindowLifecycleTest {
     }
 
     @Test
-    void aFailedBuildClearsPageContentAndDefersTheForcedClose() {
+    void aFailedBuildClearsPagePlacementsAndClosesDuringAbort() {
         final PaginatedLayout paginatedLayout = PaginatedLayout.of(9, new int[]{4});
-        final TestWindow testWindow = this.window(paginatedLayout, () -> {
-            paginatedLayout.setContent(List.<Element<?>>of(mock(Element.class)));
+        final Element<?> element = mock(Element.class);
+        paginatedLayout.setContent(List.of(element));
 
-            throw new IllegalStateException("Build failed");
-        });
+        final TestWindow testWindow = this.window(paginatedLayout, () -> {});
+        doThrow(new IllegalStateException("Build failed")).when(testWindow).build();
         this.openInventory(testWindow.getInventory());
 
-        testWindow.render(null);
-        assertThrows(IllegalStateException.class, () -> {
-            this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
-        });
+        testWindow.render();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst())
+        );
         assertTrue(testWindow.isRendering());
+        verify(this.player, never()).closeInventory(any(InventoryCloseEvent.Reason.class));
 
         this.synchronousRunnableDeque.removeFirst().run();
 
-        assertTrue(testWindow.isRendering());
-        assertTrue(paginatedLayout.getContent().isEmpty());
-        verify(this.player, never()).closeInventory(any(InventoryCloseEvent.Reason.class));
-
-        this.runDelayedTasks();
-
         assertFalse(testWindow.isRendering());
+        assertTrue(paginatedLayout.getElementMap().isEmpty());
+        assertTrue(paginatedLayout.getSlotMap().isEmpty());
+        assertTrue(this.delayedRunnableDeque.isEmpty());
         verify(this.player).closeInventory(InventoryCloseEvent.Reason.CANT_USE);
     }
 
     @Test
-    void refreshFailuresUseTheSameDeferredCleanup() {
+    void refreshFailuresPropagateWithoutAbortingTheWindow() {
         final Layout layout = mock(Layout.class);
         when(layout.getSize()).thenReturn(9);
+
         final TestWindow testWindow = this.window(layout, () -> {});
         this.openInventory(testWindow.getInventory());
         doThrow(new IllegalStateException("Item failed")).when(layout).applyTo(any(Inventory.class));
@@ -500,61 +497,132 @@ final class WindowLifecycleTest {
         assertThrows(IllegalStateException.class, testWindow::refresh);
 
         verify(this.player, never()).closeInventory(any(InventoryCloseEvent.Reason.class));
-        assertTrue(testWindow.isRendering());
-
-        this.runDelayedTasks();
-
-        verify(this.player).closeInventory(InventoryCloseEvent.Reason.CANT_USE);
         assertFalse(testWindow.isRendering());
+        assertTrue(this.delayedRunnableDeque.isEmpty());
+        assertSame(testWindow.getInventory(), this.player.getOpenInventory().getTopInventory());
     }
 
     @Test
     void abortingAnOlderWindowDoesNotCancelANewerOpen() {
-        final TestWindow firstTestWindow = this.window(Layout.of(9), () -> {
-            throw new IllegalStateException("Build failed");
-        });
+        final TestWindow firstTestWindow = this.window();
         final TestWindow secondTestWindow = this.window();
         this.openInventory(firstTestWindow.getInventory());
-        firstTestWindow.render(null);
+        doThrow(new IllegalStateException("Build failed")).when(firstTestWindow).build();
+        firstTestWindow.render();
         secondTestWindow.open();
 
-        assertThrows(IllegalStateException.class, () -> {
-            this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
-        });
+        this.runAsynchronousTask(this.asynchronousRunnableDeque.removeLast());
         this.synchronousRunnableDeque.removeFirst().run();
-        this.runDelayedTasks();
-        this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst())
+        );
         this.synchronousRunnableDeque.removeFirst().run();
 
         assertSame(secondTestWindow.getInventory(), this.player.getOpenInventory().getTopInventory());
     }
 
     @Test
-    void rejectingAnAsynchronousBuildDoesNotLeaveRenderingLocked() {
+    void aFullRenderDropsAnotherRenderUntilApplyCompletes() {
         final TestWindow testWindow = this.window();
-        this.utilTaskMockedStatic.when(() -> UtilTask.executeAsynchronously(any(Runnable.class)))
-                .thenThrow(new IllegalStateException("Scheduler unavailable"));
+        testWindow.render();
+        testWindow.render();
 
-        assertThrows(IllegalStateException.class, () -> testWindow.render(null));
+        this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
+
+        verify(testWindow).build();
+        assertTrue(this.asynchronousRunnableDeque.isEmpty());
+        assertTrue(testWindow.isRendering());
+
+        this.synchronousRunnableDeque.removeFirst().run();
 
         assertFalse(testWindow.isRendering());
     }
 
     @Test
-    void closeMarshalsAnAsynchronousCallerBeforeSchedulingTheInventoryChange() {
+    void closeDoesNothingForAnOfflineViewer() {
         final TestWindow testWindow = this.window();
         this.openInventory(testWindow.getInventory());
-        this.primaryThreadAtomicBoolean.set(false);
+        this.utilServerMockedStatic.when(() -> UtilServer.getOnlinePlayerById(this.viewerId))
+                .thenReturn(Optional.empty());
 
         testWindow.close();
 
+        verify(this.player, never()).closeInventory();
+        verify(this.player, never()).closeInventory(any(InventoryCloseEvent.Reason.class));
+        assertTrue(this.synchronousRunnableDeque.isEmpty());
         assertTrue(this.delayedRunnableDeque.isEmpty());
+    }
 
-        this.primaryThreadAtomicBoolean.set(true);
+    @Test
+    void anElementRenderBuildsOffThreadAndRefreshesOnlyItsSlot() {
+        final TestWindow testWindow = this.window();
+        final Element<?> element = mock(Element.class);
+        final ItemStack itemStack = mock(ItemStack.class);
+        when(element.toItemStack()).thenReturn(itemStack);
+        testWindow.getLayout().set(4, element);
+
+        testWindow.render(element);
+
+        verify(element, never()).build();
+        assertFalse(testWindow.isRendering());
+
+        this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
+
+        verify(element).build();
+        verify(testWindow.getInventory(), never()).setItem(anyInt(), any(ItemStack.class));
+
         this.synchronousRunnableDeque.removeFirst().run();
-        this.runDelayedTasks();
 
-        verify(this.player).closeInventory(InventoryCloseEvent.Reason.PLUGIN);
+        verify(testWindow.getInventory()).setItem(4, itemStack);
+        verify(testWindow.getInventory(), never()).clear();
+        verify(testWindow, never()).build();
+    }
+
+    @Test
+    void aFullRenderSuppressesAnElementRefreshThatWasAlreadyBuilding() {
+        final TestWindow testWindow = this.window();
+        final Element<?> element = mock(Element.class);
+        testWindow.getLayout().set(4, element);
+        testWindow.render(element);
+        this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
+
+        testWindow.render();
+        this.synchronousRunnableDeque.removeFirst().run();
+
+        verify(element, never()).toItemStack();
+        assertTrue(testWindow.isRendering());
+
+        this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
+        this.synchronousRunnableDeque.removeFirst().run();
+
+        assertFalse(testWindow.isRendering());
+    }
+
+    @Test
+    void paginatedContentSupportsElementRefreshAndRetainsUnreplacedSlots() {
+        final PaginatedLayout paginatedLayout = PaginatedLayout.of(9, new int[]{3, 4});
+        final TestWindow testWindow = this.window(paginatedLayout, () -> {});
+        final Element<?> firstElement = mock(Element.class);
+        final Element<?> secondElement = mock(Element.class);
+        paginatedLayout.setContent(List.of(firstElement, secondElement));
+
+        final Element<?> replacementElement = mock(Element.class);
+        final ItemStack itemStack = mock(ItemStack.class);
+        when(replacementElement.toItemStack()).thenReturn(itemStack);
+        paginatedLayout.setContent(List.of(replacementElement));
+        testWindow.refresh(replacementElement);
+
+        assertSame(replacementElement, paginatedLayout.getElementBySlot(3).orElseThrow());
+        assertSame(secondElement, paginatedLayout.getElementBySlot(4).orElseThrow());
+        verify(testWindow.getInventory()).setItem(3, itemStack);
+        verify(testWindow.getInventory(), never()).clear();
+
+        paginatedLayout.clear();
+
+        assertTrue(paginatedLayout.getElementBySlot(3).isEmpty());
+        assertTrue(paginatedLayout.getSlotByElement(replacementElement).isEmpty());
     }
 
     private Inventory inventory() {
@@ -592,8 +660,8 @@ final class WindowLifecycleTest {
         ));
 
         final InventoryView inventoryView = this.inventoryView(inventory);
-        this.windowOpenListener.onInventoryOpen(new InventoryOpenEvent(inventoryView));
         this.inventoryViewAtomicReference.set(inventoryView);
+        this.windowOpenListener.onInventoryOpen(new InventoryOpenEvent(inventoryView));
     }
 
     private void runDelayedTasks() {

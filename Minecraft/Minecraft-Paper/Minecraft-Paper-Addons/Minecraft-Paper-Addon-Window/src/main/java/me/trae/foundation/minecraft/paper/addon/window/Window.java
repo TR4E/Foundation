@@ -1,6 +1,7 @@
 package me.trae.foundation.minecraft.paper.addon.window;
 
 import lombok.Getter;
+import me.trae.foundation.minecraft.paper.addon.window.element.Element;
 import me.trae.foundation.minecraft.paper.addon.window.events.WindowOpenEvent;
 import me.trae.foundation.minecraft.paper.plugin.framework.stash.SoundStash;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
@@ -104,7 +105,19 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
     }
 
     public final void render() {
-        this.render(null);
+        this.render((Runnable) null);
+    }
+
+    public final void render(final Element<?> element) {
+        if (this.rendering || this.inventory == null) {
+            return;
+        }
+
+        UtilTask.executeAsynchronously(() -> {
+            element.build();
+
+            UtilTask.executeSynchronously(() -> this.refresh(element));
+        });
     }
 
     public final void refresh() {
@@ -113,6 +126,19 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
         }
 
         this.layout.applyTo(this.inventory);
+    }
+
+    public final void refresh(final Element<?> element) {
+        if (this.rendering || this.inventory == null) {
+            return;
+        }
+
+        final Integer slot = this.layout.getSlotByElement(element).orElse(null);
+        if (slot == null) {
+            return;
+        }
+
+        this.inventory.setItem(slot, element.toItemStack());
     }
 
     private void apply(final Runnable runnable) {

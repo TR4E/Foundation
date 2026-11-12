@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Layout {
 
     private final ConcurrentHashMap<Integer, Element<?>> elementMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Element<?>, Integer> slotMap = new ConcurrentHashMap<>();
 
     private final int size;
 
@@ -44,11 +45,16 @@ public class Layout {
         }
 
         this.elementMap.put(slot, element);
+        this.slotMap.put(element, slot);
     }
 
     public final void fill(final Element<?> element) {
         for (int slot = 0; slot < this.size; slot++) {
-            this.elementMap.putIfAbsent(slot, element);
+            if (this.elementMap.containsKey(slot)) {
+                continue;
+            }
+
+            this.set(slot, element);
         }
     }
 
@@ -58,7 +64,7 @@ public class Layout {
                 continue;
             }
 
-            this.elementMap.put(slot, element);
+            this.set(slot, element);
         }
     }
 
@@ -80,10 +86,15 @@ public class Layout {
 
     public void clear() {
         this.elementMap.clear();
+        this.slotMap.clear();
     }
 
     public Optional<Element<?>> getElementBySlot(final int slot) {
         return Optional.ofNullable(this.elementMap.get(slot));
+    }
+
+    public Optional<Integer> getSlotByElement(final Element<?> element) {
+        return Optional.ofNullable(this.slotMap.get(element));
     }
 
     public void applyTo(final Inventory inventory) {

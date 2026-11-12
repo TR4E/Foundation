@@ -3,18 +3,14 @@ package me.trae.foundation.minecraft.paper.addon.window.layout;
 import lombok.Getter;
 import me.trae.foundation.minecraft.paper.addon.window.constants.WindowConstants;
 import me.trae.foundation.minecraft.paper.addon.window.element.Element;
-import org.bukkit.inventory.Inventory;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Getter
 public final class PaginatedLayout extends Layout {
 
     private final int[] contentSlots;
 
-    private List<Element<?>> content;
     private int total, page;
 
     PaginatedLayout(final int size, final int[] contentSlots) {
@@ -31,7 +27,6 @@ public final class PaginatedLayout extends Layout {
         }
 
         this.contentSlots = contentSlots;
-        this.content = new ArrayList<>();
         this.total = 0;
         this.page = 0;
     }
@@ -57,7 +52,13 @@ public final class PaginatedLayout extends Layout {
     }
 
     public <Type extends Element<?>> void setContent(final List<Type> content) {
-        this.content = new ArrayList<>(content);
+        for (int index = 0; index < this.contentSlots.length; index++) {
+            if (index >= content.size()) {
+                break;
+            }
+
+            this.set(this.contentSlots[index], content.get(index));
+        }
     }
 
     public void setTotal(final int total) {
@@ -75,37 +76,6 @@ public final class PaginatedLayout extends Layout {
 
     public int getLimit() {
         return this.contentSlots.length;
-    }
-
-    @Override
-    public void clear() {
-        super.clear();
-
-        this.content = new ArrayList<>();
-    }
-
-    @Override
-    public Optional<Element<?>> getElementBySlot(final int slot) {
-        final int index = this.getContentIndex(slot);
-
-        if (index == -1 || index >= this.content.size()) {
-            return super.getElementBySlot(slot);
-        }
-
-        return Optional.of(this.content.get(index));
-    }
-
-    @Override
-    public void applyTo(final Inventory inventory) {
-        super.applyTo(inventory);
-
-        for (int index = 0; index < this.contentSlots.length; index++) {
-            if (index >= this.content.size()) {
-                break;
-            }
-
-            inventory.setItem(this.contentSlots[index], this.content.get(index).toItemStack());
-        }
     }
 
     public int getPageCount() {
@@ -138,17 +108,5 @@ public final class PaginatedLayout extends Layout {
         this.page--;
 
         return true;
-    }
-
-    private int getContentIndex(final int slot) {
-        for (int index = 0; index < this.contentSlots.length; index++) {
-            if (this.contentSlots[index] != slot) {
-                continue;
-            }
-
-            return index;
-        }
-
-        return -1;
     }
 }

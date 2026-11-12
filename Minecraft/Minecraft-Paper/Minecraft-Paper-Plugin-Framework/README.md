@@ -553,7 +553,7 @@ UtilItemStack.insert(
 );
 ```
 
-The [Item addon's block drops](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#placement-damage-breaking-and-drops) use this overload when `insertOnDrop(...)` returns `true`.
+The [Item addon's block drops](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#placement-interaction-breaking-and-drops) use this overload when `insertOnDrop(...)` returns `true`.
 
 `contains` and `remove` check and remove items by count, using `isSimilar` for matching.
 

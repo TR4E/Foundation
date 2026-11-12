@@ -3,8 +3,8 @@ package me.trae.foundation.minecraft.paper.addon.item.services;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import me.trae.foundation.injector.extensions.scheduler.annotation.Scheduler;
+import me.trae.foundation.minecraft.paper.addon.item.CustomBlock;
 import me.trae.foundation.minecraft.paper.addon.item.block.CustomBlockData;
-import me.trae.foundation.minecraft.paper.addon.item.types.PlaceableCustomItem;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilPdc;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
@@ -57,8 +57,8 @@ public final class BlockService {
     }
 
     @SuppressWarnings("unchecked")
-    public Optional<PlaceableCustomItem<CustomBlockData>> getItemByBlock(final Block block) {
-        return this.getBlockDataByBlock(CustomBlockData.class, block).flatMap(blockData -> this.itemService.getItemByUniqueId(blockData.getItemUniqueId())).filter(PlaceableCustomItem.class::isInstance).map(customItem -> (PlaceableCustomItem<CustomBlockData>) customItem);
+    public Optional<CustomBlock<CustomBlockData>> getItemByBlock(final Block block) {
+        return this.getBlockDataByBlock(CustomBlockData.class, block).flatMap(blockData -> this.itemService.getItemByUniqueId(blockData.getItemUniqueId())).filter(CustomBlock.class::isInstance).map(customItem -> (CustomBlock<CustomBlockData>) customItem);
     }
 
     public void updateBlockData(final Block block) {
@@ -206,11 +206,16 @@ public final class BlockService {
     }
 
     private void tickBlockData(final Block block, final CustomBlockData blockData) {
-        final PlaceableCustomItem<CustomBlockData> placeableCustomItem = this.getItemByBlock(block).orElse(null);
+        final CustomBlock<CustomBlockData> placeableCustomItem = this.getItemByBlock(block).orElse(null);
 
         if (blockData.hasExpired()) {
             if (placeableCustomItem != null) {
                 placeableCustomItem.onExpire(block, blockData);
+            }
+
+            if (placeableCustomItem == null || placeableCustomItem.shouldRemoveBlockOnExpire(block, blockData)) {
+                this.resetBlock(block);
+                return;
             }
 
             this.deleteBlockData(block);
@@ -231,7 +236,7 @@ public final class BlockService {
     private void prepareUnloadBlockData(final Chunk chunk, final int positionKey, final CustomBlockData blockData) {
         final Block block = this.getBlockByPositionKey(chunk, positionKey);
 
-        final PlaceableCustomItem<CustomBlockData> placeableCustomItem = this.getItemByBlock(block).orElse(null);
+        final CustomBlock<CustomBlockData> placeableCustomItem = this.getItemByBlock(block).orElse(null);
         if (placeableCustomItem == null) {
             return;
         }

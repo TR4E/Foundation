@@ -44,7 +44,7 @@ public final class ItemActivateListener implements Listener {
     private final Map<UUID, Integer> blockedClickTickMap = new HashMap<>();
     private final Map<UUID, Integer> clickTickMap = new HashMap<>();
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerInteract(final PlayerInteractEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
@@ -108,7 +108,7 @@ public final class ItemActivateListener implements Listener {
         });
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerDropItem(final PlayerDropItemEvent event) {
         final ItemStack itemStack = event.getItemDrop().getItemStack();
 
@@ -140,7 +140,7 @@ public final class ItemActivateListener implements Listener {
         this.activate(player, itemStack, null, activatableCustomItem, ActivateType.DROP_ITEM);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerSwapHandItems(final PlayerSwapHandItemsEvent event) {
         if (event.isCancelled()) {
             return;

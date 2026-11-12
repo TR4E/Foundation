@@ -1,9 +1,9 @@
 package me.trae.foundation.minecraft.paper.addon.item.listeners.block;
 
 import lombok.AllArgsConstructor;
+import me.trae.foundation.minecraft.paper.addon.item.CustomBlock;
 import me.trae.foundation.minecraft.paper.addon.item.block.CustomBlockData;
 import me.trae.foundation.minecraft.paper.addon.item.services.BlockService;
-import me.trae.foundation.minecraft.paper.addon.item.types.PlaceableCustomItem;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import org.bukkit.Chunk;
 import org.bukkit.NamespacedKey;
@@ -65,7 +65,7 @@ public final class CustomBlockChunkListener implements Listener {
             return;
         }
 
-        final PlaceableCustomItem<?> placeableCustomItem = CustomBlockData.getItemUniqueId(positionContainer).flatMap(this.blockService.getItemService()::getItemByUniqueId).filter(PlaceableCustomItem.class::isInstance).map(PlaceableCustomItem.class::cast).orElse(null);
+        final CustomBlock<?> placeableCustomItem = CustomBlockData.getItemUniqueId(positionContainer).flatMap(this.blockService.getItemService()::getItemByUniqueId).filter(CustomBlock.class::isInstance).map(CustomBlock.class::cast).orElse(null);
         if (placeableCustomItem == null) {
             this.blockService.resetBlock(block);
             return;
@@ -79,7 +79,7 @@ public final class CustomBlockChunkListener implements Listener {
         this.registerBlockData(placeableCustomItem, block, positionContainer);
     }
 
-    private <BlockData extends CustomBlockData> void registerBlockData(final PlaceableCustomItem<BlockData> placeableCustomItem, final Block block, final PersistentDataContainer positionContainer) {
+    private <BlockData extends CustomBlockData> void registerBlockData(final CustomBlock<BlockData> placeableCustomItem, final Block block, final PersistentDataContainer positionContainer) {
         final BlockData blockData = placeableCustomItem.createBlockData(positionContainer);
 
         if (blockData.hasExpired()) {

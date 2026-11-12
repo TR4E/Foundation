@@ -1,23 +1,27 @@
 package me.trae.foundation.minecraft.paper.addon.item.listeners.block;
 
 import lombok.AllArgsConstructor;
+import me.trae.foundation.minecraft.paper.addon.item.CustomBlock;
 import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.block.CustomBlockData;
+import me.trae.foundation.minecraft.paper.addon.item.enums.InteractType;
 import me.trae.foundation.minecraft.paper.addon.item.services.BlockService;
 import me.trae.foundation.minecraft.paper.addon.item.services.ItemService;
-import me.trae.foundation.minecraft.paper.addon.item.types.PlaceableCustomItem;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMaterial;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.Set;
@@ -40,7 +44,7 @@ public final class CustomBlockInteractionListener implements Listener {
             return;
         }
 
-        if (!(customItem instanceof final PlaceableCustomItem<?> placeableCustomItem)) {
+        if (!(customItem instanceof final CustomBlock<?> placeableCustomItem)) {
             return;
         }
 
@@ -73,7 +77,7 @@ public final class CustomBlockInteractionListener implements Listener {
             return;
         }
 
-        final PlaceableCustomItem<CustomBlockData> placeableCustomItem = this.blockService.getItemByBlock(block).orElse(null);
+        final CustomBlock<CustomBlockData> placeableCustomItem = this.blockService.getItemByBlock(block).orElse(null);
         if (placeableCustomItem == null) {
             return;
         }
@@ -95,40 +99,48 @@ public final class CustomBlockInteractionListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onBlockDamage(final BlockDamageEvent event) {
-        if (event.isCancelled()) {
+    public void onPlayerInteract(final PlayerInteractEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
 
-        final Block block = event.getBlock();
+        final Block clickedBlock = event.getClickedBlock();
 
-        final CustomBlockData blockData = this.blockService.getBlockDataByBlock(CustomBlockData.class, block).orElse(null);
+        if (clickedBlock == null || clickedBlock.isEmpty()) {
+            return;
+        }
+
+        final InteractType interactType = InteractType.getByAction(event.getAction()).orElse(null);
+        if (interactType == null) {
+            return;
+        }
+
+        final CustomBlockData blockData = this.blockService.getBlockDataByBlock(CustomBlockData.class, clickedBlock).orElse(null);
         if (blockData == null) {
             return;
         }
 
-        final PlaceableCustomItem<CustomBlockData> placeableCustomItem = this.blockService.getItemByBlock(block).orElse(null);
+        final CustomBlock<CustomBlockData> placeableCustomItem = this.blockService.getItemByBlock(clickedBlock).orElse(null);
         if (placeableCustomItem == null) {
             return;
         }
 
         final Player player = event.getPlayer();
 
-        final ItemStack itemInHand = event.getItemInHand();
+        final ItemStack itemStack = event.getItem();
 
-        if (!placeableCustomItem.canDamage(player, block, itemInHand, blockData)) {
-            event.setCancelled(true);
+        if (UtilMaterial.isInteractableByHand(clickedBlock.getType(), itemStack)) {
+            event.setUseInteractedBlock(Event.Result.DENY);
+        }
+
+        if (!placeableCustomItem.canInteract(player, clickedBlock, itemStack, interactType, blockData)) {
             return;
         }
 
-        blockData.setLastDamagedAt(System.currentTimeMillis());
-
-        this.blockService.updateBlockData(block);
-
-        placeableCustomItem.onDamage(player, block, itemInHand, blockData);
+        placeableCustomItem.onInteract(player, clickedBlock, itemStack, interactType, blockData);
     }
 
-    private void drop(final Player player, final Block block, final CustomBlockData blockData, final PlaceableCustomItem<CustomBlockData> placeableCustomItem) {
+    private void drop(final Player player, final Block block, final CustomBlockData blockData, final CustomBlock<CustomBlockData> placeableCustomItem) {
         if (player.getGameMode() == GameMode.CREATIVE) {
             return;
         }

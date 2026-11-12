@@ -8,7 +8,7 @@
   <a href="https://papermc.io/"><img alt="Paper" src="https://img.shields.io/badge/Paper-API-44cc11?logo=minecraft&logoColor=white"></a>
 </p>
 
-The Item addon provides a framework for defining custom items that are identified by persistent data, automatically styled, version-tracked, and protected from unintended crafting. Items can react to player interactions through an activation system with cooldown hooks and channeling support. Placeable items retain per-block data in chunk persistent storage and expose placement, damage, drops, removal, expiry, and chunk lifecycle hooks.
+The Item addon provides a framework for defining custom items that are identified by persistent data, automatically styled, version-tracked, and protected from unintended crafting. Items can react to player interactions through an activation system with cooldown hooks and channeling support. Placeable items retain per-block data in chunk persistent storage and expose placement, interaction, ticking, drops, removal, expiry, and chunk lifecycle hooks.
 
 ## Contents
 
@@ -47,7 +47,7 @@ Items form an inheritance chain from simple definitions to fully interactive too
 | `ActivatableCustomItem` | Multiple activation types (left click, right click, drop, swap hand) |
 | `SingleActivatableCustomItem` | Single activation type with simplified callbacks and cooldown hooks |
 | `ChannelCustomItem` | Sustained right-click activation with start/channel/stop lifecycle |
-| `PlaceableCustomItem<BlockData>` | Extends `CustomItem` with persistent placed blocks and typed block lifecycle callbacks |
+| `CustomBlock<BlockData>` | Extends `CustomItem` with persistent placed blocks and typed block lifecycle callbacks |
 | `DefaultItem` | Material-based fallback for vanilla items, with no custom unique ID or identifier |
 
 `ItemService` discovers registered `CustomItem` components through an injected live list and manages the apply/update/refresh lifecycle. Lookup maps are rebuilt when live dependencies change. Fallback `DefaultItem` definitions are created lazily through `ItemAddonSettings.createDefaultItem(material)` and cached per material.
@@ -246,6 +246,8 @@ public class CombatKnife extends ActivatableCustomItem {
 
 ### Interaction flow
 
+`ItemActivateListener` handles clicks, drops, and hand swaps at `HIGH` priority. The custom block interaction listener runs later at `HIGHEST`, so a held item's activation is processed before the clicked custom block's interaction callback.
+
 For supported main-hand clicks, the listener checks the activation gates before setting vanilla interaction results. Returning `false` from `activateOnItemUse(...)` skips activation on right-click with a usable material. With `activateOnBlockUse(...)` returning `false`, right-clicking an interactable block (including a block usable with the held item) skips activation unless the player is sneaking. These early returns leave the interaction results untouched.
 
 If the gates pass, `useItemInHand(...)` and `useInteractedBlock(...)` control the vanilla actions separately from custom activation. Allowing activation on a block does not itself deny the block's vanilla action; return `Event.Result.DENY` from `useInteractedBlock(...)` when that is needed.
@@ -383,9 +385,16 @@ Utility methods: `isChanneling(player)` checks if a player is currently channeli
 
 ## Blocks
 
-Extend `PlaceableCustomItem<BlockData extends CustomBlockData>` and register it as a `@Singleton`, just like other custom definitions. Its constructor takes `(material, uniqueId, identifier)` and rejects materials for which `Material.isBlock()` is false. Keep the definition's unique ID stable: saved blocks resolve their definition through that ID.
+Extend `CustomBlock<BlockData extends CustomBlockData>` and register it as a `@Singleton`, just like other custom definitions. Import `me.trae.foundation.minecraft.paper.addon.item.CustomBlock`; it replaces the former `types.PlaceableCustomItem`. Its constructor takes `(material, uniqueId, identifier)` and rejects materials for which `Material.isBlock()` is false. Keep the definition's unique ID stable: saved blocks resolve their definition through that ID.
 
-Implement both `createBlockData` overloads: one creates state for a newly placed block, and the other restores state from its saved `PersistentDataContainer`. Use `CustomBlockData` directly when its built-in fields are enough, or supply a subclass for additional state. The examples use the Item addon's `block`, `types`, `enums`, and `services` packages alongside Bukkit types and `java.util.List`.
+`createBlockData` has built-in reflective construction, so implementations no longer need to supply both overloads. The definition resolves its `BlockData` generic type into `blockDataClass`, exposed by `getBlockDataClass()`. Use a concrete block-data type in the generic declaration and supply constructors matching the factory arguments:
+
+| Factory | Default behavior | Override support |
+| --- | --- | --- |
+| `createBlockData(player, block)` | Construct the block-data type with the player as its only argument; the block is not passed to the constructor | Optional override for custom initialization or constructors with other arguments |
+| `createBlockData(persistentDataContainer)` | Construct the block-data type with the saved PDC as its only argument | Final; restoration belongs in the data type's PDC constructor |
+
+Reflective construction failures are wrapped in a `RuntimeException` identifying the definition and data type. `CustomBlockData` currently takes `(CustomItem, Player)` for new placements, so using it directly still requires a placement override; its PDC constructor already supports automatic restoration. A custom data type with a compatible single-`Player` constructor and a PDC constructor can use both defaults. The examples use the Item addon's `block`, `types`, `enums`, and `services` packages alongside Bukkit types, `java.time.Duration`, and `java.util.List`.
 
 ### Placeable item example
 
@@ -393,7 +402,7 @@ This block expires five minutes after placement, resists explosions, requires a 
 
 ```java
 @Singleton
-public class TemporaryOre extends PlaceableCustomItem<CustomBlockData> {
+public class TemporaryOre extends CustomBlock<CustomBlockData> {
 
     private final BlockService blockService;
 
@@ -423,11 +432,6 @@ public class TemporaryOre extends PlaceableCustomItem<CustomBlockData> {
     }
 
     @Override
-    public CustomBlockData createBlockData(final PersistentDataContainer persistentDataContainer) {
-        return new CustomBlockData(persistentDataContainer);
-    }
-
-    @Override
     public ToolRequirement getToolRequirement() {
         return ToolRequirement.material(Material.DIAMOND_PICKAXE);
     }
@@ -445,27 +449,40 @@ public class TemporaryOre extends PlaceableCustomItem<CustomBlockData> {
     @Override
     public void onExpire(final Block block, final CustomBlockData customBlockData) {
         UtilMessage.broadcast("Block", "A temporary ore block has expired!");
+
+        this.blockService.resetBlock(block);
     }
 }
 ```
 
-Issue the item with `temporaryOre.create()`. Ordinary Bukkit placement of that stamped stack starts the block lifecycle; `createView()` does not stamp the definition ID needed for lookup.
+Issue the item with `temporaryOre.create()`. Ordinary Bukkit placement of that stamped stack starts the block lifecycle; `createView()` does not stamp the definition ID needed for lookup. The example overrides only placement to pass the definition to `CustomBlockData` and set its expiry. Saved data is restored automatically through `CustomBlockData(PersistentDataContainer)`.
 
-### Placement, damage, breaking, and drops
+### Placement, interaction, breaking, and drops
 
-The interaction listener handles uncancelled events at `HIGHEST` priority:
+The custom block interaction listener runs at `HIGHEST` priority. Placement and breaking skip cancelled events; block clicks follow the interaction checks described below.
 
 | Trigger | Sequence |
 | --- | --- |
 | Placement | Resolve the held definition, check `canPlace(player, block)`, create and register data, write it to chunk PDC, then call `onPlace(player, block)` |
-| Damage | Check `canDamage(player, block, itemInHand, blockData)`, set `lastDamagedAt` to the current time, mark data dirty, then call `onDamage(...)` |
+| Main-hand block click | Resolve `InteractType` and the tracked block's definition, deny vanilla block use when applicable, check `canInteract(player, block, itemInHand, interactType, blockData)`, then call `onInteract(...)` |
 | Player break | Check `canBreak(player, block, blockData)`, delete registered and saved data, disable vanilla item drops, process custom drops, then call `onBreak(...)` |
 
-Returning `false` from a placement, damage, or break check cancels that event. `canPlace` and `canBreak` default to `true`; `canDamage` defaults to allowing materials with nonnegative hardness. The corresponding callbacks default to no-ops. `onPlace` can retrieve the already registered data through `BlockService`; data has already been deleted by the time `onBreak` runs, so use its supplied argument.
+Returning `false` from `canPlace` or `canBreak` cancels that event. Both default to `true`. The corresponding callbacks default to no-ops. `onPlace` can retrieve the already registered data through `BlockService`; data has already been deleted by the time `onBreak` runs, so use its supplied argument.
+
+`canInteract(player, block, itemInHand, interactType, blockData)` defaults to `true`; `onInteract(...)` has the same arguments and defaults to a no-op. The held stack comes from `PlayerInteractEvent.getItem()` and can be null. Only main-hand clicks on nonempty, tracked blocks are handled. The listener does not skip previously cancelled interactions. Returning `false` from `canInteract` skips the custom callback without cancelling the event or changing its item-in-hand result.
+
+Before `canInteract` runs, the listener sets `useInteractedBlock` to `Event.Result.DENY` when `UtilMaterial.isInteractableByHand(block.getType(), itemInHand)` returns `true`. This denial remains even if `canInteract` returns `false`. Interaction callbacks do not automatically mark block data dirty; call `this.blockService.updateBlockData(block)` after changing persistent fields.
+
+| `InteractType` | Bukkit action | Display name |
+| --- | --- | --- |
+| `LEFT_CLICK` | `Action.LEFT_CLICK_BLOCK` | `Left-Click` |
+| `RIGHT_CLICK` | `Action.RIGHT_CLICK_BLOCK` | `Right-Click` |
+
+`InteractType.getByAction(action)` returns an `Optional<InteractType>` and is empty for other actions, including air clicks and physical interactions. `getAction()` and `getName()` expose the mapped action and display name. These block interaction types are separate from the held-item activation system's `ActivateType`.
 
 Custom drops are skipped in creative mode. Otherwise, `canDrop(...)` must return `true` and `getToolRequirement().matches(...)` must accept the player's main-hand item. `canDrop` defaults to `true`; `getDrops(...)` defaults to a singleton set containing `this.create()`. Override it to return another `Set<ItemStack>` or an empty set for no drops. The original placed stack's metadata is not automatically copied to the drop.
 
-`insertOnDrop(...)` defaults to `false`, dropping each result naturally at the block's center. Returning `true` uses `UtilItemStack.insert(player, itemStack, leftOverConsumer)` to insert it and drop only overflow at that same location. Tool requirements control drops only: a wrong tool does not by itself prevent damage or breaking. Use `canDamage` or `canBreak` when those actions also need restrictions.
+`insertOnDrop(...)` defaults to `false`, dropping each result naturally at the block's center. Returning `true` uses `UtilItemStack.insert(player, itemStack, leftOverConsumer)` to insert it and drop only overflow at that same location. Tool requirements control drops only: a wrong tool does not by itself prevent interaction or breaking. Use `canInteract` to gate the custom interaction callback or `canBreak` to prevent breaking.
 
 | Tool requirement | Matches |
 | --- | --- |
@@ -503,11 +520,11 @@ Returning `false` cancels a single-block removal event. For explosions and struc
 
 ### Tick callbacks
 
-Override `onTick(final Block block, final BlockData blockData)` on `PlaceableCustomItem` for recurring block behavior. It returns `void` and defaults to a no-op. `BlockService` runs its scheduler every 50 milliseconds and calls this hook for each unexpired, tracked block in a loaded chunk whose placeable definition still resolves. The callback receives the definition's typed block data and runs even when that data is not dirty. Unloaded chunks are skipped, including entries retained with `shouldUnloadChunk(...)` returning `false`.
+Override `onTick(final Block block, final BlockData blockData)` on `CustomBlock` for recurring block behavior. It returns `void` and defaults to a no-op. `BlockService` runs its scheduler every 50 milliseconds and calls this hook for each unexpired, tracked block in a loaded chunk whose placeable definition still resolves. The callback receives the definition's typed block data and runs even when that data is not dirty. Unloaded chunks are skipped, including entries retained with `shouldUnloadChunk(...)` returning `false`.
 
 Each block's scheduler pass follows this order:
 
-1. Check expiry. If expired, call `onExpire(...)` when the definition resolves, delete the data, and return without calling `onTick(...)`.
+1. Check expiry. If expired, call `onExpire(...)` when the definition resolves, then check `shouldRemoveBlockOnExpire(block, blockData)`. If the definition is missing or the check returns `true`, call `resetBlock(block)` to delete the data and clear the physical block; otherwise, delete only the data. Return without calling `onTick(...)`.
 2. Call `onTick(block, blockData)` when the definition resolves.
 3. Write the data if it is dirty, then clear its dirty flag.
 
@@ -524,23 +541,26 @@ If `onTick(...)` changes persistent fields, call `this.blockService.updateBlockD
 | `placedBy` | Immutable placer UUID; nullable when constructed without a player |
 | `expiry` | Lifetime in milliseconds, relative to `getExpiryStartTime()`; values at or below zero disable expiry |
 | `lastTickedAt` | Timestamp set during chunk unload preparation; not updated on each scheduler pass |
-| `lastDamagedAt` | Timestamp of the last accepted block damage event |
 | `dirty` | In-memory flag requesting a write; not itself persisted |
 
-`getExpiryStartTime()` defaults to `placedAt` and can be overridden in a data subclass. `hasExpired()` is final. The service checks loaded, tracked blocks every 50 milliseconds, calls `onExpire(...)` when expired, and deletes their data. Expiry is also checked during restoration, before registration and `onChunkLoad`. The default `onExpire` does nothing to the world: override it and call `blockService.resetBlock(block)`, as above, to clear the data and physical block, or implement your own replacement behavior. Expiry does not call `canRemove` or run the drop pipeline.
+`getExpiryStartTime()` defaults to `placedAt` and can be overridden in a data subclass. `hasExpired()` is final. During scheduled expiry, the service calls `onExpire(...)`, then checks `shouldRemoveBlockOnExpire(block, blockData)` before deleting data. This hook defaults to `true`, causing `resetBlock(block)` to delete the data and clear the physical block. Return `false` to retain the physical block or a replacement created by `onExpire`; the service then deletes only its custom data. Both callbacks can access the registered data unless an earlier callback explicitly removed it. An expired block with no resolvable definition is always reset. `onExpire` itself defaults to a no-op. Expiry does not call `canRemove` or run the drop pipeline.
+
+During chunk restoration, expiry is checked before registration and `onChunkLoad`. That path currently calls `onExpire(...)` and deletes the data without checking `shouldRemoveBlockOnExpire` or automatically resetting the physical block. Call `this.blockService.resetBlock(block)` in `onExpire` if the block must also be cleared on this path. The example above broadcasts and explicitly resets on expiry so the physical block is cleared on either path.
 
 Data is stored in the chunk's PDC under `custom:block`, with a nested `block:<packed-position>` container per position. The position encodes local X/Z and Y relative to the world's minimum height. Base fields use the `custom_block_data` namespace. Placement writes immediately; subsequent changes require `blockService.updateBlockData(block)` to mark them dirty for the next scheduler pass, or `blockService.writeBlockData(block)` to write immediately. Setters alone do not mark data dirty.
 
-To persist extra state, subclass `CustomBlockData`, restore your fields in its PDC constructor, and override `write` while retaining `super.write(...)`. For example, this separate data class records accepted damage events (imports omitted):
+Each `CustomBlockData.write(...)` first removes every key in the `custom_block_data` namespace from that position's container, then writes the current base fields. This clears obsolete base keys, including the former `last_damaged_at`, and omits `placed_by` when the placer is null. Keys in other namespaces are retained. Use your own namespace for additional fields and write them after `super.write(...)`, as in the example below; removing obsolete custom fields remains your subclass's responsibility.
+
+To persist extra state, subclass `CustomBlockData`, restore your fields in its PDC constructor, and override `write` while retaining `super.write(...)`. For example, this separate data class records accepted interactions (imports omitted):
 
 ```java
 @Getter
 @Setter
 public class OreBlockData extends CustomBlockData {
 
-    private static final NamespacedKey DAMAGE_COUNT_KEY = new NamespacedKey("example", "damage_count");
+    private static final NamespacedKey INTERACTION_COUNT_KEY = new NamespacedKey("example", "interaction_count");
 
-    private int damageCount;
+    private int interactionCount;
 
     public OreBlockData(final CustomItem customItem, final Player player) {
         super(customItem, player);
@@ -549,19 +569,37 @@ public class OreBlockData extends CustomBlockData {
     public OreBlockData(final PersistentDataContainer persistentDataContainer) {
         super(persistentDataContainer);
         
-        this.damageCount = persistentDataContainer.getOrDefault(DAMAGE_COUNT_KEY, PersistentDataType.INTEGER, 0);
+        this.interactionCount = persistentDataContainer.getOrDefault(INTERACTION_COUNT_KEY, PersistentDataType.INTEGER, 0);
     }
 
     @Override
     public void write(final PersistentDataContainer persistentDataContainer) {
         super.write(persistentDataContainer);
         
-        persistentDataContainer.set(DAMAGE_COUNT_KEY, PersistentDataType.INTEGER, this.damageCount);
+        persistentDataContainer.set(INTERACTION_COUNT_KEY, PersistentDataType.INTEGER, this.interactionCount);
     }
 }
 ```
 
-Use `PlaceableCustomItem<OreBlockData>`, return `new OreBlockData(this, player)` from the placement factory, and `new OreBlockData(persistentDataContainer)` from the restoration factory. Callbacks then receive `OreBlockData` directly. An `onDamage` implementation can call `oreBlockData.setDamageCount(oreBlockData.getDamageCount() + 1)`; that event already marks data dirty. Changes from other code should explicitly request a write through the service.
+Use `CustomBlock<OreBlockData>` and override the placement factory to return `new OreBlockData(this, player)`, since this example's placement constructor takes both the definition and player. The final restoration factory automatically invokes `OreBlockData(PersistentDataContainer)`; do not override it. Callbacks receive `OreBlockData` directly. With an injected `BlockService`, count right-click interactions and queue persistence explicitly:
+
+```java
+@Override
+public void onInteract(
+        final Player player,
+        final Block block,
+        final ItemStack itemInHand,
+        final InteractType interactType,
+        final OreBlockData oreBlockData
+) {
+    if (interactType != InteractType.RIGHT_CLICK) {
+        return;
+    }
+
+    oreBlockData.setInteractionCount(oreBlockData.getInteractionCount() + 1);
+    this.blockService.updateBlockData(block);
+}
+```
 
 ### Chunk lifecycle and block service
 
@@ -745,7 +783,7 @@ The Item addon prevents custom items from being used in unintended contexts. Lis
 
 `ItemIngredientEvent` is fired when a custom item is encountered in a crafting context. The [Recipe addon](../Minecraft-Paper-Addon-Recipe/README.md) listens to this event and allows custom items that are valid ingredients for a registered custom recipe.
 
-`ItemPreventionListener` also cancels `BlockPlaceEvent` at `LOWEST` priority when the held stack resolves to an `ActivatableCustomItem`, including its single-activation and channel subclasses. This applies independently of the activation gates and vanilla interaction hooks. Use `PlaceableCustomItem` for the managed block lifecycle described in [Blocks](#blocks); it extends `CustomItem` directly and is not covered by this activation-specific placement prevention.
+`ItemPreventionListener` also cancels `BlockPlaceEvent` at `LOWEST` priority when the held stack resolves to an `ActivatableCustomItem`, including its single-activation and channel subclasses. This applies independently of the activation gates and vanilla interaction hooks. Use `CustomBlock` for the managed block lifecycle described in [Blocks](#blocks); it extends `CustomItem` directly and is not covered by this activation-specific placement prevention.
 
 ## Inventory synchronization
 

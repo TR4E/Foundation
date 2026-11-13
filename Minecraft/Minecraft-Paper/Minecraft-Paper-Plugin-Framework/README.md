@@ -532,7 +532,32 @@ Time values are converted from `ChronoUnit` to Minecraft ticks (duration in mill
 
 ### UtilItemStack
 
-`UtilItemStack.UNIQUE_ID_KEY` is `NamespacedKey("custom", "item_unique_id")`. `getUniqueIdByItemStack` reads a custom item's persistent definition unique ID. When both stacks carry unique IDs, `isSimilar` compares those values; otherwise it compares material, display name, lore, and enchantments. The [Item addon](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#custom-item) keeps this identity separate from the typable `identifier` and raw display name returned by `getName()`.
+`UtilItemStack.UNIQUE_ID_KEY` is `NamespacedKey("custom", "item_unique_id")`. `getUniqueIdByItemStack` reads a custom item's persistent definition unique ID. The [Item addon](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#custom-item) keeps this identity separate from the typable `identifier` and raw display name returned by `getName()`.
+
+`isSimilar(first, second, strictItemMeta)` applies these checks in order:
+
+1. A null argument returns `false`. Two empty stacks match; one empty stack does not match a nonempty stack.
+2. Nonempty stacks must have the same material, even when their custom IDs match.
+3. If either stack has a custom ID, require both IDs to be equal and return immediately. One tagged item and one ID-less item never match. Matching custom items bypass metadata checks in either mode.
+4. For ID-less stacks, if either meta is null, both must be null. With `strictItemMeta = true`, display-name, lore, and enchantment presence must match. In both modes, compare each property's values whenever both metas contain it.
+
+With `strictItemMeta = false`, a plain ID-less stack can match a named, lored, or enchanted ID-less stack of the same material when that property exists on only one side. If both have a property, its values must still match. Amount, durability, tracking IDs, and other metadata are not compared. This is the base matching rule used by inventory `contains`/`remove` and the Recipe addon's ingredient validation; it differs from Bukkit's full item-meta comparison.
+
+| Comparison | Optional metadata (`false`) | Strict metadata (`true`) |
+| --- | --- | --- |
+| Plain gold vs ID-less renamed gold | Match | Reject |
+| Two ID-less gold stacks with different display names | Reject | Reject |
+| Plain gold vs custom Reinforced Gold | Reject | Reject |
+| Same material and custom ID, different name/lore | Match | Match |
+| Same custom ID, different material | Reject | Reject |
+
+| Helper | Behaviour |
+| --- | --- |
+| `getPersistentData(itemStack, key, type)` | Read a PDC value as an `Optional`; empty for null stacks, missing metadata, or missing data |
+| `getUniqueIdByItemStack(itemStack)` | Read the definition ID as an `Optional`; requires a nonnull stack |
+| `getItemInMainHand(entity)` | Return a nonempty main-hand stack for an equipped living entity as an `Optional` |
+| `getArmourContents(entity)` | Return the living entity's armor array, or null when equipment is unavailable |
+| `getDisplayName(itemStack, hoverable)` | Return the effective Adventure name, optionally with the item's hover event; null for null or empty stacks; remove explicit white coloring from the name |
 
 `insert` adds an item to a player's inventory. Choose the overload for how overflow should be handled:
 
@@ -556,7 +581,25 @@ UtilItemStack.insert(
 
 The [Item addon's block drops](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#placement-interaction-breaking-and-drops) use this overload when `insertOnDrop(...)` returns `true`.
 
-`contains` and `remove` check and remove items by count, using `isSimilar` for matching.
+`contains` totals matching stacks across the player's inventory. `remove` first checks that the requested count is available; it returns `false` without removing anything if there are too few matching items. Otherwise it removes that count across matching slots and returns `true`. Both use `isSimilar` for matching.
+
+| Method | Metadata mode |
+| --- | --- |
+| `contains(player, itemStack, amount)` | Optional (`false`) |
+| `contains(player, itemStack, amount, strictItemMeta)` | Explicit choice |
+| `remove(player, itemStack, amount)` | Optional (`false`) |
+| `remove(player, itemStack, amount, strictItemMeta)` | Explicit choice, used for both availability checking and removal |
+
+For example, with 2 plain gold ingots and 3 renamed ID-less gold ingots in the inventory, where `plainGoldItemStack` has no name, lore, enchantments, or custom ID:
+
+```java
+UtilItemStack.contains(player, plainGoldItemStack, 5);        // true: optional metadata
+UtilItemStack.contains(player, plainGoldItemStack, 5, true);  // false: only 2 strict matches
+UtilItemStack.remove(player, plainGoldItemStack, 5, true);    // false: removes nothing
+UtilItemStack.remove(player, plainGoldItemStack, 5);          // true: removes all 5
+```
+
+Custom gold ingots do not contribute to a plain-gold request in either mode. Requests for a custom item match its material and custom ID regardless of its display name, lore, or enchantments.
 
 ### UtilSkull
 

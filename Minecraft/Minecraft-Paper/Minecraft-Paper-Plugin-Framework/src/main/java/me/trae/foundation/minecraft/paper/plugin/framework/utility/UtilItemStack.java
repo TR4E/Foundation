@@ -46,11 +46,11 @@ public class UtilItemStack {
         insert(player, itemStack, leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
     }
 
-    public static boolean contains(final Player player, final ItemStack itemStack, final int amount) {
+    public static boolean contains(final Player player, final ItemStack itemStack, final int amount, final boolean strictItemMeta) {
         int found = 0;
 
         for (final ItemStack content : player.getInventory().getContents()) {
-            if (content == null || !isSimilar(itemStack, content)) {
+            if (content == null || !isSimilar(itemStack, content, strictItemMeta)) {
                 continue;
             }
 
@@ -64,8 +64,12 @@ public class UtilItemStack {
         return false;
     }
 
-    public static boolean remove(final Player player, final ItemStack itemStack, final int amount) {
-        if (!contains(player, itemStack, amount)) {
+    public static boolean contains(final Player player, final ItemStack itemStack, final int amount) {
+        return contains(player, itemStack, amount, false);
+    }
+
+    public static boolean remove(final Player player, final ItemStack itemStack, final int amount, final boolean strictItemMeta) {
+        if (!contains(player, itemStack, amount, strictItemMeta)) {
             return false;
         }
 
@@ -77,7 +81,7 @@ public class UtilItemStack {
 
         for (int index = 0; index < contents.length && remaining > 0; index++) {
             final ItemStack content = contents[index];
-            if (content == null || !isSimilar(itemStack, content)) {
+            if (content == null || !isSimilar(itemStack, content, strictItemMeta)) {
                 continue;
             }
 
@@ -95,7 +99,11 @@ public class UtilItemStack {
         return true;
     }
 
-    public static boolean isSimilar(final ItemStack itemStack, final ItemStack content) {
+    public static boolean remove(final Player player, final ItemStack itemStack, final int amount) {
+        return remove(player, itemStack, amount, false);
+    }
+
+    public static boolean isSimilar(final ItemStack itemStack, final ItemStack content, final boolean strictItemMeta) {
         if (itemStack == null || content == null) {
             return false;
         }
@@ -114,8 +122,9 @@ public class UtilItemStack {
 
         final String itemStackUniqueId = getPersistentData(itemStack, UNIQUE_ID_KEY, PersistentDataType.STRING).orElse(null);
         final String contentUniqueId = getPersistentData(content, UNIQUE_ID_KEY, PersistentDataType.STRING).orElse(null);
-        if (itemStackUniqueId != null && contentUniqueId != null) {
-            return itemStackUniqueId.equals(contentUniqueId);
+
+        if (itemStackUniqueId != null || contentUniqueId != null) {
+            return Objects.equals(itemStackUniqueId, contentUniqueId);
         }
 
         final ItemMeta itemStackMeta = itemStack.getItemMeta();
@@ -125,6 +134,20 @@ public class UtilItemStack {
             return itemStackMeta == contentMeta;
         }
 
+        // ItemMeta Check
+        if (strictItemMeta && itemStackMeta.hasDisplayName() != contentMeta.hasDisplayName()) {
+            return false;
+        }
+
+        if (strictItemMeta && itemStackMeta.hasLore() != contentMeta.hasLore()) {
+            return false;
+        }
+
+        if (strictItemMeta && itemStackMeta.hasEnchants() != contentMeta.hasEnchants()) {
+            return false;
+        }
+
+        // ItemMeta Confirm
         if (itemStackMeta.hasDisplayName() && contentMeta.hasDisplayName() && !Objects.equals(itemStackMeta.displayName(), contentMeta.displayName())) {
             return false;
         }

@@ -464,21 +464,28 @@ The custom block interaction listener runs at `HIGHEST` priority. Placement and 
 | Trigger | Sequence |
 | --- | --- |
 | Placement | Resolve the held definition, check `canPlace(player, block)`, create and register data, write it to chunk PDC, then call `onPlace(player, block)` |
-| Main-hand block click | Resolve `InteractType` and the tracked block's definition, deny vanilla block use when applicable, check `canInteract(player, block, itemInHand, interactType, blockData)`, then call `onInteract(...)` |
+| Main-hand block click | Resolve `BlockInteractType` and the tracked block's definition, deny vanilla block use when applicable, check `canInteract(player, block, itemInHand, interactType, blockData)`, then call `onInteract(...)` |
 | Player break | Check `canBreak(player, block, blockData)`, delete registered and saved data, disable vanilla item drops, process custom drops, then call `onBreak(...)` |
 
 Returning `false` from `canPlace` or `canBreak` cancels that event. Both default to `true`. The corresponding callbacks default to no-ops. `onPlace` can retrieve the already registered data through `BlockService`; data has already been deleted by the time `onBreak` runs, so use its supplied argument.
 
-`canInteract(player, block, itemInHand, interactType, blockData)` defaults to `true`; `onInteract(...)` has the same arguments and defaults to a no-op. The held stack comes from `PlayerInteractEvent.getItem()` and can be null. Only main-hand clicks on nonempty, tracked blocks are handled. The listener does not skip previously cancelled interactions. Returning `false` from `canInteract` skips the custom callback without cancelling the event or changing its item-in-hand result.
+`canInteract(player, block, itemInHand, interactType, blockData)` defaults to `true`; `onInteract(...)` has the same arguments and defaults to a no-op. The held stack comes from `PlayerInteractEvent.getItem()` and can be null. Only main-hand clicks on nonempty, tracked blocks are handled. Creative-mode left-clicks return before the block lookup, vanilla-use denials, and interaction callbacks; creative right-clicks follow the normal interaction flow. The listener does not skip previously cancelled interactions. Returning `false` from `canInteract` skips the custom callback without cancelling the whole event.
 
-Before `canInteract` runs, the listener sets `useInteractedBlock` to `Event.Result.DENY` when `UtilMaterial.isInteractableByHand(block.getType(), itemInHand)` returns `true`. This denial remains even if `canInteract` returns `false`. Interaction callbacks do not automatically mark block data dirty; call `this.blockService.updateBlockData(block)` after changing persistent fields.
+Before `canInteract` runs, the listener controls the two vanilla actions separately:
 
-| `InteractType` | Bukkit action | Display name |
+| Vanilla action | When it is denied |
+| --- | --- |
+| `useInteractedBlock` | `UtilMaterial.isInteractable(block.getType(), interactType)` returns `true` for the block and click type |
+| `useItemInHand` | A right-click has a nonnull held item and `UtilMaterial.isInteractableByHand(block.getType(), itemInHand)` returns `true`, such as using an axe on a log |
+
+These denials remain even if `canInteract` returns `false`; the guard only decides whether `onInteract` runs. Interaction callbacks do not automatically mark block data dirty; call `this.blockService.updateBlockData(block)` after changing persistent fields.
+
+| `BlockInteractType` | Bukkit action | Display name |
 | --- | --- | --- |
 | `LEFT_CLICK` | `Action.LEFT_CLICK_BLOCK` | `Left-Click` |
 | `RIGHT_CLICK` | `Action.RIGHT_CLICK_BLOCK` | `Right-Click` |
 
-`InteractType.getByAction(action)` returns an `Optional<InteractType>` and is empty for other actions, including air clicks and physical interactions. `getAction()` and `getName()` expose the mapped action and display name. These block interaction types are separate from the held-item activation system's `ActivateType`.
+Import `BlockInteractType` from `me.trae.foundation.minecraft.paper.plugin.framework.utility.enums`. `BlockInteractType.getByAction(action)` returns an `Optional<BlockInteractType>` and is empty for other actions, including air clicks and physical interactions. `getAction()` and `getName()` expose the mapped action and display name. These block interaction types are separate from the held-item activation system's `ActivateType`. See the framework's [UtilMaterial](../../Minecraft-Paper-Plugin-Framework/README.md#utilmaterial) for the click-specific classification rules.
 
 Custom drops are skipped in creative mode. Otherwise, `canDrop(...)` must return `true` and `getToolRequirement().matches(...)` must accept the player's main-hand item. `canDrop` defaults to `true`; `getDrops(...)` defaults to a singleton set containing `this.create()`. Override it to return another `Set<ItemStack>` or an empty set for no drops. The original placed stack's metadata is not automatically copied to the drop.
 
@@ -589,10 +596,10 @@ public void onInteract(
         final Player player,
         final Block block,
         final ItemStack itemInHand,
-        final InteractType interactType,
+        final BlockInteractType interactType,
         final OreBlockData oreBlockData
 ) {
-    if (interactType != InteractType.RIGHT_CLICK) {
+    if (interactType != BlockInteractType.RIGHT_CLICK) {
         return;
     }
 

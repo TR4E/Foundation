@@ -2,7 +2,7 @@ package me.trae.foundation.minecraft.paper.plugin.framework.utility;
 
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.paper.plugin.framework.search.types.PaperMaterialSearchEngine;
-import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.InteractType;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.BlockInteractType;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.inventory.ItemStack;
@@ -55,8 +55,8 @@ public class UtilMaterial {
         };
     }
 
-    public static boolean isInteractable(final Material material, final InteractType interactType) {
-        if (interactType == InteractType.RIGHT_CLICK) {
+    public static boolean isInteractable(final Material material, final BlockInteractType interactType) {
+        if (interactType == BlockInteractType.RIGHT_CLICK) {
             return isInteractable(material);
         }
 

@@ -499,6 +499,21 @@ title.send(player);
 | `CommandRegistry` | Registers and unregisters root and child commands with Bukkit's command map |
 | `PluginRegistry` | Tracks framework plugins by name and class for cross-plugin discovery; searches their `getPluginName()` values |
 
+### UtilMaterial
+
+`UtilMaterial` classifies materials for vanilla interaction and provides `searchMaterial(...)` through the [search helpers](#search-helpers). Its classification methods inspect material categories; they do not dispatch events or change blocks.
+
+| Method | Behaviour |
+| --- | --- |
+| `isInteractable(material)` | Check the built-in right-click interaction list, including containers, doors, buttons, and workstations |
+| `isInteractable(material, interactType)` | Use the right-click list for `BlockInteractType.RIGHT_CLICK`; for left-clicks, match bell, dragon egg, fire, soul fire, note block, redstone ore, deepslate redstone ore, or decorated pot |
+| `isInteractableByHand(material, itemStack)` | Check whether the held item's material can act on the block, such as axes stripping logs or hoes tilling soil; requires a nonnull stack |
+| `isUsable(material)` | Check the built-in list of usable item materials, including food, drink, and throwable items |
+
+`BlockInteractType` belongs to `utility.enums` and has `LEFT_CLICK` and `RIGHT_CLICK`, mapped to `Action.LEFT_CLICK_BLOCK` and `Action.RIGHT_CLICK_BLOCK`. Its `getByAction(action)` returns an `Optional`, empty for air clicks and physical actions. `getAction()` returns the Bukkit action and `getName()` returns `Left-Click` or `Right-Click`.
+
+The [Item addon's custom block listener](../Minecraft-Paper-Addons/Minecraft-Paper-Addon-Item/README.md#placement-interaction-breaking-and-drops) uses the click-specific overload to deny vanilla block use, and the held-item helper separately to deny item use on right-click.
+
 ### UtilWorld
 
 [UtilWorld](src/main/java/me/trae/foundation/minecraft/paper/plugin/framework/utility/UtilWorld.java) provides loaded-world access and search:

@@ -9,7 +9,7 @@ import me.trae.foundation.minecraft.paper.addon.item.services.ItemService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMaterial;
-import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.InteractType;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.BlockInteractType;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -110,8 +110,14 @@ public final class CustomBlockInteractionListener implements Listener {
             return;
         }
 
-        final InteractType interactType = InteractType.getByAction(event.getAction()).orElse(null);
+        final BlockInteractType interactType = BlockInteractType.getByAction(event.getAction()).orElse(null);
         if (interactType == null) {
+            return;
+        }
+
+        final Player player = event.getPlayer();
+
+        if (player.getGameMode() == GameMode.CREATIVE && interactType == BlockInteractType.LEFT_CLICK) {
             return;
         }
 
@@ -125,15 +131,13 @@ public final class CustomBlockInteractionListener implements Listener {
             return;
         }
 
-        final Player player = event.getPlayer();
-
         final ItemStack itemStack = event.getItem();
 
         if (UtilMaterial.isInteractable(clickedBlock.getType(), interactType)) {
             event.setUseInteractedBlock(Event.Result.DENY);
         }
 
-        if (itemStack != null && interactType == InteractType.RIGHT_CLICK && UtilMaterial.isInteractableByHand(clickedBlock.getType(), itemStack)) {
+        if (itemStack != null && interactType == BlockInteractType.RIGHT_CLICK && UtilMaterial.isInteractableByHand(clickedBlock.getType(), itemStack)) {
             event.setUseItemInHand(Event.Result.DENY);
         }
 

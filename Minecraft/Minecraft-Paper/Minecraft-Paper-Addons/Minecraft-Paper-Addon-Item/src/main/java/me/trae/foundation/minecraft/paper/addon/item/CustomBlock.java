@@ -4,7 +4,7 @@ import lombok.Getter;
 import me.trae.foundation.minecraft.paper.addon.item.block.CustomBlockData;
 import me.trae.foundation.minecraft.paper.addon.item.block.ToolRequirement;
 import me.trae.foundation.minecraft.paper.addon.item.enums.BlockRemoveReason;
-import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.InteractType;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.BlockInteractType;
 import me.trae.foundation.utilities.UtilClass;
 import me.trae.foundation.utilities.UtilGeneric;
 import org.bukkit.Material;
@@ -58,7 +58,7 @@ public abstract class CustomBlock<BlockData extends CustomBlockData> extends Cus
         return true;
     }
 
-    public boolean canInteract(final Player player, final Block block, final ItemStack itemInHand, final InteractType interactType, final BlockData blockData) {
+    public boolean canInteract(final Player player, final Block block, final ItemStack itemInHand, final BlockInteractType interactType, final BlockData blockData) {
         return true;
     }
 
@@ -75,7 +75,7 @@ public abstract class CustomBlock<BlockData extends CustomBlockData> extends Cus
     public void onRemove(final Block block, final BlockData blockData, final BlockRemoveReason removeReason) {
     }
 
-    public void onInteract(final Player player, final Block block, final ItemStack itemInHand, final InteractType interactType, final BlockData blockData) {
+    public void onInteract(final Player player, final Block block, final ItemStack itemInHand, final BlockInteractType interactType, final BlockData blockData) {
     }
 
     public void onTick(final Block block, final BlockData blockData) {

@@ -30,7 +30,7 @@ public abstract class Element<Window extends me.trae.foundation.minecraft.paper.
     }
 
     public final void render() {
-        this.getWindow().render(this);
+        this.getWindow().renderElement(this);
     }
 
     public void build() {

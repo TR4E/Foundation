@@ -21,6 +21,7 @@ The Window addon defines inventory menus as classes. A window owns one viewer an
 - [Paginated layout](#paginated-layout)
 - [Elements](#elements)
 - [Buttons](#buttons)
+- [Navigation builtins](#navigation-builtins)
 - [Skull builtins](#skull-builtins)
 - [Lifecycle](#lifecycle)
 - [Asynchronous rendering](#asynchronous-rendering)
@@ -160,7 +161,7 @@ Create it with `Layout.of(size)`. The constructor is protected for layout subcla
 
 `fill` skips occupied slots, so calling it after `border` and `set` leaves the earlier placements intact. `set` and `row` ignore slots outside the layout; `column` ignores column numbers outside `0` through `8` and visits each complete row.
 
-`border`, `row`, and `column` assume nine columns. For a dispenser's 3×3 shape, use `set` to place individual slots or `fill` to fill empty slots.
+`border`, `row`, and `column` assume nine columns. For a dispenser's 3Ãƒâ€”3 shape, use `set` to place individual slots or `fill` to fill empty slots.
 
 The element map is a `ConcurrentHashMap`. Element registration, inventory rendering, and click routing run on the main thread. Keep asynchronous data loading in `build()` rather than modifying the layout there.
 
@@ -222,11 +223,11 @@ public final class OrderHistoryWindow extends ChestWindow<PaginatedLayout> {
                 .toList());
 
         if (layout.hasPreviousPage()) {
-            layout.set(18, new PreviousPageButton(this));
+            layout.set(18, new PreviousPageButton<>(this));
         }
 
         if (layout.hasNextPage()) {
-            layout.set(26, new NextPageButton(this));
+            layout.set(26, new NextPageButton<>(this));
         }
     }
 }
@@ -265,9 +266,9 @@ Changing the page updates the query offset without loading content. After `nextP
 The click listener ignores button clicks while the window is rendering, so navigation buttons do not need their own rendering check. A previous-page button uses `previousPage()` followed by `render()` in the same way as the next-page button below.
 
 ```java
-public final class NextPageButton extends Button<OrderHistoryWindow> {
+public final class OrderHistoryNextPageButton extends Button<OrderHistoryWindow> {
 
-    public NextPageButton(final OrderHistoryWindow window) {
+    public OrderHistoryNextPageButton(final OrderHistoryWindow window) {
         super(window, ItemStack.of(Material.ARROW));
     }
 
@@ -319,7 +320,7 @@ public final class FillerElement extends Element<Window<?>> {
 | `getItemStack()` | `ItemStack` | n/a | The base stack supplied to the constructor |
 | `getDisplayName()` | `Component` | `null` | Display name applied only when the base stack has no custom display name |
 | `build()` | `void` | no-op | Public hook run off-thread by a single-element render |
-| `render()` | `void` | n/a | Delegate to the owning window's `render(this)` |
+| `render()` | `void` | n/a | Delegate to the owning window's `renderElement(this)` |
 | `refresh()` | `void` | n/a | Delegate to the owning window's `refresh(this)` |
 | `toItemStack()` | `ItemStack` | n/a | Clone the base stack, stamp it, and apply the description |
 
@@ -327,7 +328,7 @@ public final class FillerElement extends Element<Window<?>> {
 
 `toItemStack()` clones the base stack before applying its display name, marker, and description. Custom build hooks can still edit the base stack itself; the skull builtins use that behavior to prepare the profile before rendering. Give independently updated elements their own base stacks.
 
-An element's `build()` runs only when explicitly requested through `element.render()` or `window.render(element)`. A full window render calls the window's `build()`, then registers and displays elements without calling their individual `build()` hooks. Initialize the data needed for their first display through the window build and element constructor, or request a separate element render afterward.
+An element's `build()` runs only when explicitly requested through `element.render()` or `window.renderElement(element)`. A full window render calls the window's `build()`, then registers and displays elements without calling their individual `build()` hooks. Initialize the data needed for their first display through the window build and element constructor, or request a separate element render afterward.
 
 ## Buttons
 
@@ -366,6 +367,30 @@ public final class CancelOrderButton extends Button<OrderWindow> {
 | `getClickSoundStash(player, clickType)` | `SoundStash` | `null` | Sound played after `onClick` and before `ButtonPostClickEvent` |
 
 Button callbacks run inside `InventoryClickEvent`. The Window API does not defer `close()` or schedule `open()` checks internally. Defer inventory transitions from a click to the next tick with `UtilTask.executeLaterSynchronously(50, ChronoUnit.MILLIS, runnable)`, as in the close example above.
+
+## Navigation builtins
+
+The `me.trae.foundation.minecraft.paper.addon.window.builtin` package includes ready-made navigation buttons:
+
+| Class | Constructors | Default appearance and action |
+| --- | --- | --- |
+| `NextPageButton<Window, Layout>` | `(window)` or `(window, itemStack)` | Arrow named `Next Page` in yellow; advance if possible and render the window |
+| `PreviousPageButton<Window, Layout>` | `(window)` or `(window, itemStack)` | Arrow named `Previous Page` in yellow; go back if possible and render the window |
+| `BackButton<Window>` | `(window, parentWindow)` or `(window, itemStack, parentWindow)` | Barrier named `Back` in red; call the supplied parent's `open()` |
+
+Both page buttons require a window whose layout is a `PaginatedLayout`. They return an empty description and leave the page unchanged when navigation is unavailable. With those builtins imported, register them in a paginated window like this:
+
+```java
+if (layout.hasPreviousPage()) {
+    layout.set(18, new PreviousPageButton<>(this));
+}
+
+if (layout.hasNextPage()) {
+    layout.set(26, new NextPageButton<>(this));
+}
+```
+
+The custom `OrderHistoryNextPageButton` example above shows how to add a page counter instead. Supplied custom stacks retain an existing display name because the inherited name hook only fills an absent name. `BackButton` calls `open()` directly; it does not defer the transition. Override its click handler to schedule the parent open for the next tick when using it from an inventory click, following [Sub windows](#sub-windows).
 
 ## Skull builtins
 
@@ -457,13 +482,13 @@ For later profile updates, call `profileSkullButton.render()` on the main thread
 | `close()` | Close immediately if this window is still on top; does not cancel an unfinished open |
 | `render()` | Run `build()` off-thread, then clear, register, and apply elements on the main thread |
 | `render(runnable)` | Same as `render()`, then run the supplied callback on the main thread; accepts `null` |
-| `render(element)` | Run only the element's `build()` off-thread, then schedule its single-slot refresh on the main thread |
+| `renderElement(element)` | Run only the element's `build()` off-thread, then schedule its single-slot refresh on the main thread |
 | `refresh()` | Rewrite the current elements immediately with no rebuild; skipped while rendering; call on the main thread |
 | `refresh(element)` | Rewrite only the element's recorded slot immediately, without rebuilding; call on the main thread |
 
-Use `render()` for a full render without a callback. A bare `render(null)` is ambiguous between the `Runnable` and `Element<?>` overloads; use an explicit type if passing null to the callback overload.
+Use `render()` or `render(null)` for a full render without a callback. Use `renderElement(element)` for a single-element build; `element.render()` delegates to that method.
 
-Call `open()`, `close()`, `render()`, `refresh()`, and `getInventory()` on the main thread. `open()` returns when the viewer is offline. It dispatches `WindowOpenEvent`, checks `canOpen`, and captures the viewer's current top inventory before starting a render. Cancelling the event or returning `false` prevents the build. If this instance is already rendering, the new render and its open callback are dropped.
+Call `open()`, `close()`, `render()`, `renderElement(element)`, both `refresh` variants, and `getInventory()` on the main thread. `open()` returns when the viewer is offline. It dispatches `WindowOpenEvent`, checks `canOpen`, and captures the viewer's current top inventory before starting a render. Cancelling the event or returning `false` prevents the build. If this instance is already rendering, the new render and its open callback are dropped.
 
 After rendering, `open()` resolves the viewer again and opens the built inventory only if their current top inventory is still the captured inventory. This is an inventory identity check, not a request ID: leaving and returning to that same inventory while loading can still allow the open to complete. Separate window instances can render concurrently.
 
@@ -503,7 +528,7 @@ On a successful render, the rendering flag stays set until after the callback re
 
 ### Single-element rendering
 
-Call `element.render()` or `window.render(element)` to reload one element's data without rebuilding the window or its layout. It calls `element.build()` asynchronously, then schedules `window.refresh(element)` on the main thread. Both the initial request and the scheduled refresh are skipped during a full window render or before the backing inventory exists. The final refresh also requires a recorded slot for that element.
+Call `element.render()` or `window.renderElement(element)` to reload one element's data without rebuilding the window or its layout. It calls `element.build()` asynchronously, then schedules `window.refresh(element)` on the main thread. Both the initial request and the scheduled refresh are skipped during a full window render or before the backing inventory exists. The final refresh also requires a recorded slot for that element.
 
 Single-element rendering does not set `isRendering()`, block button clicks, or serialize other element builds. Repeated requests can overlap, so arrange dependent updates in your consuming code. It does not check whether the window is currently visible. Unlike a full render, an element build or refresh failure does not run the window's abort cleanup.
 

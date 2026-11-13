@@ -563,7 +563,7 @@ final class WindowLifecycleTest {
         when(element.toItemStack()).thenReturn(itemStack);
         testWindow.getLayout().set(4, element);
 
-        testWindow.render(element);
+        testWindow.renderElement(element);
 
         verify(element, never()).build();
         assertFalse(testWindow.isRendering());
@@ -585,7 +585,7 @@ final class WindowLifecycleTest {
         final TestWindow testWindow = this.window();
         final Element<?> element = mock(Element.class);
         testWindow.getLayout().set(4, element);
-        testWindow.render(element);
+        testWindow.renderElement(element);
         this.runAsynchronousTask(this.asynchronousRunnableDeque.removeFirst());
 
         testWindow.render();

@@ -105,10 +105,10 @@ public abstract class Window<Layout extends me.trae.foundation.minecraft.paper.a
     }
 
     public final void render() {
-        this.render((Runnable) null);
+        this.render(null);
     }
 
-    public final void render(final Element<?> element) {
+    public final void renderElement(final Element<?> element) {
         if (this.rendering || this.inventory == null) {
             return;
         }

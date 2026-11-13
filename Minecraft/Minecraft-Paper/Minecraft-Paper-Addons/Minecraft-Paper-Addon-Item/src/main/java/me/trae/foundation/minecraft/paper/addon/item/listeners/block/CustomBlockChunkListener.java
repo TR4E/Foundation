@@ -65,25 +65,25 @@ public final class CustomBlockChunkListener implements Listener {
             return;
         }
 
-        final CustomBlock<?> placeableCustomItem = CustomBlockData.getItemUniqueId(positionContainer).flatMap(this.blockService.getItemService()::getItemByUniqueId).filter(CustomBlock.class::isInstance).map(CustomBlock.class::cast).orElse(null);
-        if (placeableCustomItem == null) {
+        final CustomBlock<?> customBlock = CustomBlockData.getItemUniqueId(positionContainer).flatMap(this.blockService.getItemService()::getItemByUniqueId).filter(CustomBlock.class::isInstance).map(CustomBlock.class::cast).orElse(null);
+        if (customBlock == null) {
             this.blockService.resetBlock(block);
             return;
         }
 
-        if (block.getType() != placeableCustomItem.getMaterial()) {
+        if (block.getType() != customBlock.getMaterial()) {
             this.blockService.deleteBlockData(block);
             return;
         }
 
-        this.registerBlockData(placeableCustomItem, block, positionContainer);
+        this.registerBlockData(customBlock, block, positionContainer);
     }
 
-    private <BlockData extends CustomBlockData> void registerBlockData(final CustomBlock<BlockData> placeableCustomItem, final Block block, final PersistentDataContainer positionContainer) {
-        final BlockData blockData = placeableCustomItem.createBlockData(positionContainer);
+    private <BlockData extends CustomBlockData> void registerBlockData(final CustomBlock<BlockData> customBlock, final Block block, final PersistentDataContainer positionContainer) {
+        final BlockData blockData = customBlock.createBlockData(positionContainer);
 
         if (blockData.hasExpired()) {
-            placeableCustomItem.onExpire(block, blockData);
+            customBlock.onExpire(block, blockData);
 
             this.blockService.deleteBlockData(block);
             return;
@@ -91,6 +91,6 @@ public final class CustomBlockChunkListener implements Listener {
 
         this.blockService.addBlockData(block, blockData);
 
-        placeableCustomItem.onChunkLoad(block, blockData);
+        customBlock.onChunkLoad(block, blockData);
     }
 }

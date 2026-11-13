@@ -44,7 +44,7 @@ public final class CustomBlockInteractionListener implements Listener {
             return;
         }
 
-        if (!(customItem instanceof final CustomBlock<?> placeableCustomItem)) {
+        if (!(customItem instanceof final CustomBlock<?> customBlock)) {
             return;
         }
 
@@ -52,16 +52,16 @@ public final class CustomBlockInteractionListener implements Listener {
 
         final Player player = event.getPlayer();
 
-        if (!placeableCustomItem.canPlace(player, block)) {
+        if (!customBlock.canPlace(player, block)) {
             event.setCancelled(true);
             return;
         }
 
-        this.blockService.addBlockData(block, placeableCustomItem.createBlockData(player, block));
+        this.blockService.addBlockData(block, customBlock.createBlockData(player, block));
 
         this.blockService.writeBlockData(block);
 
-        placeableCustomItem.onPlace(player, block);
+        customBlock.onPlace(player, block);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -77,14 +77,14 @@ public final class CustomBlockInteractionListener implements Listener {
             return;
         }
 
-        final CustomBlock<CustomBlockData> placeableCustomItem = this.blockService.getItemByBlock(block).orElse(null);
-        if (placeableCustomItem == null) {
+        final CustomBlock<CustomBlockData> customBlock = this.blockService.getItemByBlock(block).orElse(null);
+        if (customBlock == null) {
             return;
         }
 
         final Player player = event.getPlayer();
 
-        if (!placeableCustomItem.canBreak(player, block, blockData)) {
+        if (!customBlock.canBreak(player, block, blockData)) {
             event.setCancelled(true);
             return;
         }
@@ -93,9 +93,9 @@ public final class CustomBlockInteractionListener implements Listener {
 
         event.setDropItems(false);
 
-        this.drop(player, block, blockData, placeableCustomItem);
+        this.drop(player, block, blockData, customBlock);
 
-        placeableCustomItem.onBreak(player, block, blockData);
+        customBlock.onBreak(player, block, blockData);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -120,8 +120,8 @@ public final class CustomBlockInteractionListener implements Listener {
             return;
         }
 
-        final CustomBlock<CustomBlockData> placeableCustomItem = this.blockService.getItemByBlock(clickedBlock).orElse(null);
-        if (placeableCustomItem == null) {
+        final CustomBlock<CustomBlockData> customBlock = this.blockService.getItemByBlock(clickedBlock).orElse(null);
+        if (customBlock == null) {
             return;
         }
 
@@ -133,34 +133,34 @@ public final class CustomBlockInteractionListener implements Listener {
             event.setUseInteractedBlock(Event.Result.DENY);
         }
 
-        if (!placeableCustomItem.canInteract(player, clickedBlock, itemStack, interactType, blockData)) {
+        if (!customBlock.canInteract(player, clickedBlock, itemStack, interactType, blockData)) {
             return;
         }
 
-        placeableCustomItem.onInteract(player, clickedBlock, itemStack, interactType, blockData);
+        customBlock.onInteract(player, clickedBlock, itemStack, interactType, blockData);
     }
 
-    private void drop(final Player player, final Block block, final CustomBlockData blockData, final CustomBlock<CustomBlockData> placeableCustomItem) {
+    private void drop(final Player player, final Block block, final CustomBlockData blockData, final CustomBlock<CustomBlockData> customBlock) {
         if (player.getGameMode() == GameMode.CREATIVE) {
             return;
         }
 
-        if (!placeableCustomItem.canDrop(player, block, blockData)) {
+        if (!customBlock.canDrop(player, block, blockData)) {
             return;
         }
 
-        if (!placeableCustomItem.getToolRequirement().matches(player, block, UtilItemStack.getItemInMainHand(player).orElse(null))) {
+        if (!customBlock.getToolRequirement().matches(player, block, UtilItemStack.getItemInMainHand(player).orElse(null))) {
             return;
         }
 
-        final Set<ItemStack> itemStackSet = placeableCustomItem.getDrops(player, block, blockData);
+        final Set<ItemStack> itemStackSet = customBlock.getDrops(player, block, blockData);
         if (itemStackSet.isEmpty()) {
             return;
         }
 
         final Location location = block.getLocation().toCenterLocation();
 
-        if (placeableCustomItem.insertOnDrop(player, block, blockData)) {
+        if (customBlock.insertOnDrop(player, block, blockData)) {
             itemStackSet.forEach(itemStack -> UtilItemStack.insert(player, itemStack, leftover -> block.getWorld().dropItemNaturally(location, leftover)));
         } else {
             itemStackSet.forEach(itemStack -> block.getWorld().dropItemNaturally(location, itemStack));

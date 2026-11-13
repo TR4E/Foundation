@@ -148,7 +148,7 @@ public final class CustomBlockRemovalListener implements Listener {
             return true;
         }
 
-        return this.blockService.getItemByBlock(block).map(placeableCustomItem -> placeableCustomItem.canRemove(block, blockData, removeReason)).orElse(true);
+        return this.blockService.getItemByBlock(block).map(customBlock -> customBlock.canRemove(block, blockData, removeReason)).orElse(true);
     }
 
     private void removeBlock(final Block block, final BlockRemoveReason removeReason) {
@@ -157,7 +157,7 @@ public final class CustomBlockRemovalListener implements Listener {
             return;
         }
 
-        this.blockService.getItemByBlock(block).ifPresent(placeableCustomItem -> placeableCustomItem.onRemove(block, blockData, removeReason));
+        this.blockService.getItemByBlock(block).ifPresent(customBlock -> customBlock.onRemove(block, blockData, removeReason));
 
         this.blockService.deleteBlockData(block);
     }

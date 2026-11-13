@@ -206,14 +206,14 @@ public final class BlockService {
     }
 
     private void tickBlockData(final Block block, final CustomBlockData blockData) {
-        final CustomBlock<CustomBlockData> placeableCustomItem = this.getItemByBlock(block).orElse(null);
+        final CustomBlock<CustomBlockData> customBlock = this.getItemByBlock(block).orElse(null);
 
         if (blockData.hasExpired()) {
-            if (placeableCustomItem != null) {
-                placeableCustomItem.onExpire(block, blockData);
+            if (customBlock != null) {
+                customBlock.onExpire(block, blockData);
             }
 
-            if (placeableCustomItem == null || placeableCustomItem.shouldRemoveBlockOnExpire(block, blockData)) {
+            if (customBlock == null || customBlock.shouldRemoveBlockOnExpire(block, blockData)) {
                 this.resetBlock(block);
                 return;
             }
@@ -222,8 +222,8 @@ public final class BlockService {
             return;
         }
 
-        if (placeableCustomItem != null) {
-            placeableCustomItem.onTick(block, blockData);
+        if (customBlock != null) {
+            customBlock.onTick(block, blockData);
         }
 
         if (!blockData.isDirty()) {
@@ -236,12 +236,12 @@ public final class BlockService {
     private void prepareUnloadBlockData(final Chunk chunk, final int positionKey, final CustomBlockData blockData) {
         final Block block = this.getBlockByPositionKey(chunk, positionKey);
 
-        final CustomBlock<CustomBlockData> placeableCustomItem = this.getItemByBlock(block).orElse(null);
-        if (placeableCustomItem == null) {
+        final CustomBlock<CustomBlockData> customBlock = this.getItemByBlock(block).orElse(null);
+        if (customBlock == null) {
             return;
         }
 
-        placeableCustomItem.onChunkUnload(block, blockData);
+        customBlock.onChunkUnload(block, blockData);
 
         blockData.setLastTickedAt(System.currentTimeMillis());
     }
@@ -249,7 +249,7 @@ public final class BlockService {
     private boolean shouldUnloadBlockData(final Chunk chunk, final int positionKey, final CustomBlockData blockData) {
         final Block block = this.getBlockByPositionKey(chunk, positionKey);
 
-        return this.getItemByBlock(block).map(placeableCustomItem -> placeableCustomItem.shouldUnloadChunk(block, blockData)).orElse(true);
+        return this.getItemByBlock(block).map(customBlock -> customBlock.shouldUnloadChunk(block, blockData)).orElse(true);
     }
 
     private Optional<ConcurrentHashMap<Integer, CustomBlockData>> getBlockMapByBlock(final Block block) {

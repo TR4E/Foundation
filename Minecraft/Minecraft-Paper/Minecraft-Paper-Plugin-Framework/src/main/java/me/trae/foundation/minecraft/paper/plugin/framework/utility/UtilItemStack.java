@@ -192,6 +192,6 @@ public class UtilItemStack {
             effectiveName = effectiveName.color(null);
         }
 
-        return hoverable ? effectiveName.hoverEvent(itemStack.asHoverEvent()) : effectiveName;
+        return hoverable ? effectiveName.hoverEvent(itemStack.asOne().asHoverEvent()) : effectiveName;
     }
 }

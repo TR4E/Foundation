@@ -169,7 +169,7 @@ public class HealingWand extends CustomItem {
 | `canDespawn()` | `boolean` | `true` | Allow the dropped item to despawn naturally; return `false` to cancel its despawn event |
 | `isTrackable()` | `boolean` | `false` | Enable an instance tracking ID when `getMaxStackSize()` is `1` |
 | `removeVanillaUseCooldown()` | `boolean` | `true` | Remove the vanilla use cooldown animation |
-| `naturallyObtainable()` | `boolean` | `false` | Whether the item can appear in natural loot |
+| `naturallyObtainable()` | `boolean` | `false` | Convert otherwise unresolved stacks of this material into this definition during inventory synchronization |
 | `deleteIfRemoved()` | `boolean` | `false` | Delete the item on next inventory sync if the definition is removed |
 | `generateVersionEntries()` | `List<String>` | Visual configuration, tracking, and deletion settings | Protected hook supplying entries for the definition's version hash |
 
@@ -792,7 +792,7 @@ Item definitions are applied to player inventories at these points:
 | Trigger | Scope |
 | --- | --- |
 | Player join | Player inventory and ender chest |
-| Chest open | Block inventory contents |
+| Block inventory open | Contents of inventories with a `BlockInventoryHolder` or `DoubleChest` holder |
 | Item pickup | Single item |
 | Crafting result | Result slot |
 | Smelting result | Result slot |
@@ -827,6 +827,8 @@ Inject `ItemService` to access registered definitions:
 `getItemList()` follows registrations as dependencies initialize and shut down. Callers cannot add, remove, or replace entries through the injected list. The item definitions themselves retain their own behaviour and state. `onLiveDependencyUpdate()` rebuilds the unique ID and naturally obtainable material lookup maps from this list; cached default definitions are retained. If multiple definitions share a unique ID or naturally obtainable material, the last entry encountered in the list wins that lookup.
 
 `Item.isSimilarByMaterial(itemStack)` compares the stack's material with the definition's material and returns `false` for `null`. `CustomItem.isSimilarByUniqueId(itemStack)` compares a stack's stored unique ID with the definition's `uniqueId`. `isHolding(livingEntity)` uses the same unique ID comparison for the main-hand item.
+
+`isSimilarByUniqueId` requires a nonnull stack and compares only the stored ID, so it can recognize an older material for the same definition. This differs from the framework's [UtilItemStack.isSimilar](../../Minecraft-Paper-Plugin-Framework/README.md#utilitemstack), which requires matching materials before comparing IDs. Recipe ingredient checks and inventory `contains`/`remove` use the framework comparison; definition lookup and holding checks use the definition ID.
 
 ## Item search
 

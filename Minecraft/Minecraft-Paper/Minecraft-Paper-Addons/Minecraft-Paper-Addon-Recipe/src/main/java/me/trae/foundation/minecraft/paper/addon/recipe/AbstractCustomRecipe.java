@@ -33,10 +33,6 @@ public abstract class AbstractCustomRecipe {
         return new NamespacedKey("custom", this.identifier.toLowerCase(Locale.ROOT));
     }
 
-    public boolean removeConflictingRecipes() {
-        return true;
-    }
-
     public boolean canCraft() {
         return true;
     }
@@ -66,7 +62,7 @@ public abstract class AbstractCustomRecipe {
     }
 
     public final boolean isIngredientByItemStack(final ItemStack itemStack) {
-        return this.getIngredients().values().stream().anyMatch(ingredient -> UtilItemStack.isSimilar(ingredient, itemStack));
+        return this.getIngredients().values().stream().anyMatch(ingredient -> UtilItemStack.isSimilar(ingredient, itemStack, false));
     }
 
     public boolean matches(final ItemStack[] matrix) {
@@ -91,7 +87,7 @@ public abstract class AbstractCustomRecipe {
         final Iterator<ItemStack> iterator = required.iterator();
 
         while (iterator.hasNext()) {
-            if (!UtilItemStack.isSimilar(iterator.next(), itemStack)) {
+            if (!UtilItemStack.isSimilar(iterator.next(), itemStack, false)) {
                 continue;
             }
 
@@ -104,7 +100,7 @@ public abstract class AbstractCustomRecipe {
     }
 
     public final Set<NamespacedKey> getConflictingKeys() {
-        if (!this.removeConflictingRecipes() || UtilItemStack.getUniqueIdByItemStack(this.getResult()).isPresent() || UtilWorld.getWorlds().isEmpty()) {
+        if (this.hasCustomIngredient() || UtilWorld.getWorlds().isEmpty()) {
             return Collections.emptySet();
         }
 
@@ -113,6 +109,10 @@ public abstract class AbstractCustomRecipe {
         }
 
         return Set.of(keyed.getKey());
+    }
+
+    private boolean hasCustomIngredient() {
+        return this.getIngredients().values().stream().anyMatch(ingredient -> UtilItemStack.getUniqueIdByItemStack(ingredient).isPresent());
     }
 
     public abstract ItemStack getResult();

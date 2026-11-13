@@ -34,10 +34,10 @@ The Recipe addon registers custom crafting recipes, validates ingredient occurre
 
 | Class | Pattern | Example |
 | --- | --- | --- |
-| `CustomShapedRecipe` | Material pattern in a grid up to 3x3 | Sword, pickaxe, armor |
+| `CustomShapedRecipe` | Ingredient pattern in a grid up to 3x3 | Sword, pickaxe, armor |
 | `CustomShapelessRecipe` | Any arrangement of ingredients | Combining dyes, nuggets to ingots |
 
-Both extend `AbstractCustomRecipe`. The constructor takes a recipe key, which becomes `custom:<key>`. Use lowercase keys such as `diamond_hammer`. Override methods to define the result, ingredients, and, for shaped recipes, the shape. Examples omit imports and use Injector's `@Singleton` for plugin components.
+Both extend `AbstractCustomRecipe`. The constructor takes an identifier exposed by `getIdentifier()`. Its Bukkit key is `custom:<identifier>` with the identifier lowercased using `Locale.ROOT`. For example, `DIAMOND_HAMMER` registers as `custom:diamond_hammer`; keep identifiers valid as namespaced-key paths after lowercasing. Override methods to define the result, ingredients, and, for shaped recipes, the shape. Examples omit imports and use Injector's `@Singleton` for plugin components.
 
 ## Shaped recipe
 
@@ -109,19 +109,23 @@ Both recipe types extend `AbstractCustomRecipe`, which provides the shared API:
 
 | Method | Returns | Purpose |
 | --- | --- | --- |
-| `getKey()` | `String` | The recipe key supplied to the constructor |
-| `getNamespacedKey()` | `NamespacedKey` | Bukkit recipe identifier, built as `custom:<key>` |
+| `getIdentifier()` | `String` | The identifier supplied to the constructor, retaining its original spelling |
+| `getNamespacedKey()` | `NamespacedKey` | Bukkit recipe identifier, built as `custom:<lowercase-identifier>` |
 | `getResult()` | `ItemStack` | The crafting result (abstract) |
 | `getIngredients()` | `Map<Character, ItemStack>` | Ingredient mapping (abstract) |
-| `removeConflictingRecipes()` | `boolean` | Whether to remove vanilla recipes that conflict (default `true`) |
 | `canCraft()` | `boolean` | Global crafting eligibility (default `true`) |
 | `canCraft(player)` | `boolean` | Player-specific crafting eligibility (default `true`) |
 | `canCraft(block)` | `boolean` | Automated crafter eligibility (default `true`) |
 | `isIngredientByItemStack(itemStack)` | `boolean` | Checks if an item stack matches any ingredient |
 | `matches(matrix)` | `boolean` | Matches occupied input slots against required ingredient occurrences |
 | `build()` | `Recipe` | Builds the Bukkit recipe for registration |
+| `getConflictingKeys()` | `Set<NamespacedKey>` | Find vanilla recipe conflicts, subject to the conditions in [Conflict resolution](#conflict-resolution) |
 
-`matches(matrix)` creates a list of required ingredient occurrences from `toMatrix()`. Each occupied input slot consumes one similar ingredient from that list. An unmatched input or a required ingredient left over makes the match fail. Comparison uses the framework's `UtilItemStack.isSimilar`, including persistent custom item unique IDs when both items have them.
+`matches(matrix)` creates a list of required ingredient occurrences from `toMatrix()`. Each occupied input slot consumes one similar ingredient from that list. An unmatched input or a required ingredient left over makes the match fail. Both matrix matching and `isIngredientByItemStack` call `UtilItemStack.isSimilar(ingredient, input, false)` for optional metadata matching.
+
+That comparison always requires matching material. If either stack has a custom ID, both must have the same ID; matching IDs return immediately without comparing metadata. For ID-less stacks, display names, lore, and enchantments are checked only when both stacks contain each property. A property present on only one ID-less stack does not reject the match. See [UtilItemStack](../../Minecraft-Paper-Plugin-Framework/README.md#utilitemstack) for the full rules.
+
+Registration uses a separate Bukkit recipe-choice check: `toChoice(itemStack)` selects `RecipeChoice.ExactChoice` when the ingredient has a custom definition ID and `RecipeChoice.MaterialChoice` otherwise. Both shaped and shapeless recipes use it. Bukkit's choice must select the recipe before the addon's `matches` and eligibility checks run; the shared similarity rules do not replace Bukkit's exact-choice validation.
 
 The registered shaped recipe handles the material pattern. The shared `matches(matrix)` method compares ingredient occurrences independently of position; it does not enforce where distinct custom items of the same material appear. Recipes can override `matches(matrix)` for stricter validation.
 
@@ -185,6 +189,7 @@ public final class RecipeAvailabilityListener implements Listener {
     @EventHandler
     public void onCustomRecipePreCraft(final CustomRecipePreCraftEvent event) {
         final Player player = event.getPlayer();
+
         if (player == null || player.hasPermission("recipes.custom")) {
             return;
         }
@@ -219,7 +224,7 @@ Inject `RecipeService` into plugin components to inspect registered recipes:
 | `getRecipeList()` | The injected read-only live list of recipe definitions |
 | `getRegisteredNamespacedKeySet()` | Keys of custom recipes successfully registered during the latest rebuild |
 | `getRecipeByKey(namespacedKey)` | Resolve a custom recipe through the key map; empty for null or an unknown key |
-| `searchCustomRecipe(commandSender, input, inform)` | Search recipe keys with exact and partial matching and optional feedback |
+| `searchCustomRecipe(commandSender, input, inform)` | Search recipe identifiers with exact and partial matching and optional feedback |
 | `searchCustomRecipe(commandSender, input, inform, predicate)` | The same search restricted by the predicate |
 | `isIngredient(namespacedKey, itemStack)` | Check whether the item is an ingredient of that registered recipe |
 | `DISABLED_RECIPE_KEY` | Persistent-data key for disabled preview items |
@@ -232,18 +237,18 @@ On live dependency updates, the service rebuilds its recipe lookup map and publi
 
 | Behaviour | Value |
 | --- | --- |
-| Exact match | Case-insensitive equality against `AbstractCustomRecipe.getKey()` |
-| Partial match | Case-insensitive containment in the recipe key |
-| Displayed match | Key formatted with `UtilString.clean`, such as `Diamond Hammer` for `diamond_hammer` |
+| Exact match | Case-insensitive equality against `AbstractCustomRecipe.getIdentifier()` |
+| Partial match | Case-insensitive containment in the identifier |
+| Displayed match | Identifier formatted with `UtilString.clean`, such as `Diamond Hammer` for `diamond_hammer` |
 | Feedback prefix | `Custom Recipe Search` |
 
-Search with the bare key, such as `diamond_hammer`, rather than the namespaced Bukkit key `custom:diamond_hammer` or the formatted display name.
+Search with the identifier, such as `DIAMOND_HAMMER` or `diamond_hammer`. The namespaced Bukkit key `custom:diamond_hammer` and formatted display name are separate values.
 
 With `recipeService`, `commandSender`, and `input` available in a command or service:
 
 ```java
 recipeService.searchCustomRecipe(commandSender, input, true)
-        .ifPresent(abstractCustomRecipe -> UtilMessage.message(commandSender, "Recipe", abstractCustomRecipe.getKey()));
+        .ifPresent(abstractCustomRecipe -> UtilMessage.message(commandSender, "Recipe", abstractCustomRecipe.getIdentifier()));
 ```
 
 Use the four-argument overload to restrict eligible definitions with a predicate. The three-argument overload includes every definition. With `inform` set to `true`, missing or ambiguous matches produce colored feedback; a unique result is returned without an automatic success message. For direct engine access, use `recipeService.getCustomRecipeSearchEngine()` or construct `new CustomRecipeSearchEngine(recipeService)`.
@@ -252,7 +257,16 @@ The engine searches the service's recipe definitions. Use `RecipeService.getRegi
 
 ## Conflict resolution
 
-`RecipeService` registers recipes during `onLiveDependencyUpdate`. Before registering, it checks each recipe for conflicting vanilla recipes by testing the recipe's matrix against Bukkit's crafting system. If a conflict is found and `removeConflictingRecipes()` returns `true`, the vanilla recipe is removed and a log message is emitted. All registered recipes are tracked and cleaned up on shutdown.
+`RecipeService` registers recipes during `onLiveDependencyUpdate`. Before registering, it collects each definition's `getConflictingKeys()` and removes those vanilla recipes, logging successful removals. Conflict lookup returns no keys when any declared ingredient has a custom item unique ID or no worlds are loaded. Otherwise, it tests the recipe's matrix against Bukkit's crafting system in the first loaded world and returns at most one `minecraft` key. The result's custom ID does not affect conflict lookup, and the former `removeConflictingRecipes()` hook is no longer available. Each rebuild first removes the previously registered custom recipes; successful registrations are tracked and cleaned up on shutdown.
+
+| Ingredients | Result | Vanilla conflict handling |
+| --- | --- | --- |
+| All ID-less | Vanilla item | Remove the detected vanilla conflict, if any |
+| All ID-less | Custom item | Remove the detected vanilla conflict, if any |
+| At least one custom-ID ingredient | Vanilla item | Preserve vanilla recipes |
+| At least one custom-ID ingredient | Custom item | Preserve vanilla recipes |
+
+Ingredient validation is independent of the output. For example, an ID-less gold ingot renamed by a player can satisfy a plain-gold ingredient in a custom recipe producing Reinforced Gold. A Reinforced Gold input cannot replace that plain-gold ingredient. Conversely, a recipe requiring Reinforced Gold accepts the matching custom ID at the base comparison stage whether its result is vanilla or custom; Bukkit's registered exact choice must also pass. `getResult()` supplies the output, and `buildResult()` caps its amount at its maximum stack size.
 
 ## Item addon integration
 

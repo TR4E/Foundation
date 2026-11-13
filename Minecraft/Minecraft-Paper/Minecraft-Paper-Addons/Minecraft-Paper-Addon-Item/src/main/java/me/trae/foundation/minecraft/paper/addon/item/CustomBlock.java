@@ -20,7 +20,7 @@ public abstract class CustomBlock<BlockData extends CustomBlockData> extends Cus
 
     @Getter
     @SuppressWarnings("unchecked")
-    private final Class<BlockData> blockDataClass = (Class<BlockData>) UtilGeneric.getGenericParameter(CustomBlock.class, this.getClass(), 0);
+    private final Class<BlockData> blockDataClass = (Class<BlockData>) UtilGeneric.getGenericParameter(this.getClass(), CustomBlock.class, 0);
 
     public CustomBlock(final Material material, final String uniqueId, final String identifier) {
         if (!material.isBlock()) {

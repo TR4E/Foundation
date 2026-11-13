@@ -108,14 +108,14 @@ public class UtilItemStack {
             return false;
         }
 
+        if (itemStack.getType() != content.getType()) {
+            return false;
+        }
+
         final String itemStackUniqueId = getPersistentData(itemStack, UNIQUE_ID_KEY, PersistentDataType.STRING).orElse(null);
         final String contentUniqueId = getPersistentData(content, UNIQUE_ID_KEY, PersistentDataType.STRING).orElse(null);
         if (itemStackUniqueId != null && contentUniqueId != null) {
             return itemStackUniqueId.equals(contentUniqueId);
-        }
-
-        if (itemStack.getType() != content.getType()) {
-            return false;
         }
 
         final ItemMeta itemStackMeta = itemStack.getItemMeta();
@@ -125,15 +125,15 @@ public class UtilItemStack {
             return itemStackMeta == contentMeta;
         }
 
-        if (!Objects.equals(itemStackMeta.displayName(), contentMeta.displayName())) {
+        if (itemStackMeta.hasDisplayName() && contentMeta.hasDisplayName() && !Objects.equals(itemStackMeta.displayName(), contentMeta.displayName())) {
             return false;
         }
 
-        if (!Objects.equals(itemStackMeta.lore(), contentMeta.lore())) {
+        if (itemStackMeta.hasLore() && contentMeta.hasLore() && !Objects.equals(itemStackMeta.lore(), contentMeta.lore())) {
             return false;
         }
 
-        if (!itemStackMeta.getEnchants().equals(contentMeta.getEnchants())) {
+        if (itemStackMeta.hasEnchants() && contentMeta.hasEnchants() && !itemStackMeta.getEnchants().equals(contentMeta.getEnchants())) {
             return false;
         }
 

@@ -2,6 +2,7 @@ package me.trae.foundation.minecraft.paper.plugin.framework.utility;
 
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.minecraft.paper.plugin.framework.search.types.PaperMaterialSearchEngine;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.InteractType;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.inventory.ItemStack;
@@ -50,6 +51,17 @@ public class UtilMaterial {
                  WAXED_OXIDIZED_COPPER_CHEST, WAXED_OXIDIZED_COPPER_DOOR, WAXED_OXIDIZED_COPPER_GOLEM_STATUE, WAXED_OXIDIZED_COPPER_TRAPDOOR, WAXED_WEATHERED_COPPER_CHEST, WAXED_WEATHERED_COPPER_DOOR, WAXED_WEATHERED_COPPER_GOLEM_STATUE, WAXED_WEATHERED_COPPER_TRAPDOOR,
                  WEATHERED_COPPER_CHEST, WEATHERED_COPPER_DOOR, WEATHERED_COPPER_GOLEM_STATUE, WEATHERED_COPPER_TRAPDOOR,
                  WHITE_BED, WHITE_CANDLE, WHITE_CANDLE_CAKE, WHITE_SHULKER_BOX, YELLOW_BED, YELLOW_CANDLE, YELLOW_CANDLE_CAKE, YELLOW_SHULKER_BOX -> true;
+            default -> false;
+        };
+    }
+
+    public static boolean isInteractable(final Material material, final InteractType interactType) {
+        if (interactType == InteractType.RIGHT_CLICK) {
+            return isInteractable(material);
+        }
+
+        return switch (material) {
+            case BELL, DRAGON_EGG, FIRE, SOUL_FIRE, NOTE_BLOCK, REDSTONE_ORE, DEEPSLATE_REDSTONE_ORE, DECORATED_POT -> true;
             default -> false;
         };
     }
@@ -115,7 +127,7 @@ public class UtilMaterial {
                 case ACACIA_FENCE, BAMBOO_FENCE, BIRCH_FENCE, CHERRY_FENCE, CRIMSON_FENCE, DARK_OAK_FENCE, JUNGLE_FENCE, MANGROVE_FENCE, NETHER_BRICK_FENCE, OAK_FENCE, PALE_OAK_FENCE, SPRUCE_FENCE, WARPED_FENCE -> true;
                 default -> false;
             };
-            case GLOWSTONE_DUST -> material == Material.RESPAWN_ANCHOR;
+            case GLOWSTONE, GLOWSTONE_DUST -> material == Material.RESPAWN_ANCHOR;
             case WRITABLE_BOOK, WRITTEN_BOOK -> material == Material.LECTERN;
             default -> false;
         };

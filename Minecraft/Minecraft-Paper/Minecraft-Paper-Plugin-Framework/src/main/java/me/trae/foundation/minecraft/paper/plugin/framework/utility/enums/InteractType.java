@@ -1,4 +1,4 @@
-package me.trae.foundation.minecraft.paper.addon.item.enums;
+package me.trae.foundation.minecraft.paper.plugin.framework.utility.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

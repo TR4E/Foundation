@@ -4,12 +4,12 @@ import lombok.AllArgsConstructor;
 import me.trae.foundation.minecraft.paper.addon.item.CustomBlock;
 import me.trae.foundation.minecraft.paper.addon.item.CustomItem;
 import me.trae.foundation.minecraft.paper.addon.item.block.CustomBlockData;
-import me.trae.foundation.minecraft.paper.addon.item.enums.InteractType;
 import me.trae.foundation.minecraft.paper.addon.item.services.BlockService;
 import me.trae.foundation.minecraft.paper.addon.item.services.ItemService;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMaterial;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.InteractType;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -129,11 +129,11 @@ public final class CustomBlockInteractionListener implements Listener {
 
         final ItemStack itemStack = event.getItem();
 
-        if (UtilMaterial.isInteractable(clickedBlock.getType())) {
+        if (UtilMaterial.isInteractable(clickedBlock.getType(), interactType)) {
             event.setUseInteractedBlock(Event.Result.DENY);
         }
 
-        if (itemStack != null && UtilMaterial.isInteractableByHand(clickedBlock.getType(), itemStack)) {
+        if (itemStack != null && interactType == InteractType.RIGHT_CLICK && UtilMaterial.isInteractableByHand(clickedBlock.getType(), itemStack)) {
             event.setUseItemInHand(Event.Result.DENY);
         }
 

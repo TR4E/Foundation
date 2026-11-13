@@ -4,7 +4,7 @@ import lombok.Getter;
 import me.trae.foundation.minecraft.paper.addon.item.block.CustomBlockData;
 import me.trae.foundation.minecraft.paper.addon.item.block.ToolRequirement;
 import me.trae.foundation.minecraft.paper.addon.item.enums.BlockRemoveReason;
-import me.trae.foundation.minecraft.paper.addon.item.enums.InteractType;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.enums.InteractType;
 import me.trae.foundation.utilities.UtilClass;
 import me.trae.foundation.utilities.UtilGeneric;
 import org.bukkit.Material;

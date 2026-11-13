@@ -129,8 +129,12 @@ public final class CustomBlockInteractionListener implements Listener {
 
         final ItemStack itemStack = event.getItem();
 
-        if (UtilMaterial.isInteractableByHand(clickedBlock.getType(), itemStack)) {
+        if (UtilMaterial.isInteractable(clickedBlock.getType())) {
             event.setUseInteractedBlock(Event.Result.DENY);
+        }
+
+        if (itemStack != null && UtilMaterial.isInteractableByHand(clickedBlock.getType(), itemStack)) {
+            event.setUseItemInHand(Event.Result.DENY);
         }
 
         if (!customBlock.canInteract(player, clickedBlock, itemStack, interactType, blockData)) {

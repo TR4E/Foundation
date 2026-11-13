@@ -404,12 +404,8 @@ This block expires five minutes after placement, resists explosions, requires a 
 @Singleton
 public class TemporaryOre extends CustomBlock<CustomBlockData> {
 
-    private final BlockService blockService;
-
-    public TemporaryOre(final BlockService blockService) {
+    public TemporaryOre() {
         super(Material.DIAMOND_ORE, "b6d27ca3-4733-4128-a483-9e60e38c5e56", "TEMPORARY_ORE");
-
-        this.blockService = blockService;
     }
 
     @Override
@@ -449,8 +445,6 @@ public class TemporaryOre extends CustomBlock<CustomBlockData> {
     @Override
     public void onExpire(final Block block, final CustomBlockData customBlockData) {
         UtilMessage.broadcast("Block", "A temporary ore block has expired!");
-
-        this.blockService.resetBlock(block);
     }
 }
 ```
@@ -552,7 +546,7 @@ If `onTick(...)` changes persistent fields, call `this.blockService.updateBlockD
 
 `getExpiryStartTime()` defaults to `placedAt` and can be overridden in a data subclass. `hasExpired()` is final. During scheduled expiry, the service calls `onExpire(...)`, then checks `shouldRemoveBlockOnExpire(block, blockData)` before deleting data. This hook defaults to `true`, causing `resetBlock(block)` to delete the data and clear the physical block. Return `false` to retain the physical block or a replacement created by `onExpire`; the service then deletes only its custom data. Both callbacks can access the registered data unless an earlier callback explicitly removed it. An expired block with no resolvable definition is always reset. `onExpire` itself defaults to a no-op. Expiry does not call `canRemove` or run the drop pipeline.
 
-During chunk restoration, expiry is checked before registration and `onChunkLoad`. That path currently calls `onExpire(...)` and deletes the data without checking `shouldRemoveBlockOnExpire` or automatically resetting the physical block. Call `this.blockService.resetBlock(block)` in `onExpire` if the block must also be cleared on this path. The example above broadcasts and explicitly resets on expiry so the physical block is cleared on either path.
+During chunk restoration, expiry is checked before registration and `onChunkLoad`. An expired block calls `onExpire(...)`, then `shouldRemoveBlockOnExpire(...)`: `true` resets the physical block and deletes its data; `false` deletes only its data. The expiry callbacks receive the restored data directly because it has not been registered in memory. The saved placement timestamp makes offline time count toward the lifetime, so a block that expired while the server was stopped is cleaned up when restored. The example above only broadcasts in `onExpire`; the default removal policy handles physical cleanup on both the scheduler and restoration paths.
 
 Data is stored in the chunk's PDC under `custom:block`, with a nested `block:<packed-position>` container per position. The position encodes local X/Z and Y relative to the world's minimum height. Base fields use the `custom_block_data` namespace. Placement writes immediately; subsequent changes require `blockService.updateBlockData(block)` to mark them dirty for the next scheduler pass, or `blockService.writeBlockData(block)` to write immediately. Setters alone do not mark data dirty.
 
@@ -611,6 +605,8 @@ public void onInteract(
 ### Chunk lifecycle and block service
 
 On loading an existing chunk, the listener restores saved blocks whose IDs resolve to placeable definitions and whose physical material still matches. An unresolved or no-longer-placeable definition calls `resetBlock(block)` to delete its data and clear the physical block. A material mismatch only deletes the data, retaining the physical block. Valid, unexpired data is registered before `onChunkLoad(block, blockData)` is called.
+
+At `ServerLoadEvent` (`STARTUP` or `RELOAD`), the listener scans every already-loaded chunk, including spawn chunks that loaded before listener registration. Existing-chunk loads are also restored through `ChunkLoadEvent`, using the same restoration path. Already registered block data is preserved without reconstructing it or repeating `onChunkLoad`. The server-load scan visits loaded chunks only; it does not load other chunks or depend on a delayed component lifecycle task. A listener attached after `ServerLoadEvent` handles subsequent chunk loads; that past server-load event is not replayed.
 
 On chunk unload, `onChunkUnload(...)` runs, `lastTickedAt` is updated, and all tracked data for the chunk is written. `shouldUnloadChunk(...)` defaults to `true`, removing that entry from the in-memory cache. Returning `false` retains it in memory but does not keep the chunk loaded or process it while unloaded. Both chunk callbacks default to no-ops. World unload clears the world's in-memory entries.
 

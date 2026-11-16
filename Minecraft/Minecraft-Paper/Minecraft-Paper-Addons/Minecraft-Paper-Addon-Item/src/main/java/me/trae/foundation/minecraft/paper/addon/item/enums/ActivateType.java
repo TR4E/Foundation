@@ -17,7 +17,9 @@ public enum ActivateType {
     LEFT_CLICK("Left-Click", List.of(Action.LEFT_CLICK_AIR, Action.LEFT_CLICK_BLOCK)),
     RIGHT_CLICK("Right-Click", List.of(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK)),
     DROP_ITEM("Drop Item", Collections.emptyList()),
-    SWAP_HAND("Swap-Hand", Collections.emptyList());
+    SWAP_HAND("Swap-Hand", Collections.emptyList()),
+    SNEAK_START("Sneak Start", Collections.emptyList()),
+    SNEAK_STOP("Sneak Stop", Collections.emptyList());
 
     private static final Map<Action, ActivateType> BY_ACTION_MAP = new HashMap<>();
 

@@ -44,7 +44,7 @@ Items form an inheritance chain from simple definitions to fully interactive too
 | --- | --- |
 | `Item` | Base: material, name, lore, color, style, display name formatting |
 | `CustomItem` | Persistent unique ID, typable identifier, version tracking, optional instance tracking, update/refresh lifecycle |
-| `ActivatableCustomItem` | Multiple activation types (left click, right click, drop, swap hand) |
+| `ActivatableCustomItem` | Multiple activation types (left click, right click, drop, swap hand, sneak start/stop) |
 | `SingleActivatableCustomItem` | Single activation type with simplified callbacks and cooldown hooks |
 | `ChannelCustomItem` | Sustained right-click activation with start/channel/stop lifecycle |
 | `CustomBlock<BlockData>` | Extends `CustomItem` with persistent placed blocks and typed block lifecycle callbacks |
@@ -229,6 +229,8 @@ public class CombatKnife extends ActivatableCustomItem {
 | `RIGHT_CLICK` | Right-click air or block with the main-hand item |
 | `DROP_ITEM` | Player attempts to drop the item; the drop is cancelled when handled as an activation |
 | `SWAP_HAND` | Player attempts to swap the main-hand item into the off hand; the swap is cancelled when handled as an activation |
+| `SNEAK_START` | Player starts sneaking while holding the item in the main hand; normal sneaking is allowed |
+| `SNEAK_STOP` | Player stops sneaking while holding the item in the main hand; normal sneaking is allowed |
 
 ### Additional overridable methods
 
@@ -246,7 +248,7 @@ public class CombatKnife extends ActivatableCustomItem {
 
 ### Interaction flow
 
-`ItemActivateListener` handles clicks, drops, and hand swaps at `HIGH` priority. The custom block interaction listener runs later at `HIGHEST`, so a held item's activation is processed before the clicked custom block's interaction callback.
+`ItemActivateListener` handles clicks, drops, hand swaps, and sneak toggles at `HIGH` priority. The custom block interaction listener runs later at `HIGHEST`, so a held item's activation is processed before the clicked custom block's interaction callback.
 
 For supported main-hand clicks, the listener checks the activation gates before setting vanilla interaction results. Returning `false` from `activateOnItemUse(...)` skips activation on right-click with a usable material. With `activateOnBlockUse(...)` returning `false`, right-clicking an interactable block (including a block usable with the held item) skips activation unless the player is sneaking. These early returns leave the interaction results untouched.
 
@@ -254,7 +256,9 @@ If the gates pass, `useItemInHand(...)` and `useInteractedBlock(...)` control th
 
 When the resulting item-in-hand action is `Event.Result.DENY`, `ItemActivateListener` calls `player.updateInventory()` through `UtilTask.executeSynchronously(...)` to resynchronize the client inventory and address ghost block placement or item-count desynchronization after denied use. This happens before the custom activation sequence, even if `ItemPreActivateEvent` or `canActivate(...)` subsequently prevents activation. Interactions skipped by the activation gates do not reach this synchronization step.
 
-The activation sequence is `ItemPreActivateEvent`, then `canActivate(...)`, then `onActivate(...)`, followed by `ItemPostActivateEvent`. Cancelling the pre-event or returning `false` from `canActivate(...)` stops custom activation. The clicked block is `null` for air clicks, drops, and hand swaps. Drops and hand swaps use this same sequence without the click-specific activation gates or vanilla interaction hooks.
+The activation sequence is `ItemPreActivateEvent`, then `canActivate(...)`, then `onActivate(...)`, followed by `ItemPostActivateEvent`. Cancelling the pre-event or returning `false` from `canActivate(...)` stops custom activation. The clicked block is `null` for air clicks, drops, hand swaps, and sneak toggles. Drops, hand swaps, and sneak toggles use this same sequence without the click-specific activation gates or vanilla interaction hooks.
+
+The sneak handler skips already-cancelled events and uses `event.isSneaking()` to select `SNEAK_START` or `SNEAK_STOP`. Include either or both types in `getSupportedActivateTypes()` to choose which transitions activate the item. The handler does not cancel the sneak event, so normal sneaking continues even when custom activation is rejected. Each transition resolves the item currently held in the main hand; a start activation does not guarantee a matching stop callback for the same item if the held item changes.
 
 `getCooldownName(...)` and `getCooldownDuration(...)` expose configuration for consuming code. The addon's activation listener does not check or start cooldowns automatically; overriding the duration alone does not delay subsequent activations.
 

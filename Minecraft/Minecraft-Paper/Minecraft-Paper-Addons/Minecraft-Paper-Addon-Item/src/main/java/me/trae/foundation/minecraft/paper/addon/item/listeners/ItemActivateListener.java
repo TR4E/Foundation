@@ -12,6 +12,7 @@ import me.trae.foundation.minecraft.paper.addon.item.types.ActivatableCustomItem
 import me.trae.foundation.minecraft.paper.addon.item.types.ChannelCustomItem;
 import me.trae.foundation.minecraft.paper.plugin.framework.addon.annotation.AddonSingleton;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilEvent;
+import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilItemStack;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilMaterial;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilServer;
 import me.trae.foundation.minecraft.paper.plugin.framework.utility.UtilTask;
@@ -27,6 +28,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
@@ -157,7 +159,7 @@ public final class ItemActivateListener implements Listener {
             return;
         }
 
-        if (!(activatableCustomItem.getSupportedActivateTypes().contains(ActivateType.SWAP_HAND))) {
+        if (!activatableCustomItem.getSupportedActivateTypes().contains(ActivateType.SWAP_HAND)) {
             return;
         }
 
@@ -166,9 +168,41 @@ public final class ItemActivateListener implements Listener {
         this.activate(event.getPlayer(), itemStack, null, activatableCustomItem, ActivateType.SWAP_HAND);
     }
 
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerToggleSneak(final PlayerToggleSneakEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
+
+        final Player player = event.getPlayer();
+
+        final ItemStack itemStack = UtilItemStack.getItemInMainHand(player).orElse(null);
+        if (itemStack == null) {
+            return;
+        }
+
+        final CustomItem customItem = this.itemService.getItemByItemStack(itemStack).orElse(null);
+        if (customItem == null) {
+            return;
+        }
+
+        if (!(customItem instanceof final ActivatableCustomItem activatableCustomItem)) {
+            return;
+        }
+
+        final ActivateType activateType = event.isSneaking() ? ActivateType.SNEAK_START : ActivateType.SNEAK_STOP;
+
+        if (!activatableCustomItem.getSupportedActivateTypes().contains(activateType)) {
+            return;
+        }
+
+        this.activate(player, itemStack, null, activatableCustomItem, activateType);
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(final PlayerQuitEvent event) {
         this.blockedClickTickMap.remove(event.getPlayer().getUniqueId());
+
         this.clickTickMap.remove(event.getPlayer().getUniqueId());
     }
 

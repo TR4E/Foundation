@@ -148,7 +148,7 @@ public final class ContractsTest {
         assertTrue(groupedIndexStore.lookup("group").isEmpty());
         assertEquals(List.of(account.getId()), groupedIndexStore.lookup("other"));
 
-        groupedIndexStore.unindex(account);
+        groupedIndexStore.unindex(account.getId());
         assertTrue(groupedIndexStore.lookup("other").isEmpty());
     }
 

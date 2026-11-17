@@ -39,21 +39,10 @@ Database-Holder provides `EntityHolder<EntityType, RepositoryType>`. Each applic
 A container constructs holders as ordinary beans. Pass the repository, factory, holder tier set and declaration classes to the superclass. Package declarations/imports are omitted.
 
 ```java
-public abstract class ExampleHolder
-        extends EntityHolder<ExampleEntity, ExampleRepository> {
+public abstract class ExampleHolder extends EntityHolder<ExampleEntity, ExampleRepository> {
 
-    protected ExampleHolder(
-            final ExampleRepository exampleRepository,
-            final HolderContextFactory holderContextFactory
-    ) {
-        super(
-                ExampleEntity.class,
-                exampleRepository,
-                holderContextFactory,
-                Set.of(Tier.LOCAL, Tier.REDIS, Tier.POSTGRES),
-                ExampleProperty.class,
-                ExampleIndex.class
-        );
+    protected ExampleHolder(final ExampleRepository exampleRepository, final HolderContextFactory holderContextFactory) {
+        super(ExampleEntity.class, exampleRepository, holderContextFactory, Set.of(Tier.LOCAL, Tier.REDIS, Tier.POSTGRES), ExampleProperty.class, ExampleIndex.class);
     }
 }
 ```

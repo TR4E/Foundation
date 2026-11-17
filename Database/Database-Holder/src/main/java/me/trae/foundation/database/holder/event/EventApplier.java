@@ -37,14 +37,14 @@ public final class EventApplier<EntityType extends Entity> {
     }
 
     private void apply(final EntityType entity, final ChangeEvent event) {
-        final long current = this.writer.getVersion(entity.getId());
-
-        if (event.getVersion() <= current) {
+        if (event.getKind() == WriteKind.DELETE) {
+            this.evict(entity);
             return;
         }
 
-        if (event.getKind() == WriteKind.DELETE) {
-            this.evict(entity);
+        final long current = this.writer.getVersion(entity.getId());
+
+        if (event.getVersion() <= current) {
             return;
         }
 
@@ -56,11 +56,12 @@ public final class EventApplier<EntityType extends Entity> {
         event.getChanges().forEach(change -> this.change(entity, change));
 
         this.writer.setVersion(entity.getId(), event.getVersion());
+
         this.updater.index(entity);
     }
 
     private void evict(final EntityType entity) {
-        this.updater.unindex(entity);
+        this.updater.unindex(entity.getId());
         this.storage.remove(entity.getId());
         this.writer.clearVersion(entity.getId());
     }

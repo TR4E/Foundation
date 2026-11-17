@@ -255,7 +255,12 @@ public final class HolderLookupTest {
         final AccountRepository accountRepository = repository();
         final Account account = account();
         final AccountHolder accountHolder = holder(accountRepository, Set.of(Tier.LOCAL, Tier.POSTGRES));
-        final ChangeEvent changeEvent = new ChangeEvent(new EntityKey("accounts", null, account.getId()), 1L, List.of(increment(3L)));
+        final ChangeEvent changeEvent = new ChangeEvent(
+                new EntityKey("accounts", null, account.getId()),
+                1L,
+                me.trae.foundation.database.api.write.WriteKind.UPDATE,
+                List.of(increment(3L))
+        );
 
         when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
         accountHolder.hold(account.getId());
@@ -277,7 +282,12 @@ public final class HolderLookupTest {
         replacement.setGroup("group");
         when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account), Optional.of(replacement));
         accountHolder.hold(account.getId());
-        accountHolder.getApplier().apply(new ChangeEvent(new EntityKey("accounts", null, account.getId()), 3L, List.of(set("name", "event"))));
+        accountHolder.getApplier().apply(new ChangeEvent(
+                new EntityKey("accounts", null, account.getId()),
+                3L,
+                me.trae.foundation.database.api.write.WriteKind.UPDATE,
+                List.of(set("name", "event"))
+        ));
 
         final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
 
@@ -329,6 +339,7 @@ public final class HolderLookupTest {
         assertDoesNotThrow(() -> accountHolder.getApplier().apply(new ChangeEvent(
                 new EntityKey("accounts", null, account.getId()),
                 1L,
+                me.trae.foundation.database.api.write.WriteKind.UPDATE,
                 List.of(set("name", "remote"))
         )));
     }
@@ -344,7 +355,7 @@ public final class HolderLookupTest {
                 storages(tiers),
                 new LocalMarker(),
                 write -> {
-                    holderReference.get().getApplier().apply(new ChangeEvent(write.getKey(), 1L, write.getChanges()));
+                    holderReference.get().getApplier().apply(new ChangeEvent(write.getKey(), 1L, write.getKind(), write.getChanges()));
 
                     return 1L;
                 },
@@ -444,6 +455,7 @@ public final class HolderLookupTest {
             accountHolder.getApplier().apply(new ChangeEvent(
                     new EntityKey("accounts", null, account.getId()),
                     3L,
+                    me.trae.foundation.database.api.write.WriteKind.UPDATE,
                     List.of(set("name", "gap"))
             ));
 

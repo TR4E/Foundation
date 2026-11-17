@@ -43,14 +43,8 @@ Construct `CoreDatabase(settings, postgresDriver, redisDriver)`. Redis may be nu
 A DI container constructs each repository and holder before coreDatabase.start(). The holder constructor loads declaration classes, creates its context with its own tier set and registers through the factory. There is no separate CoreDatabase.register(...) operation.
 
 ```java
-final ExampleRepository exampleRepository = new ExampleRepository(
-        postgresDriver,
-        coreDatabase.getTenantScope()
-);
-final ExampleHolder exampleHolder = new ExampleHolder(
-        exampleRepository,
-        coreDatabase.getContextFactory()
-);
+final ExampleRepository exampleRepository = new ExampleRepository(postgresDriver, coreDatabase.getTenantScope());
+final ExampleHolder exampleHolder = new ExampleHolder(exampleRepository, coreDatabase.getContextFactory());
 ```
 
 The [holder guide](../Database-Holder/README.md#creating-a-holder) defines the holder shape. DI providers should expose these same repository, scope and factory objects, with one lifecycle owner starting Core after bean construction.

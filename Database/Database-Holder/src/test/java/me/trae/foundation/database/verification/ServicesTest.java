@@ -294,7 +294,7 @@ public final class ServicesTest extends ServiceFixture {
         final List<Change> changeList = List.of(set("name", ""));
         final var changeEvent = RedisEvents.decode(
                 new EntityKey("accounts", null, UUID.randomUUID()),
-                "1\nother-instance\n%s".formatted(RedisEvents.encode(changeList))
+                "1\nother-instance\nUPDATE\n%s".formatted(RedisEvents.encode(changeList))
         );
 
         assertEquals("", changeEvent.getChanges().getFirst().getValue(), "An empty string SET must not become null");

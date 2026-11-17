@@ -132,28 +132,10 @@ The generated constructor takes only UUID, as required by EntityInstantiator. Th
 @UtilityClass
 public final class AccountProperty {
 
-    public static final Property<Account, String> USERNAME = Property.persistent(
-            Account.class,
-            "username",
-            String.class,
-            Account::getUsername,
-            Account::setUsername
-    );
-    public static final Property<Account, String> REGION = Property.persistent(
-            Account.class,
-            "region",
-            String.class,
-            Account::getRegion,
-            Account::setRegion
-    );
+    public static final Property<Account, String> USERNAME = Property.persistent(Account.class, "username", String.class, Account::getUsername, Account::setUsername);
+    public static final Property<Account, String> REGION = Property.persistent(Account.class, "region", String.class, Account::getRegion, Account::setRegion);
 
-    public static final Property<Account, Long> LOGIN_COUNT = Property.persistent(
-            Account.class,
-            "login_count",
-            Long.class,
-            Account::getLoginCount,
-            Account::setLoginCount
-    );
+    public static final Property<Account, Long> LOGIN_COUNT = Property.persistent(Account.class, "login_count", Long.class, Account::getLoginCount, Account::setLoginCount);
 }
 ```
 
@@ -163,16 +145,9 @@ public final class AccountProperty {
 @UtilityClass
 public final class AccountIndexes {
 
-    public static final UniqueIndex<Account, String> USERNAME = UniqueIndex.of(
-            "account_username",
-            AccountProperty.USERNAME
-    );
+    public static final UniqueIndex<Account, String> USERNAME = UniqueIndex.of("account_username", AccountProperty.USERNAME);
 
-    public static final GroupedIndex<Account, String> REGION = GroupedIndex.of(
-            "account_region",
-            AccountProperty.REGION,
-            Set.of(Tier.LOCAL)
-    );
+    public static final GroupedIndex<Account, String> REGION = GroupedIndex.of("account_region", AccountProperty.REGION, Set.of(Tier.LOCAL));
 }
 ```
 
@@ -195,10 +170,7 @@ public final class AccountRepository extends PostgresRepository<Account> {
 
     @Override
     public Map<Property<?, ?>, PostgresIndexType> getIndexes() {
-        return Map.of(
-                AccountProperty.USERNAME, PostgresIndexType.UNIQUE,
-                AccountProperty.REGION, PostgresIndexType.BTREE
-        );
+        return Map.of(AccountProperty.USERNAME, PostgresIndexType.UNIQUE, AccountProperty.REGION, PostgresIndexType.BTREE);
     }
 
     public Optional<Account> findByUsername(final String username) {
@@ -224,18 +196,8 @@ Use simple application-owned table and column names. Startup only adds missing c
 ```java
 public final class AccountManager extends EntityHolder<Account, AccountRepository> {
 
-    public AccountManager(
-            final AccountRepository accountRepository,
-            final HolderContextFactory holderContextFactory
-    ) {
-        super(
-                Account.class,
-                accountRepository,
-                holderContextFactory,
-                Set.of(Tier.LOCAL, Tier.POSTGRES),
-                AccountProperty.class,
-                AccountIndexes.class
-        );
+    public AccountManager(final AccountRepository accountRepository, final HolderContextFactory holderContextFactory) {
+        super(Account.class, accountRepository, holderContextFactory, Set.of(Tier.LOCAL, Tier.POSTGRES), AccountProperty.class, AccountIndexes.class);
     }
 
     public Optional<Account> findByUsername(final String username) {
@@ -255,12 +217,7 @@ public final class AccountManager extends EntityHolder<Account, AccountRepositor
     }
 
     @Override
-    public boolean decrementIfAtLeast(
-            final Account account,
-            final Property<Account, Long> property,
-            final long delta,
-            final long floor
-    ) {
+    public boolean decrementIfAtLeast(final Account account, final Property<Account, Long> property, final long delta, final long floor) {
         throw new UnsupportedOperationException("Atomic floor checks require an application implementation");
     }
 }
@@ -282,40 +239,15 @@ Inherited save, set, increment, decrement and delete build tracked writes and up
 public final class AccountApplication {
 
     public static void main(final String[] args) {
-        final PostgresSettings postgresSettings = new PostgresSettings(
-                System.getenv("DATABASE_HOST"),
-                Integer.parseInt(System.getenv("DATABASE_PORT")),
-                System.getenv("DATABASE_NAME"),
-                System.getenv("DATABASE_USERNAME"),
-                System.getenv("DATABASE_PASSWORD"),
-                10
-        );
+        final PostgresSettings postgresSettings = new PostgresSettings(System.getenv("DATABASE_HOST"), Integer.parseInt(System.getenv("DATABASE_PORT")), System.getenv("DATABASE_NAME"), System.getenv("DATABASE_USERNAME"), System.getenv("DATABASE_PASSWORD"), 10);
         final PostgresDriver postgresDriver = new PostgresDriver(postgresSettings);
 
-        final DatabaseSettings databaseSettings = new DatabaseSettings(
-                Set.of(Tier.LOCAL, Tier.POSTGRES),
-                null,
-                Duration.ofMinutes(5),
-                Duration.ofMinutes(1),
-                Duration.ofSeconds(1),
-                Duration.ofSeconds(5),
-                Duration.ofSeconds(2)
-        );
-        final CoreDatabase coreDatabase = new CoreDatabase(
-                databaseSettings,
-                postgresDriver,
-                null
-        );
+        final DatabaseSettings databaseSettings = new DatabaseSettings(Set.of(Tier.LOCAL, Tier.POSTGRES), null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
+        final CoreDatabase coreDatabase = new CoreDatabase(databaseSettings, postgresDriver, null);
 
         try {
-            final AccountRepository accountRepository = new AccountRepository(
-                    postgresDriver,
-                    coreDatabase.getTenantScope()
-            );
-            final AccountManager accountManager = new AccountManager(
-                    accountRepository,
-                    coreDatabase.getContextFactory()
-            );
+            final AccountRepository accountRepository = new AccountRepository(postgresDriver, coreDatabase.getTenantScope());
+            final AccountManager accountManager = new AccountManager(accountRepository, coreDatabase.getContextFactory());
 
             coreDatabase.start();
 
@@ -330,13 +262,8 @@ public final class AccountApplication {
 
             accountManager.recordLogin(heldAccount);
 
-            System.out.println("Account %s has %s recorded login(s)".formatted(
-                    heldAccount.getUsername(),
-                    heldAccount.getLoginCount()
-            ));
-            System.out.println("Persisted accounts in au: %s".formatted(
-                    accountRepository.findByRegion("au").size()
-            ));
+            System.out.println("Account %s has %s recorded login(s)".formatted(heldAccount.getUsername(), heldAccount.getLoginCount()));
+            System.out.println("Persisted accounts in au: %s".formatted(accountRepository.findByRegion("au").size()));
 
             accountManager.release(account.getId());
         } finally {
@@ -381,19 +308,8 @@ Redis is optional in the initial example. Its current Core integration changes w
 Enable REDIS in both DatabaseSettings.tiers and the AccountManager superclass tier set, then supply a driver:
 
 ```java
-final RedisDriver redisDriver = new RedisDriver(new RedisSettings(
-        "localhost",
-        6379,
-        null,
-        null,
-        0,
-        Duration.ofSeconds(2)
-));
-final CoreDatabase coreDatabase = new CoreDatabase(
-        databaseSettings,
-        postgresDriver,
-        redisDriver
-);
+final RedisDriver redisDriver = new RedisDriver(new RedisSettings("localhost", 6379, null, null, 0, Duration.ofSeconds(2)));
+final CoreDatabase coreDatabase = new CoreDatabase(databaseSettings, postgresDriver, redisDriver);
 ```
 
 This snippet replaces the corresponding construction, rather than declaring another runtime alongside it. databaseSettings and the holder must both now include REDIS, for example Set.of(Tier.LOCAL, Tier.REDIS, Tier.POSTGRES). The factory intersects the holder request with the database-enabled tiers. Keep a positive TTL longer than refreshInterval, and retain the region index's explicit LOCAL tier.
@@ -413,15 +329,7 @@ The event header contains version, origin instance ID and WriteKind, followed by
 Set the tenant String in DatabaseSettings before constructing Core:
 
 ```java
-final DatabaseSettings databaseSettings = new DatabaseSettings(
-        Set.of(Tier.LOCAL, Tier.POSTGRES),
-        "shop",
-        Duration.ofMinutes(5),
-        Duration.ofMinutes(1),
-        Duration.ofSeconds(1),
-        Duration.ofSeconds(5),
-        Duration.ofSeconds(2)
-);
+final DatabaseSettings databaseSettings = new DatabaseSettings(Set.of(Tier.LOCAL, Tier.POSTGRES), "shop", Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
 ```
 
 Core creates TenantScope from that setting. Pass coreDatabase.getTenantScope() to repositories. Repository queries add tenant predicates; holder write keys and cache namespaces capture the instance tenant. Tenanted SQL indexes include tenant.

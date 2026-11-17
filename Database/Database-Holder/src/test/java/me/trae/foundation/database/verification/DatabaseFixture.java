@@ -156,6 +156,7 @@ public final class DatabaseFixture {
                 subscriber,
                 unsubscriber,
                 ValueCodec::decode,
+                _ -> 0L,
                 _ -> {},
                 Duration.ofSeconds(10)
         );

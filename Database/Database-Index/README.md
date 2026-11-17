@@ -40,11 +40,7 @@ An empty declaration tier set inherits the holder's resolved tier set. Unique st
 Explicit declaration tiers override inheritance. Providers still come from the database instance's enabled tiers. A grouped declaration whose resolved set contains REDIS throws IndexException; use explicit LOCAL placement for a grouped working-set index.
 
 ```java
-public static final GroupedIndex<ExampleEntity, String> CATEGORY = GroupedIndex.of(
-        "example_category",
-        ExampleProperty.CATEGORY,
-        Set.of(Tier.LOCAL)
-);
+public static final GroupedIndex<ExampleEntity, String> CATEGORY = GroupedIndex.of("example_category", ExampleProperty.CATEGORY, Set.of(Tier.LOCAL));
 ```
 
 Grouped stores use local concurrent maps even when the holder has no entity Local store. They do not enumerate all persisted entities.

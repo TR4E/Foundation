@@ -97,28 +97,10 @@ public final class ExampleEntity implements Entity {
 @UtilityClass
 public final class ExampleProperty {
 
-    public static final Property<ExampleEntity, String> NAME = Property.persistent(
-            ExampleEntity.class,
-            "name",
-            String.class,
-            ExampleEntity::getName,
-            ExampleEntity::setName
-    );
-    public static final Property<ExampleEntity, String> CATEGORY = Property.persistent(
-            ExampleEntity.class,
-            "category",
-            String.class,
-            ExampleEntity::getCategory,
-            ExampleEntity::setCategory
-    );
+    public static final Property<ExampleEntity, String> NAME = Property.persistent(ExampleEntity.class, "name", String.class, ExampleEntity::getName, ExampleEntity::setName);
+    public static final Property<ExampleEntity, String> CATEGORY = Property.persistent(ExampleEntity.class, "category", String.class, ExampleEntity::getCategory, ExampleEntity::setCategory);
 
-    public static final Property<ExampleEntity, Long> COUNTER = Property.persistent(
-            ExampleEntity.class,
-            "counter",
-            Long.class,
-            ExampleEntity::getCounter,
-            ExampleEntity::setCounter
-    );
+    public static final Property<ExampleEntity, Long> COUNTER = Property.persistent(ExampleEntity.class, "counter", Long.class, ExampleEntity::getCounter, ExampleEntity::setCounter);
 }
 ```
 
@@ -126,16 +108,9 @@ public final class ExampleProperty {
 @UtilityClass
 public final class ExampleIndex {
 
-    public static final UniqueIndex<ExampleEntity, String> NAME = UniqueIndex.of(
-            "example_name",
-            ExampleProperty.NAME
-    );
+    public static final UniqueIndex<ExampleEntity, String> NAME = UniqueIndex.of("example_name", ExampleProperty.NAME);
 
-    public static final GroupedIndex<ExampleEntity, String> CATEGORY = GroupedIndex.of(
-            "example_category",
-            ExampleProperty.CATEGORY,
-            Set.of(Tier.LOCAL)
-    );
+    public static final GroupedIndex<ExampleEntity, String> CATEGORY = GroupedIndex.of("example_category", ExampleProperty.CATEGORY, Set.of(Tier.LOCAL));
 }
 ```
 
@@ -144,17 +119,8 @@ Runtime unique indexes map a value to an ID; they do not enforce database unique
 ```java
 public final class ExampleRepository extends PostgresRepository<ExampleEntity> {
 
-    public ExampleRepository(
-            final PostgresDriver postgresDriver,
-            final TenantScope tenantScope
-    ) {
-        super(
-                ExampleEntity.class,
-                "examples",
-                postgresDriver,
-                tenantScope,
-                ExampleProperty.class
-        );
+    public ExampleRepository(final PostgresDriver postgresDriver, final TenantScope tenantScope) {
+        super(ExampleEntity.class, "examples", postgresDriver, tenantScope, ExampleProperty.class);
     }
 
     @Override
@@ -167,30 +133,14 @@ public final class ExampleRepository extends PostgresRepository<ExampleEntity> {
 The holder constructor declares its tiers and registers itself through the factory. A concrete holder must implement or explicitly reject the currently abstract floor-check operation.
 
 ```java
-public final class ExampleHolder
-        extends EntityHolder<ExampleEntity, ExampleRepository> {
+public final class ExampleHolder extends EntityHolder<ExampleEntity, ExampleRepository> {
 
-    public ExampleHolder(
-            final ExampleRepository exampleRepository,
-            final HolderContextFactory holderContextFactory
-    ) {
-        super(
-                ExampleEntity.class,
-                exampleRepository,
-                holderContextFactory,
-                Set.of(Tier.LOCAL, Tier.POSTGRES),
-                ExampleProperty.class,
-                ExampleIndex.class
-        );
+    public ExampleHolder(final ExampleRepository exampleRepository, final HolderContextFactory holderContextFactory) {
+        super(ExampleEntity.class, exampleRepository, holderContextFactory, Set.of(Tier.LOCAL, Tier.POSTGRES), ExampleProperty.class, ExampleIndex.class);
     }
 
     @Override
-    public boolean decrementIfAtLeast(
-            final ExampleEntity exampleEntity,
-            final Property<ExampleEntity, Long> property,
-            final long delta,
-            final long floor
-    ) {
+    public boolean decrementIfAtLeast(final ExampleEntity exampleEntity, final Property<ExampleEntity, Long> property, final long delta, final long floor) {
         throw new UnsupportedOperationException("Atomic floor checks require an implementation");
     }
 }
@@ -203,20 +153,8 @@ Initialize non-null indexed values before saving/indexing. Memory properties are
 CoreDatabase takes settings and drivers. Its tenant comes from DatabaseSettings, not a separate constructor argument.
 
 ```java
-final DatabaseSettings databaseSettings = new DatabaseSettings(
-        Tier.ALL,
-        null,
-        Duration.ofMinutes(5),
-        Duration.ofMinutes(1),
-        Duration.ofSeconds(1),
-        Duration.ofSeconds(5),
-        Duration.ofSeconds(2)
-);
-final CoreDatabase coreDatabase = new CoreDatabase(
-        databaseSettings,
-        postgresDriver,
-        redisDriver
-);
+final DatabaseSettings databaseSettings = new DatabaseSettings(Tier.ALL, null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
+final CoreDatabase coreDatabase = new CoreDatabase(databaseSettings, postgresDriver, redisDriver);
 ```
 
 The settings arguments are enabled tiers, tenant, entity TTL, refresh interval, batch interval, marker lease and marker timeout. Null/blank tenant means no tenant. Pass null for redisDriver when Redis should not be used.
@@ -231,10 +169,7 @@ coreInjector.provide(TenantScope.class, coreDatabase.getTenantScope());
 coreInjector.provide(HolderContextFactory.class, coreDatabase.getContextFactory());
 
 try {
-    coreInjector.initialize(
-            application,
-            List.of(ExampleRepository.class, ExampleHolder.class)
-    );
+    coreInjector.initialize(application, List.of(ExampleRepository.class, ExampleHolder.class));
     coreDatabase.start();
 
     System.out.println(coreInjector.get(ExampleHolder.class).getHeld().size());

@@ -38,10 +38,7 @@ Tenant.of rejects null/blank names and otherwise preserves the supplied text. pr
 
 ```java
 final TenantScope tenantScope = coreDatabase.getTenantScope();
-final ExampleRepository exampleRepository = new ExampleRepository(
-        postgresDriver,
-        tenantScope
-);
+final ExampleRepository exampleRepository = new ExampleRepository(postgresDriver, tenantScope);
 ```
 
 A standalone new TenantScope(null) returns Optional.empty() outside a binding. getTenant checks isBound() before consulting the nullable default.

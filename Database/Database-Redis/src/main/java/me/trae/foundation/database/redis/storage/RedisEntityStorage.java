@@ -9,10 +9,13 @@ import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.redis.codec.EntityCodec;
 import me.trae.foundation.database.redis.driver.RedisDriver;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @AllArgsConstructor
 public final class RedisEntityStorage<EntityType extends Entity> implements Storage<UUID, EntityType> {
@@ -36,7 +39,17 @@ public final class RedisEntityStorage<EntityType extends Entity> implements Stor
 
         final String path = this.path(key);
 
-        commands.hset(path, this.codec.encode(value));
+        final Map<String, String> fieldMap = this.codec.encode(value);
+
+        final List<String> missing = this.codec.getColumns().stream()
+                .filter(column -> !fieldMap.containsKey(column))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        if (!missing.isEmpty()) {
+            commands.hdel(path, missing.toArray(String[]::new));
+        }
+
+        commands.hset(path, fieldMap);
 
         if (!this.namespace.getTtl().isZero()) {
             commands.pexpire(path, this.namespace.getTtl().toMillis());

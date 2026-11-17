@@ -93,7 +93,7 @@ Redis writes still require an existing hash and return zero when absent. The que
 
 start() connects drivers, synchronizes registered PostgreSQL schemas, starts the batch scheduler and starts registered holder refreshers. Construct holders before start so schema and refresher registration are complete.
 
-stop() calls close() on registered holders, stopping their refreshers and shutting down their refetch executors. It then attempts a final batch flush and disconnects drivers. Failed writes can remain queued. Scheduler instances cannot restart after stop.
+stop() calls close() on registered holders, stopping their refreshers and shutting down their refetch executors. It stops the batch scheduler, performs its stop-time flush and an additional explicit flush, then disconnects drivers. Failed writes can remain queued. stop does not wait for application writes between authority and persistence; a write can enqueue after the final drain. Stop and join application writers before stopping Core. Scheduler instances cannot restart after stop.
 
 isReady() checks driver connection state only. It does not verify queue drainage, schema completion or executor health. Startup has no automatic rollback; the application owns cleanup.
 
@@ -101,7 +101,7 @@ isReady() checks driver connection state only. It does not verify queue drainage
 
 Core derives TenantScope from DatabaseSettings.tenant. Entity and index namespaces use that tenant at context creation; write keys capture it too. Repository reads resolve their supplied scope per call.
 
-Use one fixed tenant per Core instance. Changing the scope around an existing holder does not rebuild its namespace or captured write tenant. Shared-load keys currently contain table and UUID without tenant. SQL UUID primary keys also span tenants.
+Use one fixed tenant per Core instance. Changing the scope around an existing holder does not rebuild its namespace or captured write tenant. Shared-load keys currently contain table and UUID without tenant. New tenanted SQL tables use a composite (tenant, id) primary key; old schemas require an explicit migration.
 
 Depend on Core at compile scope when wiring refers to implementation classes. Core contains no service descriptor or automatic bean scanning; use the application's DI container.
 

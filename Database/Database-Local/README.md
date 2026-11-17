@@ -31,7 +31,7 @@ Database-Local implements generic Storage using ConcurrentHashMap. Core uses it 
 
 ## Storage behavior
 
-Construct LocalStorage with a Namespace. Keys use its encoder; values remain object references. The value converter and TTL are unused. There is no expiry, size limit, serialization or copying.
+Construct LocalStorage with a Namespace. Keys use its encoder; values remain object references. The value converter and TTL are unused. There is no expiry, size limit, serialization or copying. holdAll keeps the entire repository result and its runtime index mappings in memory; the caller chooses a working set that fits the process.
 
 get returns Optional; put replaces; remove deletes; contains checks presence. values() exposes the concurrent map's live values collection; clear() empties it. refresh does nothing. Separate LocalStorage instances have separate maps even with identical namespace names.
 

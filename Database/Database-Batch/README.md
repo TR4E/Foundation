@@ -49,7 +49,7 @@ Preserving SAVE keeps a pending insert when UPDATE follows it. BatchQueue itself
 
 ## Scheduling and failures
 
-BatchScheduler(queue, writer, interval) runs fixed-delay flushes on the daemon Database-Batch thread. flush() drains and calls the writer once per write, without a shared SQL transaction. Runtime failures are re-added.
+BatchScheduler(queue, writer, interval) runs fixed-delay flushes on the daemon Database-Batch thread. flush() drains and calls the writer once per write, without a shared SQL transaction. Runtime failures are re-added. A PostgreSQL outage therefore leaves failed writes queued for a later flush; reconnecting a pool alone does not flush them. The queue has no durable storage.
 
 stop() calls shutdownNow() and makes one final flush attempt. Failed final writes remain in memory. There is no durable journal, bounded capacity, retry backoff or dead-letter store. Process failure loses pending work.
 

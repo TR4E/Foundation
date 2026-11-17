@@ -2,6 +2,7 @@ package me.trae.foundation.database.postgres.driver;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import lombok.CustomLog;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.api.exception.ConnectionException;
@@ -16,6 +17,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+@CustomLog
 @RequiredArgsConstructor
 public final class PostgresDriver {
 
@@ -40,6 +42,9 @@ public final class PostgresDriver {
         } catch (final RuntimeException exception) {
             if (!this.isDatabaseMissing(exception)) {
                 this.disconnect();
+                if (LOGGER.isErrorEnabled()) {
+                    LOGGER.error("Failed to connect to PostgreSQL at {}", this.postgresSettings.getJdbcUrl(), exception);
+                }
                 throw new ConnectionException("Failed to connect to PostgreSQL at %s".formatted(this.postgresSettings.getJdbcUrl()), exception);
             }
 
@@ -48,8 +53,15 @@ public final class PostgresDriver {
                 this.connectToConfiguredDatabase();
             } catch (final RuntimeException creationException) {
                 this.disconnect();
+                if (LOGGER.isErrorEnabled()) {
+                    LOGGER.error("Failed to create or connect to PostgreSQL at {}", this.postgresSettings.getJdbcUrl(), creationException);
+                }
                 throw new ConnectionException("Failed to create or connect to PostgreSQL database %s. The configured PostgreSQL user must have CREATEDB permission when the database does not exist".formatted(this.postgresSettings.getDatabase()), creationException);
             }
+        }
+
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Connected to PostgreSQL at {}", this.postgresSettings.getJdbcUrl());
         }
     }
 
@@ -59,6 +71,9 @@ public final class PostgresDriver {
         if (this.dataSource != null) {
             this.dataSource.close();
             this.dataSource = null;
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Disconnected from PostgreSQL at {}", this.postgresSettings.getJdbcUrl());
+            }
         }
     }
 

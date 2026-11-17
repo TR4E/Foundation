@@ -1,6 +1,7 @@
 package me.trae.foundation.database.holder.event;
 
 import lombok.AllArgsConstructor;
+import lombok.CustomLog;
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.event.ChangeEvent;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
+@CustomLog
 @AllArgsConstructor
 @Getter
 public final class EventApplier<EntityType extends Entity> {
@@ -45,10 +47,16 @@ public final class EventApplier<EntityType extends Entity> {
         final long current = this.writer.getVersion(entity.getId());
 
         if (event.getVersion() <= current) {
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("Dropped duplicate event for {}, tracked {}, received {}", entity.getId(), current, event.getVersion());
+            }
             return;
         }
 
         if (event.getVersion() > current + 1) {
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Version gap on {}, tracked {}, received {}", entity.getId(), current, event.getVersion());
+            }
             this.refetch.accept(entity.getId());
             return;
         }
@@ -64,6 +72,9 @@ public final class EventApplier<EntityType extends Entity> {
         this.updater.unindex(entity.getId());
         this.storage.remove(entity.getId());
         this.writer.clearVersion(entity.getId());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Evicted {} after remote delete", entity.getId());
+        }
     }
 
     private void change(final EntityType entity, final Change change) {

@@ -1,6 +1,7 @@
 package me.trae.foundation.database.holder.write;
 
 import lombok.AllArgsConstructor;
+import lombok.CustomLog;
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.key.EntityKey;
@@ -19,6 +20,7 @@ import java.util.function.Consumer;
 import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
+@CustomLog
 @AllArgsConstructor
 @Getter
 public final class EntityWriter<EntityType extends Entity> {
@@ -48,6 +50,9 @@ public final class EntityWriter<EntityType extends Entity> {
             this.apply(entity, WriteKind.UPDATE, List.of(new Change(property.getColumn(), ChangeType.SET, value)));
         } catch (final RuntimeException exception) {
             property.set(entity, previous);
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Reverted field {} on {} after failed write", property.getColumn(), entity.getId());
+            }
 
             throw exception;
         }
@@ -64,6 +69,9 @@ public final class EntityWriter<EntityType extends Entity> {
             return previous + delta;
         } catch (final RuntimeException exception) {
             property.set(entity, previous);
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Reverted field {} on {} after failed write", property.getColumn(), entity.getId());
+            }
 
             throw exception;
         }

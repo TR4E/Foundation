@@ -6,6 +6,7 @@ import me.trae.foundation.database.api.converter.ValueConverter;
 import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.entity.EntityInstantiator;
 import me.trae.foundation.database.api.property.Property;
+import me.trae.foundation.database.postgres.value.PostgresValues;
 import me.trae.foundation.database.postgres.write.PostgresWrite;
 import org.jooq.impl.DSL;
 
@@ -32,7 +33,7 @@ public final class PostgresRow<EntityType extends Entity> {
         final ValueConverter<Value, ?> converter = property.getConverter();
 
         if (converter == null) {
-            property.set(property.getEntityType().cast(entity), record.get(DSL.field(DSL.name(property.getColumn()), property.getType())));
+            property.set(property.getEntityType().cast(entity), PostgresValues.read(record, property.getColumn(), property.getType()));
             return;
         }
 

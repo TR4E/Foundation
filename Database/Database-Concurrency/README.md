@@ -39,7 +39,7 @@ Runtime failures propagate to waiters. Other incomplete exits complete waiters w
 
 Construct `Stampede(marker, lease, timeout)` and call `load(key, converter, loader)`, with a string converter and an Optional-returning supplier.
 
-A successful claim runs the supplier, publishes the serialized result and releases. An empty result publishes an empty string. Runtime failures release without a payload. A caller that cannot claim waits; timeout or absent payload falls back to its own supplier. This reduces duplicate reads but does not guarantee one global execution.
+A successful claim runs the supplier, publishes the serialized result and releases. An empty result publishes an empty string. Runtime failures release without a payload. A caller that cannot claim waits; timeout or absent payload falls back to its own supplier. This reduces duplicate reads but does not guarantee one global execution. Claims are not renewed during the supplier call; if a query outlives its lease, another instance can claim and run the same query concurrently.
 
 [LocalMarker](../Database-Local/README.md#local-marker) always grants claims. [RedisMarker](../Database-Redis/README.md#expiry-and-load-markers) supplies shared leases. Keep marker keys unique across workloads. Core marker keys contain table and UUID, without tenant.
 

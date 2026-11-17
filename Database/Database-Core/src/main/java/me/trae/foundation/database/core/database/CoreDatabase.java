@@ -1,5 +1,6 @@
 package me.trae.foundation.database.core.database;
 
+import lombok.CustomLog;
 import lombok.Getter;
 import me.trae.foundation.database.api.Database;
 import me.trae.foundation.database.api.entity.Entity;
@@ -29,6 +30,7 @@ import me.trae.foundation.database.tenant.TenantScope;
 import java.util.ArrayList;
 import java.util.List;
 
+@CustomLog
 @Getter
 public final class CoreDatabase implements Database {
 
@@ -66,6 +68,10 @@ public final class CoreDatabase implements Database {
 
     @Override
     public void start() {
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Starting database with tiers {} and tenant {}", this.settings.getTiers(), this.settings.getTenant());
+        }
+
         this.postgresDriver.connect();
 
         if (this.redisDriver != null) {
@@ -81,9 +87,17 @@ public final class CoreDatabase implements Database {
 
     @Override
     public void stop() {
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Stopping database with tiers {} and tenant {}", this.settings.getTiers(), this.settings.getTenant());
+        }
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Closing {} database holders", this.registry.getHolders().size());
+        }
+
         this.registry.getHolders().forEach(EntityHolder::close);
 
         this.batchScheduler.stop();
+        this.batchScheduler.flush();
 
         if (this.redisDriver != null) {
             this.redisDriver.disconnect();

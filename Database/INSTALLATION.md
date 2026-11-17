@@ -122,7 +122,7 @@ public final class Account implements Entity {
 }
 ```
 
-The generated constructor takes only UUID, as required by EntityInstantiator. The final id has no setter. The boxed Long starts at 0L so a newly constructed account has a usable login counter. Username and region are assigned before save and before runtime indexing, since the current index maps require non-null keys.
+The generated constructor takes only UUID, as required by EntityInstantiator. The final id has no setter. The boxed Long starts at 0L so a newly constructed account has a usable login counter. Username and region are assigned before save and before runtime indexing, so the example has useful initial lookup keys; null extracted values remove previous mappings.
 
 ## Account declarations
 
@@ -277,7 +277,7 @@ Holder construction registers it through HolderContextFactory before start, so d
 
 This example creates a new demo row on each run. save completes synchronously against PostgreSQL because no Redis entity storage is configured. hold retains a locally loaded copy; the example retrieves that held object before changing it.
 
-Use one runtime per application lifecycle. Keep it alive while request handlers or services use AccountManager and AccountRepository, then stop it after those consumers stop. In a long-running application, let the DI container construct these beans with the database instance's driver, tenant scope and holder factory, then start Core after construction. Stop it from the application shutdown callback. Core stop calls EntityHolder.close(), stopping both holder refreshers and refetch executors. The scheduler executors cannot restart after stop.
+Use one runtime per application lifecycle. Keep it alive while request handlers or services use AccountManager and AccountRepository, then stop it after those consumers stop. In a long-running application, let the DI container construct these beans with the database instance's driver, tenant scope and holder factory, then start Core after construction. Stop it from the application shutdown callback. Stop and join in-flight application writers before Core shutdown so they cannot enqueue persistence after its final flush. Core stop calls EntityHolder.close(), stopping both holder refreshers and refetch executors. The scheduler executors cannot restart after stop.
 
 Database does not automatically integrate with Injector or Spring. Register or provide these same constructed objects in your container, share the same drivers/scope, and give one lifecycle owner responsibility for Core start/stop. CoreDatabase.getHolder(Account.class) and getRepository(Account.class) expose the API contracts after registration.
 
@@ -322,7 +322,7 @@ PostgreSQL persistence is now queued. Core copies Redis-authoritative writes wit
 
 Without LOCAL, EventApplier no-ops. With LOCAL, consecutive remote events update held objects, while gaps reload off the Pub/Sub callback thread without unsubscribing. Hold and reload read the Redis version through the context callback.
 
-The event header contains version, origin instance ID and WriteKind, followed by encoded changes. Core ignores its own origin. Null uses the ~ sentinel and remains distinct from an empty string. A newer DELETE event unindexes, removes Local and clears the tracked version. Duplicate-version filtering runs before deletion handling; the delete writer currently publishes the supplied expected version without incrementing it. Pub/Sub provides no replay after disconnect.
+The event header contains version, origin instance ID and WriteKind, followed by encoded changes. Core ignores its own origin. Null uses the ~ sentinel and remains distinct from an empty string. A remote DELETE event unindexes by UUID, removes Local and clears the tracked version before UPDATE duplicate/gap checks, including at the same tracked version. The delete writer publishes the supplied expected version without incrementing it. Pub/Sub provides no replay after disconnect.
 
 ## Tenant wiring
 
@@ -334,7 +334,7 @@ final DatabaseSettings databaseSettings = new DatabaseSettings(Set.of(Tier.LOCAL
 
 Core creates TenantScope from that setting. Pass coreDatabase.getTenantScope() to repositories. Repository queries add tenant predicates; holder write keys and cache namespaces capture the instance tenant. Tenanted SQL indexes include tenant.
 
-Do not switch a registered holder across tenants using TenantScope.run/call. Those overrides affect repository reads at call time, while its cache namespaces and write tenant were captured at registration. Use separate runtimes with fixed scopes, and globally distinct entity UUIDs: PostgreSQL's primary key and SAVE conflict target remain UUID alone.
+Do not switch a registered holder across tenants using TenantScope.run/call. Those overrides affect repository reads at call time, while its cache namespaces and write tenant were captured at registration. Use separate runtimes with fixed scopes. New tenanted tables use (tenant, id) as their primary key and SAVE conflict target; existing UUID-only primary keys require an explicit migration.
 
 A no-tenant repository is unfiltered. Shared-load keys currently omit tenant. TenantScope supplies context; it is not an authorization check.
 

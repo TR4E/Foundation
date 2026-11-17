@@ -49,7 +49,7 @@ Grouped stores use local concurrent maps even when the holder has no entity Loca
 
 UniqueIndexStore looks up the first matching UUID across its stores. It overwrites an existing value mapping instead of atomically claiming it or throwing UniqueValueTakenException. Use a PostgreSQL UNIQUE index for persistent enforcement.
 
-GroupedIndexStore returns the UUIDs currently indexed under a value. Both kinds keep local UUID-to-old-key reverse maps so a rename can remove the previous key. Non-null extracted keys are required by the current concurrent maps.
+GroupedIndexStore returns the UUIDs currently indexed under a value. Both kinds keep local UUID-to-old-key reverse maps so a rename can remove the previous key. A null extractor result unindexes the entity by UUID, removing its previous mapping without inserting a null key.
 
 Redis unique values are UUID strings, with the entity TTL. Reverse maps remain process-local; cross-instance rename and removal do not have transactional ownership guarantees.
 

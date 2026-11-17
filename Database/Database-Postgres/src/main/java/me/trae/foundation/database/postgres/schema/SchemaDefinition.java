@@ -34,7 +34,11 @@ public final class SchemaDefinition {
                 .map(SchemaDefinition::column)
                 .collect(Collectors.joining(", "));
 
-        return "CREATE TABLE IF NOT EXISTS %s (id uuid PRIMARY KEY, version bigint NOT NULL DEFAULT 0%s%s)".formatted(table, tenanted ? ", tenant text NOT NULL DEFAULT ''" : "", columns.isEmpty() ? "" : ", " + columns);
+        if (tenanted) {
+            return "CREATE TABLE IF NOT EXISTS %s (id uuid NOT NULL, tenant text NOT NULL DEFAULT '', version bigint NOT NULL DEFAULT 0%s, PRIMARY KEY (tenant, id))".formatted(table, columns.isEmpty() ? "" : ", " + columns);
+        }
+
+        return "CREATE TABLE IF NOT EXISTS %s (id uuid PRIMARY KEY, version bigint NOT NULL DEFAULT 0%s)".formatted(table, columns.isEmpty() ? "" : ", " + columns);
     }
 
     private static String addColumn(final String table, final Property<?, ?> property) {

@@ -38,7 +38,7 @@ In-process loads for different requested tier selections use different keys. The
 
 ## Shared loads
 
-LoadGuard takes a Stampede, entity/string converter and UUID-to-key factory. The claim owner loads and publishes a payload; waiters decode it. Timeout or absent result allows a direct fallback read. Core uses `load:<table>:<uuid>` keys without tenant identity or tier selection. Shared-marker coordination therefore has broader identity than the in-process key.
+LoadGuard takes a Stampede, entity/string converter and UUID-to-key factory. The claim owner loads and publishes a payload; waiters decode it. Timeout or absent result allows a direct fallback read. Core uses `load:<table>:<uuid>` keys without tenant identity or tier selection. Shared-marker coordination therefore has broader identity than the in-process key. Marker leases are not extended while the repository loads; an expired lease allows a second instance to query before the first finishes.
 
 ## Backfill and retention
 

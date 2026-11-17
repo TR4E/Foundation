@@ -32,6 +32,11 @@ public final class UniqueIndexStore {
     public void index(final Entity entity) {
         final Object key = extract(this.index, entity);
 
+        if (key == null) {
+            this.unindex(entity.getId());
+            return;
+        }
+
         final Object previous = this.keyMap.put(entity.getId(), key);
 
         if (previous != null && !previous.equals(key)) {

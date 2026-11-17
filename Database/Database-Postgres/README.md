@@ -38,7 +38,7 @@ Database-Postgres supplies persistence through jOOQ, HikariCP and PostgreSQL JDB
 
 ## Connections
 
-PostgresSettings(host, port, database, username, password, maximumPoolSize) builds jdbc:postgresql://<host>:<port>/<database>. connect() creates a Hikari pool and PostgreSQL DSL context. getDslContext() throws ConnectionException before connection; disconnect() closes the pool. isConnected() checks pool existence and closed state.
+PostgresSettings(host, port, database, username, password, maximumPoolSize) builds jdbc:postgresql://<host>:<port>/<database>. connect() creates a Hikari pool and PostgreSQL DSL context. getDslContext() throws ConnectionException before connection; disconnect() closes the pool. isConnected() checks pool existence and closed state. Hikari can recover connections when the same PostgreSQL endpoint returns after an outage; failed batched writes remain in the queue until a successful flush. No driver reconnect call is required for that pool recovery.
 
 On SQL state 3D000, the driver connects to the postgres maintenance database and attempts CREATE DATABASE. The user requires CREATEDB for that path. Pre-create the database when application credentials should not create databases.
 
@@ -54,7 +54,7 @@ PostgresRow maps persistent properties through optional converters. Memory field
 
 Core collects getStatements() before starting schedulers. Synchronization holds advisory lock 7041975 and unlocks in finally, without a single migration transaction.
 
-New tables contain id uuid PRIMARY KEY, version bigint NOT NULL DEFAULT 0, optional tenant, and persistent columns. Startup adds missing property/tenant columns and creates declared indexes. It does not rename/drop columns, change types, backfill data or repair missing version columns on old tables.
+New tables contain id, version bigint NOT NULL DEFAULT 0 and persistent columns. Non-tenanted tables use id uuid PRIMARY KEY; tenanted tables use PRIMARY KEY (tenant, id). Startup adds missing property/tenant columns and creates declared indexes. It does not rename/drop columns, change types, backfill data or repair missing version columns on old tables.
 
 Override getIndexes() with property-to-PostgresIndexType mappings. UNIQUE creates a unique index; BTREE an ordinary index. BRIN emits USING brin. Existing index names are protected by IF NOT EXISTS; changing an existing index method requires a separate migration. Tenanted indexes place tenant before the property. Runtime API indexes do not generate SQL indexes.
 
@@ -72,13 +72,13 @@ DDL interpolates names; keep them application-owned, simple SQL-safe identifiers
 | Instant | timestamptz |
 | byte[] | bytea |
 
-Converters select schema type through getStoredType(). Unsupported types throw SchemaException. For a defined enum round trip across JDBC and Redis, supply an explicit String converter. PostgreSQL rejects ADD/REMOVE collection changes; use child entities.
+Converters select schema type through getStoredType(). Unsupported types throw SchemaException. PostgresValues writes enums as names and reads them from text. Instant values are written as UTC OffsetDateTime and converted back on reads. Both mappings preserve null values. PostgreSQL rejects ADD/REMOVE collection changes; use child entities.
 
 ## Writes and tenants
 
 SAVE upserts on UUID and assigns the write's expected version, without comparing or incrementing it. UPDATE applies changes and increments version; no matching row throws VersionConflictException. DELETE checks the affected row count and throws VersionConflictException when no row was deleted and expected version is positive. Otherwise it returns the expected version. Only positive expected versions add a comparison predicate.
 
-Core derives the instance tenant scope from DatabaseSettings.tenant. Reads resolve the repository's supplied scope; writes use Write.key.tenant. Tenant is a discriminator, but UUID remains the sole primary key and SAVE conflict target. Use globally distinct UUIDs. A no-tenant scope does not filter out tenanted rows.
+Core derives the instance tenant scope from DatabaseSettings.tenant. Reads resolve the repository's supplied scope; writes use Write.key.tenant. New tenanted tables use a composite (tenant, id) primary key, and tenanted SAVE uses that same conflict target. The same UUID can identify independent rows in different tenants. Existing tables need an explicit primary-key migration; additive startup does not replace an old UUID-only key. A no-tenant scope does not filter out tenanted rows.
 
 Null and empty String values remain distinct through PostgreSQL SET and row decoding. A DELETE with expected version 0 remains unchecked when no row matches. Core uses expected version 0 for PostgreSQL replication of Redis-authoritative writes, so Redis and SQL version counters are not compared.
 

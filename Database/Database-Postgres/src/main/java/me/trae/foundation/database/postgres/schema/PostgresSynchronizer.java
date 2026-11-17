@@ -1,6 +1,7 @@
 package me.trae.foundation.database.postgres.schema;
 
 import lombok.AllArgsConstructor;
+import lombok.CustomLog;
 import lombok.Getter;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.postgres.driver.PostgresDriver;
@@ -9,6 +10,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 
+@CustomLog
 @AllArgsConstructor
 @Getter
 public final class PostgresSynchronizer {
@@ -18,6 +20,8 @@ public final class PostgresSynchronizer {
     private final PostgresDriver driver;
 
     public void synchronize(final List<String> statements) {
+        final long start = System.nanoTime();
+
         this.driver.getDslContext().connection(connection -> {
             try (final Statement statement = connection.createStatement()) {
                 statement.execute("SELECT pg_advisory_lock(%s)".formatted(LOCK_KEY));
@@ -29,6 +33,10 @@ public final class PostgresSynchronizer {
                 }
             }
         });
+
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Applied {} schema statements in {}ms", statements.size(), (System.nanoTime() - start) / 1_000_000L);
+        }
     }
 
     private void execute(final Statement statement, final String sql) {

@@ -40,7 +40,7 @@ Database-API defines the types shared by every Database module. Applications use
 
 An entity implements `Entity.getId()` and declares a constructor taking only `UUID`. `EntityInstantiator` finds that constructor, makes it accessible and uses it for row and cache decoding. Missing or failing constructors produce `SchemaException`.
 
-`Property.persistent(...)` declares a PostgreSQL column; `Property.memory(...)` excludes it from full persistent saves and row mapping. Both take the entity class, column name, value class, getter and setter, with an optional `ValueConverter`. Use wrapper classes such as `Long.class`. Memory properties still participate in Redis entity serialization; explicitly setting one through a holder still creates a write.
+`Property.persistent(...)` declares a PostgreSQL column; `Property.memory(...)` excludes it from full persistent saves and row mapping. Both take the entity class, column name, value class, getter and setter, with an optional `ValueConverter`. Use wrapper classes such as `Long.class`. An entity with only memory properties still has registered properties; PostgreSQL can store its id/version while those fields retain constructor defaults on reads. Memory properties still participate in Redis entity serialization; explicitly setting one through a holder still creates a write.
 
 Properties and indexes register when their factory methods execute. `DeclarationLoader.load(ExampleProperty.class, ExampleIndex.class)` forces static initialization. Pass declaration classes to repository and holder construction before contexts capture their declarations. Registries are shared static maps keyed by entity class, without duplicate-declaration validation or reset.
 

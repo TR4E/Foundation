@@ -95,7 +95,7 @@ public final class ServiceBenchmarkTest extends ServiceFixture {
 
                 redisDriver.getCommands().publish(
                         this.entityStorage().channel(account.getId()),
-                        "%s\n%s".formatted(version, RedisEvents.encode(List.of(set("name", value))))
+                        "%s\nbenchmark-sender\nUPDATE\n%s".formatted(version, RedisEvents.encode(List.of(set("name", value))))
                 );
 
                 final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);

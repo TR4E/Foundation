@@ -1,5 +1,6 @@
 package me.trae.foundation.database.holder.entity;
 
+import lombok.CustomLog;
 import lombok.Getter;
 import me.trae.foundation.database.api.declaration.DeclarationLoader;
 import me.trae.foundation.database.api.entity.Entity;
@@ -29,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+@CustomLog
 @Getter
 public abstract class EntityHolder<EntityType extends Entity, RepositoryType extends Repository<EntityType>> implements Holder<EntityType> {
 
@@ -122,6 +124,10 @@ public abstract class EntityHolder<EntityType extends Entity, RepositoryType ext
 
         this.context.getUnsubscriber().accept(id);
         this.writer.clearVersion(id);
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Released {}, held count {}", id, Optional.ofNullable(this.context.getStorageMap().get(Tier.LOCAL)).map(storage -> storage.values().size()).orElse(0));
+        }
     }
 
     @Override
@@ -182,10 +188,23 @@ public abstract class EntityHolder<EntityType extends Entity, RepositoryType ext
         this.writer.setVersion(entity.getId(), this.context.getVersion().applyAsLong(entity.getId()));
         this.updater.index(entity);
         this.context.getSubscriber().accept(entity.getId(), this.applier::apply);
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Held {}, held count {}", entity.getId(), Optional.ofNullable(this.context.getStorageMap().get(Tier.LOCAL)).map(storage -> storage.values().size()).orElse(0));
+        }
     }
 
     private void refetch(final UUID id) {
-        this.executor.execute(() -> this.reload(id));
+        this.executor.execute(() -> {
+            try {
+                this.reload(id);
+            } catch (final RuntimeException exception) {
+                if (LOGGER.isErrorEnabled()) {
+                    LOGGER.error("Failed to refetch {}", id, exception);
+                }
+                throw exception;
+            }
+        });
     }
 
     private void reload(final UUID id) {

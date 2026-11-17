@@ -7,7 +7,7 @@
   <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Multi--module-C71A36?logo=apachemaven&logoColor=white"></a>
 </p>
 
-Database is Foundation's Java 25 persistence stack. PostgreSQL supplies durable repositories and additive schema setup. Holders are DI beans extending EntityHolder with entity and repository type parameters. Each holder chooses its tier set; a database instance supplies the enabled tiers, tenant, drivers and lifecycle.
+Database is Foundation's Java 25 persistence stack. PostgreSQL supplies durable repositories and additive schema setup. See [installation](INSTALLATION.md) for complete repository and manager wiring. Holders are DI beans extending EntityHolder with entity and repository type parameters. Each holder chooses its tier set; a database instance supplies the enabled tiers, tenant, drivers and lifecycle.
 
 ## Contents
 
@@ -146,7 +146,7 @@ public final class ExampleHolder extends EntityHolder<ExampleEntity, ExampleRepo
 }
 ```
 
-Initialize non-null indexed values before saving/indexing. Memory properties are excluded from PostgreSQL full saves and row mapping, but remain part of Redis entity serialization.
+Null extracted index values remove any previous runtime mapping. Memory properties are excluded from PostgreSQL full saves and row mapping, but remain part of Redis entity serialization.
 
 ## Database and DI wiring
 
@@ -191,7 +191,7 @@ getByProperty tries a matching unique runtime index, or a held scan when no matc
 
 Writes mutate the entity, call authority, record a positive returned version, dispatch persistence and update indexes. Redis authority publishes version, origin, WriteKind and changes. Core filters its own origin before event application, preventing a local write from applying its own published delta again.
 
-Other-instance consecutive events update held objects. Gaps submit reloads to a separate executor without unsubscribing. Hold and reload initialize writer tracking through the context version callback, reading the Redis hash version when available. Without Redis, the callback returns 0. DELETE events have an eviction branch, but the duplicate-version check runs first and the delete writer currently publishes the supplied expected version without incrementing it.
+Other-instance consecutive events update held objects. Gaps submit reloads to a separate executor without unsubscribing. Hold and reload initialize writer tracking through the context version callback, reading the Redis hash version when available. Without Redis, the callback returns 0. Remote DELETE events evict Local, runtime index entries and the tracked version before UPDATE duplicate/gap checks. The delete writer publishes the supplied expected version without incrementing it.
 
 Redis scripts require an existing hash; save does not bootstrap it. Successful repository ID reads can backfill Redis. Core copies Redis-authoritative writes with expected version 0 for immediate or batched PostgreSQL replication. Redis and SQL versions are not compared. The queue remains in memory, without durable replay.
 
@@ -211,7 +211,7 @@ From the repository root:
 mvn -pl Database/Database-Core -am test
 ```
 
-Verification suites live under Database-Holder/src/test/java and Database-Core/src/test/java. JUnit/Mockito cover contracts and isolated behavior; Testcontainers runs real PostgreSQL and Redis tests. Docker-dependent classes skip when Docker is unavailable. The Core suite also includes deterministic convergence tests and a sixty-second mixed-workload soak with allocation/GC measurements.
+Verification suites live under Database-Holder/src/test/java and Database-Core/src/test/java. JUnit/Mockito cover contracts and isolated behavior; Testcontainers runs real PostgreSQL and Redis tests. Docker-dependent classes skip when Docker is unavailable. The Core suite also includes convergence tests, a sixty-second mixed-workload soak with allocation/GC measurements, service interruption tests, a two-JVM DDL race, tenant collisions, type/null round trips and a 100k-row hold measurement. Assertions describe required behavior; test presence does not mean every assertion passes.
 
 The suites cover regression contracts, concurrency, retention and convergence; they do not repair production code. Fixtures must use the current HolderContext and ChangeEvent constructor signatures and the current event headers. Stored reports describe the source at their run time, not subsequent edits.
 

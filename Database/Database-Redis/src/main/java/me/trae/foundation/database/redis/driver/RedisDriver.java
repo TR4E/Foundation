@@ -7,6 +7,7 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
+import lombok.CustomLog;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import me.trae.foundation.database.api.exception.ConnectionException;
@@ -14,6 +15,7 @@ import me.trae.foundation.database.api.exception.ConnectionException;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+@CustomLog
 @RequiredArgsConstructor
 public final class RedisDriver {
 
@@ -42,8 +44,14 @@ public final class RedisDriver {
             this.pubSubConnection = this.redisClient.connectPubSub();
 
             this.subscriptions.attach(this.pubSubConnection);
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Connected to Redis at {}:{}", this.redisSettings.getHost(), this.redisSettings.getPort());
+            }
         } catch (final RedisException exception) {
             this.disconnect();
+            if (LOGGER.isErrorEnabled()) {
+                LOGGER.error("Failed to connect to Redis at {}:{}", this.redisSettings.getHost(), this.redisSettings.getPort(), exception);
+            }
             throw new ConnectionException("Failed to connect to Redis at %s:%s".formatted(this.redisSettings.getHost(), this.redisSettings.getPort()), exception);
         }
     }
@@ -67,6 +75,9 @@ public final class RedisDriver {
             this.redisClient.shutdown();
 
             this.redisClient = null;
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Disconnected from Redis at {}:{}", this.redisSettings.getHost(), this.redisSettings.getPort());
+            }
         }
     }
 

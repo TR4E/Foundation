@@ -41,14 +41,23 @@ Foundation is organized as a Maven reactor. Each module can be used independentl
 
 ### Database
 
-An entity persistence stack for PostgreSQL, with optional local and Redis caching, tiered lookups, schema synchronization, and batched writes. See the [Database guide](Database/README.md) for usage details.
+An entity persistence stack with PostgreSQL repositories and optional Redis authority. Each DI holder extends EntityHolder with entity and repository type parameters and chooses its own LOCAL, REDIS and POSTGRES tiers. Database settings supply the available tiers and instance tenant. See the [Database guide](Database/README.md) and [installation](Database/INSTALLATION.md) for wiring.
 
 | Maven module | Purpose |
 | --- | --- |
-| [Database-API](Database/Database-API/README.md) | Entity, property, query, repository, holder, and tenant contracts |
-| [Database-Storage](Database/Database-Storage/README.md) | Local cache, Redis storage, and entity codecs |
-| [Database-Lookup](Database/Database-Lookup/README.md) | Lookups across local cache, Redis, and PostgreSQL |
-| [Database-Core](Database/Database-Core/README.md) | PostgreSQL integration, schema management, repositories, and batched writes |
+| [Database-API](Database/Database-API/README.md) | Entity, property, index, query, repository, holder and storage contracts |
+| [Database-Batch](Database/Database-Batch/README.md) | Write merging, scheduled persistence and failed-write requeue |
+| [Database-Concurrency](Database/Database-Concurrency/README.md) | In-process load sharing and shared marker leases |
+| [Database-Core](Database/Database-Core/README.md) | Database instances, holder contexts, drivers and lifecycle |
+| [Database-Holder](Database/Database-Holder/README.md) | Typed DI holder beans, local retention, versions and remote events |
+| [Database-Index](Database/Database-Index/README.md) | Unique and grouped runtime lookup stores |
+| [Database-Local](Database/Database-Local/README.md) | Concurrent in-process storage |
+| [Database-Lookup](Database/Database-Lookup/README.md) | Tiered ID reads and selective cache backfill |
+| [Database-Postgres](Database/Database-Postgres/README.md) | PostgreSQL repositories, additive schema setup and versioned writes |
+| [Database-Redis](Database/Database-Redis/README.md) | Hash/string storage, scripted authority, origin-tagged events and shared markers |
+| [Database-Tenant](Database/Database-Tenant/README.md) | Tenant identities and scoped repository selection |
+
+Redis-authoritative writes publish version, origin, kind and changes, then queue PostgreSQL persistence. Own-origin events are ignored; remote DELETE events evict held state. Without Redis, the repository is the synchronous authority. Runtime indexes provide unique or grouped lookup mappings; SQL constraints are declared separately.
 
 ### Discord
 
@@ -107,7 +116,7 @@ Choose the module family that matches your application, install it from source, 
 
 | Goal | Start with | Integration |
 | --- | --- | --- |
-| Persist Java entities | [Database quick start](Database/README.md#quick-start) | Compile against `Database-Core`, which includes the other Database modules |
+| Persist Java entities | [Database installation](Database/INSTALLATION.md) | Compile against `Database-Core`, which includes the other Database modules |
 | Send Discord webhook messages | [Webhook quick start](Discord/Discord-Webhook/README.md#quick-start) | Add `Discord-Webhook`; Utilities is included transitively |
 | Wire components and control startup | [Injector quick start](Injector/README.md#quick-start) | Compile against `Injector-API`, with `Injector-Core` at runtime |
 | Add configuration, scheduling, or lifecycle annotations | [Injector extensions](Injector/Injector-Extensions/README.md) | Add only the individual extensions used by the application |
@@ -151,10 +160,10 @@ Java examples in the guides omit imports unless shown and may use Lombok. Founda
 | Suite | Command from the repository root | External services |
 | --- | --- | --- |
 | Injector and all extensions | `mvn -f Injector/pom.xml test` | None |
-| Database modules | `mvn -f Database/pom.xml test` | PostgreSQL and Redis for integration coverage |
+| Database modules | `mvn -pl Database/Database-Core -am test` | PostgreSQL and Redis for integration coverage |
 | Complete reactor | `mvn test` | Depends on the selected modules and integration tests |
 
-Database tests can skip cases when their services are unreachable. Use the [isolated Database test environment](Database/README.md#building-and-testing) to exercise those paths and inspect the skipped count. The guide also covers multi-JVM coordination and opt-in container recovery checks.
+Database integration suites use Testcontainers with PostgreSQL and Redis. Docker-dependent classes skip when Docker is unavailable. See [Database testing](Database/README.md#building-and-testing) for suite coverage, including two-JVM DDL coordination, service interruption, concurrency and benchmarks. Inspect failures and skipped counts; old reports do not verify later source changes.
 
 ## Documentation
 

@@ -2,11 +2,13 @@ package me.trae.foundation.database.redis.driver;
 
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
+import lombok.CustomLog;
 import me.trae.foundation.database.api.exception.ConnectionException;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+@CustomLog
 public final class RedisSubscriptions extends RedisPubSubAdapter<String, String> {
 
     private final ConcurrentHashMap<String, Consumer<String>> listenerMap = new ConcurrentHashMap<>();
@@ -39,7 +41,20 @@ public final class RedisSubscriptions extends RedisPubSubAdapter<String, String>
     public void unsubscribe(final String channel) {
         this.listenerMap.remove(channel);
 
-        this.getConnection().sync().unsubscribe(channel);
+        try {
+            this.getConnection().async().unsubscribe(channel).whenComplete((_, exception) -> {
+                if (exception != null) {
+                    if (LOGGER.isWarnEnabled()) {
+                        LOGGER.warn("Failed to unsubscribe from {}, {}", channel, exception.getMessage(), exception);
+                    }
+                }
+            });
+        } catch (final RuntimeException exception) {
+            if (LOGGER.isWarnEnabled()) {
+                LOGGER.warn("Failed to unsubscribe from {}, {}", channel, exception.getMessage(), exception);
+            }
+            throw exception;
+        }
     }
 
     @Override

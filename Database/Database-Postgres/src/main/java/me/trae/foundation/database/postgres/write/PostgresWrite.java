@@ -6,6 +6,7 @@ import me.trae.foundation.database.api.property.Property;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.change.Change;
 import me.trae.foundation.database.api.write.change.ChangeType;
+import me.trae.foundation.database.postgres.value.PostgresValues;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Table;
@@ -44,7 +45,7 @@ public final class PostgresWrite {
 
         return dslContext.insertInto(table)
                 .set(values)
-                .onConflict(ID)
+                .onConflict(write.getKey().getTenant() == null ? new Field<?>[]{ID} : new Field<?>[]{TENANT, ID})
                 .doUpdate()
                 .set(values)
                 .returningResult(VERSION)
@@ -94,7 +95,7 @@ public final class PostgresWrite {
             return;
         }
 
-        values.put(DSL.field(DSL.name(change.getColumn())), serialize(properties, change));
+        values.put(DSL.field(DSL.name(change.getColumn())), PostgresValues.write(serialize(properties, change)));
     }
 
     private static Object serialize(final List<Property<?, ?>> properties, final Change change) {

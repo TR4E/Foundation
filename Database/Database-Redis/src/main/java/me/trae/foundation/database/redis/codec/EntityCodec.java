@@ -6,10 +6,12 @@ import me.trae.foundation.database.api.entity.Entity;
 import me.trae.foundation.database.api.entity.EntityInstantiator;
 import me.trae.foundation.database.api.property.Property;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @AllArgsConstructor
 @Getter
@@ -48,5 +50,11 @@ public final class EntityCodec<EntityType extends Entity> {
         }
 
         property.set(property.getEntityType().cast(entity), ValueCodec.decode(property, raw));
+    }
+
+    public List<String> getColumns() {
+        return this.properties.stream()
+                .map(Property::getColumn)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 }

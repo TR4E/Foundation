@@ -55,7 +55,7 @@ Declarations initialize before factory.create(repository, tiers). The constructo
 
 get(id) checks resolved tiers; get(id, tiers) requests a specific set. getByProperty uses a matching unique index if one exists. On an index miss it skips the held scan and queries PostgreSQL when enabled, warming indexes from the result. Without a matching index it scans held entities before SQL.
 
-getByIndex and getAllByIndex have no SQL fallback. hold loads, inserts into Local when present, indexes and subscribes. holdAll queries every row and takes each. getHeld returns a list snapshot of Local values. Without LOCAL, holds is false and getHeld is empty, although take still creates index entries and a subscription. take initializes the writer version from the context version callback before indexing and subscribing.
+getByIndex and getAllByIndex have no SQL fallback. Grouped results omit IDs whose entity lookup returns empty; this does not remove the stale index member. hold loads, inserts into Local when present, indexes and subscribes. holdAll queries every row and takes each. getHeld returns a list snapshot of Local values. Without LOCAL, holds is false and getHeld is empty, although take still creates index entries and a subscription. take initializes the writer version from the context version callback before indexing and subscribing.
 
 release unindexes by UUID, removes any Local entry, unsubscribes and clears the writer version. Cleanup does not require a Local entity, so it also removes remembered index entries for holders without LOCAL. release no longer performs a LOCAL-only lookup.
 
@@ -71,11 +71,11 @@ Versions default to zero. hold/holdAll and asynchronous reload initialize the tr
 
 ## Remote events and refresh
 
-Core filters own-origin messages before EventApplier. Without Local storage the applier does nothing. Versions at/below the tracked version are ignored; the next version applies SET/INCREMENT, records version and reindexes.
+Core filters own-origin messages before EventApplier. Without Local storage the applier does nothing. DELETE is handled first. For other kinds, versions at/below the tracked version are ignored; the next version applies SET/INCREMENT, records version and reindexes.
 
 A gap submits a reload to the holder's daemon Database-Refetch executor. Reload reads Redis/PostgreSQL, replaces Local, reads the context version and reindexes, without unsubscribing.
 
-ChangeEvent includes WriteKind. After the duplicate-version check, a DELETE event evicts Local, unindexes and clears the tracked version. That eviction does not unsubscribe. The duplicate check runs first: a delete carrying the same version as the tracked value is ignored. The Redis delete writer currently publishes the supplied expected version without incrementing it.
+ChangeEvent includes WriteKind. A remote DELETE evicts Local, unindexes by UUID and clears the tracked version before version comparisons, including when its version equals the tracked value. Eviction does not unsubscribe. The Redis delete writer publishes the supplied expected version without incrementing it.
 
 HoldRefresher uses a daemon scheduler to refresh Redis entity and unique-index TTLs for getHeld(). It does not poll PostgreSQL or replay events. EntityHolder.close() stops its refresher and shuts down its refetch executor. Core stop calls close() on its registered holders. Uncaught refresher exceptions can terminate subsequent scheduled runs.
 

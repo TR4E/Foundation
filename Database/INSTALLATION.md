@@ -1,0 +1,489 @@
+<h1 align="center">Database Installation</h1>
+
+<p align="center">Wire AccountRepository and AccountManager into the current Database runtime.</p>
+
+<p align="center">
+  <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
+  <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Library-C71A36?logo=apachemaven&logoColor=white"></a>
+</p>
+
+This guide describes PostgreSQL/local wiring. AccountRepository owns persistent queries and SQL indexes; AccountManager owns tiered access, held entities and tracked writes. CoreDatabase connects those objects and controls their lifecycle.
+
+Examples omit package declarations and imports. Place each public type in its own file under your application package and add the imports in your IDE. Examples use Lombok. The initial setup requires PostgreSQL and does not require Redis.
+
+## Contents
+
+<details>
+<summary>On this page</summary>
+
+- [Dependencies](#dependencies)
+- [Database settings](#database-settings)
+- [Account entity](#account-entity)
+- [Account declarations](#account-declarations)
+- [Account repository](#account-repository)
+- [Account manager](#account-manager)
+- [Application wiring](#application-wiring)
+- [Reads and writes](#reads-and-writes)
+- [Optional Redis wiring](#optional-redis-wiring)
+- [Tenant wiring](#tenant-wiring)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
+
+</details>
+
+## Dependencies
+
+Use JDK 25 and Maven. From the Foundation repository root:
+
+```shell
+mvn -pl Database/Database-Core -am install
+```
+
+In the consuming project's POM, add Core and configure Lombok processing for the example annotations:
+
+```xml
+<properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+</properties>
+
+<dependencies>
+    <dependency>
+        <groupId>me.trae.foundation.database</groupId>
+        <artifactId>Database-Core</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>1.18.46</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.16.0</version>
+            <configuration>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>org.projectlombok</groupId>
+                        <artifactId>lombok</artifactId>
+                        <version>1.18.46</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+Merge these elements into the existing POM. Core brings in the other Database libraries, PostgreSQL JDBC, HikariCP, jOOQ, Lettuce and Utilities. Applications may supply an SLF4J provider for logging. No Injector or Spring annotations are required for this setup.
+
+## Database settings
+
+Have a PostgreSQL server reachable at the configured host and port. The application user needs access to the selected database and permission to create its tables, columns and indexes. The driver can create a missing database through the postgres maintenance database if that user has CREATEDB; otherwise pre-create the database.
+
+The application example reads these environment variables:
+
+| Variable | Example | Meaning |
+| --- | --- | --- |
+| `DATABASE_HOST` | localhost | PostgreSQL host |
+| `DATABASE_PORT` | 5432 | PostgreSQL port |
+| `DATABASE_NAME` | foundation_example | Database name |
+| `DATABASE_USERNAME` | foundation | Database user |
+| `DATABASE_PASSWORD` | Your configured password | Database password |
+
+These names belong to the example; Foundation does not automatically read environment variables or an application.yaml file.
+
+DatabaseSettings requires all values, including the tenant String after the enabled tier set. Null or blank selects no tenant. The example enables LOCAL and POSTGRES and supplies a five-minute entity TTL, one-minute refresh, one-second batch interval, five-second marker lease and two-second marker wait. TTL/marker values prepare the same settings shape for optional Redis; PostgreSQL writes in the initial setup are synchronous.
+
+## Account entity
+
+`src/main/java/example/database/Account.java`:
+
+```java
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@RequiredArgsConstructor
+@Getter
+@Setter
+public final class Account implements Entity {
+
+    @EqualsAndHashCode.Include
+    private final UUID id;
+
+    private Long loginCount = 0L;
+
+    private String username, region;
+}
+```
+
+The generated constructor takes only UUID, as required by EntityInstantiator. The final id has no setter. The boxed Long starts at 0L so a newly constructed account has a usable login counter. Username and region are assigned before save and before runtime indexing, since the current index maps require non-null keys.
+
+## Account declarations
+
+`src/main/java/example/database/AccountProperty.java`:
+
+```java
+@UtilityClass
+public final class AccountProperty {
+
+    public static final Property<Account, String> USERNAME = Property.persistent(
+            Account.class,
+            "username",
+            String.class,
+            Account::getUsername,
+            Account::setUsername
+    );
+    public static final Property<Account, String> REGION = Property.persistent(
+            Account.class,
+            "region",
+            String.class,
+            Account::getRegion,
+            Account::setRegion
+    );
+
+    public static final Property<Account, Long> LOGIN_COUNT = Property.persistent(
+            Account.class,
+            "login_count",
+            Long.class,
+            Account::getLoginCount,
+            Account::setLoginCount
+    );
+}
+```
+
+`src/main/java/example/database/AccountIndexes.java`:
+
+```java
+@UtilityClass
+public final class AccountIndexes {
+
+    public static final UniqueIndex<Account, String> USERNAME = UniqueIndex.of(
+            "account_username",
+            AccountProperty.USERNAME
+    );
+
+    public static final GroupedIndex<Account, String> REGION = GroupedIndex.of(
+            "account_region",
+            AccountProperty.REGION,
+            Set.of(Tier.LOCAL)
+    );
+}
+```
+
+Properties register through their static initializers. The repository and holder constructors explicitly load the declaration classes before building row mappers, codecs and runtime index stores.
+
+The username index inherits the holder's resolved tiers. Region is explicitly LOCAL so enabling Redis later does not trigger the grouped-index restriction. Neither declaration creates a SQL index. The repository declares those separately below.
+
+For additional values, use Property.persistent for SQL-backed data and ValueConverter for types without a suitable stored representation. Property.memory is omitted from SQL schema and full saves, but still serialized into Redis; it does not mean private process-local state.
+
+## Account repository
+
+`src/main/java/example/database/AccountRepository.java`:
+
+```java
+public final class AccountRepository extends PostgresRepository<Account> {
+
+    public AccountRepository(final PostgresDriver postgresDriver, final TenantScope tenantScope) {
+        super(Account.class, "accounts", postgresDriver, tenantScope, AccountProperty.class);
+    }
+
+    @Override
+    public Map<Property<?, ?>, PostgresIndexType> getIndexes() {
+        return Map.of(
+                AccountProperty.USERNAME, PostgresIndexType.UNIQUE,
+                AccountProperty.REGION, PostgresIndexType.BTREE
+        );
+    }
+
+    public Optional<Account> findByUsername(final String username) {
+        return this.find(Query.where(AccountProperty.USERNAME, username)).stream().findFirst();
+    }
+
+    public List<Account> findByRegion(final String region) {
+        return this.find(Query.where(AccountProperty.REGION, region));
+    }
+}
+```
+
+Core startup creates accounts with id, version, username, region and login_count, plus the declared SQL indexes. The UNIQUE username index enforces PostgreSQL uniqueness; the runtime UniqueIndex only stores a lookup mapping.
+
+Repository queries read PostgreSQL directly. They do not retain entities locally or initialize runtime indexes. Use findByRegion for persistent coverage; a grouped runtime index covers only entities indexed in this process.
+
+Use simple application-owned table and column names. Startup only adds missing columns/indexes; use explicit migrations for renames, type changes or data transformations.
+
+## Account manager
+
+`src/main/java/example/database/AccountManager.java`:
+
+```java
+public final class AccountManager extends EntityHolder<Account, AccountRepository> {
+
+    public AccountManager(
+            final AccountRepository accountRepository,
+            final HolderContextFactory holderContextFactory
+    ) {
+        super(
+                Account.class,
+                accountRepository,
+                holderContextFactory,
+                Set.of(Tier.LOCAL, Tier.POSTGRES),
+                AccountProperty.class,
+                AccountIndexes.class
+        );
+    }
+
+    public Optional<Account> findByUsername(final String username) {
+        return this.getByProperty(AccountProperty.USERNAME, username);
+    }
+
+    public List<Account> getIndexedByRegion(final String region) {
+        return this.getAllByIndex(AccountIndexes.REGION, region);
+    }
+
+    public void rename(final Account account, final String username) {
+        this.set(account, AccountProperty.USERNAME, username);
+    }
+
+    public long recordLogin(final Account account) {
+        return this.increment(account, AccountProperty.LOGIN_COUNT, 1L);
+    }
+
+    @Override
+    public boolean decrementIfAtLeast(
+            final Account account,
+            final Property<Account, Long> property,
+            final long delta,
+            final long floor
+    ) {
+        throw new UnsupportedOperationException("Atomic floor checks require an application implementation");
+    }
+}
+```
+
+The rejection is deliberate: Holder declares decrementIfAtLeast, but EntityHolder does not implement it. This example supplies the required override without claiming an atomic balance/floor operation. The sample never invokes it.
+
+The holder now keeps its typed AccountRepository, available through the inherited getRepository(). Its constructor loads declarations, asks HolderContextFactory.create(repository, tiers) for the context, initializes its helpers and calls HolderContextFactory.register(this). The factory implementation must register the holder and repository with the runtime that owns their lifecycle. Core's ContextFactory implements this contract and registers the holder with the database instance.
+
+findByUsername uses getByProperty, allowing a PostgreSQL fallback on a cold runtime index. getByIndex(AccountIndexes.USERNAME, username) would only search index entries already populated. getIndexedByRegion likewise has no SQL fallback; use AccountRepository.findByRegion for all persisted matches.
+
+Inherited save, set, increment, decrement and delete build tracked writes and update relevant indexes. Direct setters are appropriate while constructing a new entity; use manager methods for later persistent mutations.
+
+## Application wiring
+
+`src/main/java/example/database/AccountApplication.java`:
+
+```java
+public final class AccountApplication {
+
+    public static void main(final String[] args) {
+        final PostgresSettings postgresSettings = new PostgresSettings(
+                System.getenv("DATABASE_HOST"),
+                Integer.parseInt(System.getenv("DATABASE_PORT")),
+                System.getenv("DATABASE_NAME"),
+                System.getenv("DATABASE_USERNAME"),
+                System.getenv("DATABASE_PASSWORD"),
+                10
+        );
+        final PostgresDriver postgresDriver = new PostgresDriver(postgresSettings);
+
+        final DatabaseSettings databaseSettings = new DatabaseSettings(
+                Set.of(Tier.LOCAL, Tier.POSTGRES),
+                null,
+                Duration.ofMinutes(5),
+                Duration.ofMinutes(1),
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(2)
+        );
+        final CoreDatabase coreDatabase = new CoreDatabase(
+                databaseSettings,
+                postgresDriver,
+                null
+        );
+
+        try {
+            final AccountRepository accountRepository = new AccountRepository(
+                    postgresDriver,
+                    coreDatabase.getTenantScope()
+            );
+            final AccountManager accountManager = new AccountManager(
+                    accountRepository,
+                    coreDatabase.getContextFactory()
+            );
+
+            coreDatabase.start();
+
+            final Account account = new Account(UUID.randomUUID());
+
+            account.setUsername("demo-%s".formatted(account.getId()));
+            account.setRegion("au");
+            accountManager.save(account);
+            accountManager.hold(account.getId());
+
+            final Account heldAccount = accountManager.get(account.getId()).orElseThrow();
+
+            accountManager.recordLogin(heldAccount);
+
+            System.out.println("Account %s has %s recorded login(s)".formatted(
+                    heldAccount.getUsername(),
+                    heldAccount.getLoginCount()
+            ));
+            System.out.println("Persisted accounts in au: %s".formatted(
+                    accountRepository.findByRegion("au").size()
+            ));
+
+            accountManager.release(account.getId());
+        } finally {
+            coreDatabase.stop();
+        }
+    }
+}
+```
+
+Holder construction registers it through HolderContextFactory before start, so declarations, schema statements and refreshers are known at startup. CoreDatabase has no separate register(repository, factory, declarations) method. Drivers are not connected by their constructors. Core start connects them and applies schema; account operations run afterwards.
+
+This example creates a new demo row on each run. save completes synchronously against PostgreSQL because no Redis entity storage is configured. hold retains a locally loaded copy; the example retrieves that held object before changing it.
+
+Use one runtime per application lifecycle. Keep it alive while request handlers or services use AccountManager and AccountRepository, then stop it after those consumers stop. In a long-running application, let the DI container construct these beans with the database instance's driver, tenant scope and holder factory, then start Core after construction. Stop it from the application shutdown callback. Core stop calls EntityHolder.close(), stopping both holder refreshers and refetch executors. The scheduler executors cannot restart after stop.
+
+Database does not automatically integrate with Injector or Spring. Register or provide these same constructed objects in your container, share the same drivers/scope, and give one lifecycle owner responsibility for Core start/stop. CoreDatabase.getHolder(Account.class) and getRepository(Account.class) expose the API contracts after registration.
+
+## Reads and writes
+
+| Goal | Call | Coverage |
+| --- | --- | --- |
+| Fetch by UUID | accountManager.get(id) | Enabled tiers |
+| Retain active account | accountManager.hold(id) | Load, Local retention, indexes and optional subscription |
+| Check local retention | accountManager.holds(id) | Local only |
+| Find username | accountManager.findByUsername(username) | Runtime index, then SQL fallback |
+| Read indexed username | accountManager.getByIndex(AccountIndexes.USERNAME, username) | Populated runtime entries only |
+| Query all region matches | accountRepository.findByRegion(region) | PostgreSQL |
+| Read indexed region matches | accountManager.getIndexedByRegion(region) | Current process's grouped entries |
+| Rename | accountManager.rename(account, username) | Property write and index update |
+| Increment counter | accountManager.recordLogin(account) | Long increment write |
+| Delete | accountManager.delete(account) | Authority, persistence, indexes and release |
+| Stop retaining | accountManager.release(id) | Remove hold/index entries and unsubscribe |
+
+holdAll() loads every repository row and retains/indexes each one; use it only when that working set fits memory. release is not deletion. save does not automatically hold an entity. Reindex changes runtime keys without persisting values.
+
+hold/holdAll and asynchronous reload initialize writer tracking through HolderContext.version. Core reads the Redis hash version when Redis entity storage exists; without Redis the callback returns 0. A plain get does not initialize the writer map. Expected version 0 skips backend comparison, so not every loaded object has strict optimistic protection. Holder operations do not create multi-entity transactions.
+
+## Optional Redis wiring
+
+Redis is optional in the initial example. Its current Core integration changes write authority rather than simply adding a read cache. Review [Redis entity writes](Database-Redis/README.md#entity-writes) before adopting it.
+
+Enable REDIS in both DatabaseSettings.tiers and the AccountManager superclass tier set, then supply a driver:
+
+```java
+final RedisDriver redisDriver = new RedisDriver(new RedisSettings(
+        "localhost",
+        6379,
+        null,
+        null,
+        0,
+        Duration.ofSeconds(2)
+));
+final CoreDatabase coreDatabase = new CoreDatabase(
+        databaseSettings,
+        postgresDriver,
+        redisDriver
+);
+```
+
+This snippet replaces the corresponding construction, rather than declaring another runtime alongside it. databaseSettings and the holder must both now include REDIS, for example Set.of(Tier.LOCAL, Tier.REDIS, Tier.POSTGRES). The factory intersects the holder request with the database-enabled tiers. Keep a positive TTL longer than refreshInterval, and retain the region index's explicit LOCAL tier.
+
+Core connects/disconnects Redis. It creates entity hash storage, unique index string storage, Pub/Sub subscriptions and a shared load marker.
+
+The existing Redis script returns zero when the hash is missing; save does not create it. Do not run the initial new-account example unchanged and assume Redis creation succeeds. An existing PostgreSQL account loaded by ID through the tiers can backfill a hash, but writes after hash expiry still need application handling.
+
+PostgreSQL persistence is now queued. Core copies Redis-authoritative writes with expected version 0 before immediate or queued SQL persistence, so Redis versions are not compared with PostgreSQL versions. The process-local queue merges updates, preserves SAVE when UPDATE follows it, and keeps DELETE over a later UPDATE. It remains non-durable; failure requeueing does not provide exactly-once delivery. Shutdown tries one final flush rather than retrying until empty.
+
+Without LOCAL, EventApplier no-ops. With LOCAL, consecutive remote events update held objects, while gaps reload off the Pub/Sub callback thread without unsubscribing. Hold and reload read the Redis version through the context callback.
+
+The event header contains version, origin instance ID and WriteKind, followed by encoded changes. Core ignores its own origin. Null uses the ~ sentinel and remains distinct from an empty string. A newer DELETE event unindexes, removes Local and clears the tracked version. Duplicate-version filtering runs before deletion handling; the delete writer currently publishes the supplied expected version without incrementing it. Pub/Sub provides no replay after disconnect.
+
+## Tenant wiring
+
+Set the tenant String in DatabaseSettings before constructing Core:
+
+```java
+final DatabaseSettings databaseSettings = new DatabaseSettings(
+        Set.of(Tier.LOCAL, Tier.POSTGRES),
+        "shop",
+        Duration.ofMinutes(5),
+        Duration.ofMinutes(1),
+        Duration.ofSeconds(1),
+        Duration.ofSeconds(5),
+        Duration.ofSeconds(2)
+);
+```
+
+Core creates TenantScope from that setting. Pass coreDatabase.getTenantScope() to repositories. Repository queries add tenant predicates; holder write keys and cache namespaces capture the instance tenant. Tenanted SQL indexes include tenant.
+
+Do not switch a registered holder across tenants using TenantScope.run/call. Those overrides affect repository reads at call time, while its cache namespaces and write tenant were captured at registration. Use separate runtimes with fixed scopes, and globally distinct entity UUIDs: PostgreSQL's primary key and SAVE conflict target remain UUID alone.
+
+A no-tenant repository is unfiltered. Shared-load keys currently omit tenant. TenantScope supplies context; it is not an authorization check.
+
+## Verification
+
+Run the example against a disposable PostgreSQL database, then inspect accounts with your usual SQL client:
+
+```sql
+SELECT id, version, username, region, login_count
+FROM accounts
+WHERE region = 'au';
+```
+
+| Check | Expected |
+| --- | --- |
+| First startup | accounts table and username/region indexes exist |
+| Example save and login | A demo row with region au and login_count 1 |
+| New application instance | Repository can load the same UUID |
+| get(id) before hold | Returns data without creating a new Local hold |
+| hold(id), then holds(id) | true with LOCAL enabled |
+| findByUsername on a cold runtime | PostgreSQL fallback finds the row |
+| getByIndex on a cold runtime | May be empty until indexing occurs |
+| Grouped lookup after hold | Held account is included under its region |
+| release(id) | holds(id) becomes false; SQL row remains |
+| delete on disposable account | SQL row is removed in the no-Redis setup |
+| Duplicate username save | PostgreSQL UNIQUE index rejects it |
+| decrementIfAtLeast | Example manager throws UnsupportedOperationException |
+
+Test sources live under Database-Holder/src/test/java and Database-Core/src/test/java. They include JUnit/Mockito checks, real PostgreSQL/Redis tests through Testcontainers, benchmarks and a sixty-second soak. Run them from the repository root with JDK 25:
+
+```shell
+mvn -pl Database/Database-Core -am test
+```
+
+Documentation examples should also be verified in the consuming project with its own credentials and lifecycle. Prior test reports describe the source state at their run time; they are not validation of subsequent code edits.
+
+For optional Redis, additionally test a missing hash, hash expiry, consecutive/conflicting writes, a cold process, disconnect/reconnect, deletion, and PostgreSQL queue drainage. Inspect both stores after each case rather than relying on isReady(), which reports driver connection state only.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| No properties registered | Pass AccountProperty.class into the repository constructor |
+| Index is never found | Pass AccountIndexes.class to the holder superclass before context creation |
+| UUID constructor failure | Entity must declare a constructor taking UUID only |
+| Concrete manager will not compile | Implement the inherited decrementIfAtLeast contract |
+| Grouped Redis index rejected | Give that index Set.of(Tier.LOCAL) |
+| Cold runtime index misses an account | Use getByProperty or a repository query for SQL fallback |
+| New reads never appear in getHeld | Call hold explicitly; ordinary reads do not retain locally |
+| A direct setter did not persist | Use manager set/increment or save for persistent changes |
+| Missing database cannot be created | Pre-create it or grant the configured user CREATEDB |
+| Startup schema fails | Check DDL privileges, identifier names and stored property types |
+| Redis save reports no change | Hash may be absent; current script does not create it |
+| Redis refresh removes keys | Avoid zero TTL with refresh |
+| Version conflict or stale row after batching | Redis is the authority; Core queues SQL copies with expected version 0. Inspect queue failures and compare both stores |
+| Data appears under the wrong tenant | Scope must be fixed when registering the holder |
+| Runtime cannot start after stop | Construct a new CoreDatabase and drivers for the new lifecycle |
+
+Return to the [Database guide](README.md) or [Foundation](../README.md).
+

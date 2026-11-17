@@ -1,13 +1,13 @@
 <h1 align="center">Database-API</h1>
 
-<p align="center">Entity, property, query, repository, holder, and tenant contracts for Foundation persistence.</p>
+<p align="center">Entity, property, index, query, holder, and storage contracts.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
-  <a href="https://maven.apache.org/"><img alt="Maven library" src="https://img.shields.io/badge/Maven-Library-C71A36?logo=apachemaven&logoColor=white"></a>
+  <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Library-C71A36?logo=apachemaven&logoColor=white"></a>
 </p>
 
-Database-API describes entities and persistence operations without depending on PostgreSQL, Redis, or a dependency injection framework. Use it in shared domain code, then add [Database-Core](../Database-Core/README.md) in the application that supplies persistence.
+Database-API defines the types shared by every Database module. Applications use these contracts for entity access, while [Core](../Database-Core/README.md) supplies explicit registration and runtime wiring.
 
 ## Contents
 
@@ -15,177 +15,77 @@ Database-API describes entities and persistence operations without depending on 
 <summary>On this page</summary>
 
 - [At a glance](#at-a-glance)
-- [Entities and properties](#entities-and-properties)
-- [Value converters](#value-converters)
-- [Queries and pagination](#queries-and-pagination)
-- [Repositories and holders](#repositories-and-holders)
+- [Entities and declarations](#entities-and-declarations)
 - [Indexes](#indexes)
-- [Tenants](#tenants)
-- [Exceptions](#exceptions)
+- [Holders and repositories](#holders-and-repositories)
+- [Queries and changes](#queries-and-changes)
+- [Storage and exceptions](#storage-and-exceptions)
 - [Installation and build](#installation-and-build)
 
 </details>
 
 ## At a glance
 
-| Contract | Purpose |
+| Area | Types |
 | --- | --- |
-| `Entity` | Identify an entity through `UUID getId()` |
-| `EntityProperty` / `EntityPropertyRegistry` | Describe and register typed values |
-| `ValueConverter<Value, Stored>` | Convert domain values to supported stored values |
-| `Query`, `Operator`, `Direction` | Describe filters, ordering, and tenant selection |
-| `EntityPage` | Hold page contents, total count, page number, and size |
-| `EntityRepository` | Query persistent rows and submit writes |
-| `EntityHolder` | Cache-aware access, tracking, pinning, and mutations |
-| `EntityIndex` / `IndexType` | Describe composite unique indexes and property index types |
-| `Tenant` / `TenantScope` | Resolve row-level tenant identity |
-| `Storage<Key, Value>` | A common read/write interface for storage implementations |
-| `Database` | Inspect readiness and registered repositories |
+| Runtime | `Database`: start, stop, readiness, holder and repository lookup |
+| Entities | `Entity`, `EntityInstantiator` |
+| Declarations | `Property`, `PropertyRegistry`, `IndexRegistry`, `DeclarationLoader` |
+| Access | `Holder`, `Repository`, `Query`, `Condition`, `Order` |
+| Storage | `Storage`, `StorageProvider`, `Namespace`, `Tier` |
+| Changes | `Write`, `WriteKind`, `Change`, `ChangeType`, `ChangeEvent`, `EntityKey` |
+| Conversion and coordination | `ValueConverter`, `SharedMarker` |
 
-## Entities and properties
+## Entities and declarations
 
-```java
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
-@RequiredArgsConstructor
-@Getter
-@Setter
-public final class Account implements Entity {
+An entity implements `Entity.getId()` and declares a constructor taking only `UUID`. `EntityInstantiator` finds that constructor, makes it accessible and uses it for row and cache decoding. Missing or failing constructors produce `SchemaException`.
 
-    @EqualsAndHashCode.Include
-    private final UUID id;
+`Property.persistent(...)` declares a PostgreSQL column; `Property.memory(...)` excludes it from full persistent saves and row mapping. Both take the entity class, column name, value class, getter and setter, with an optional `ValueConverter`. Use wrapper classes such as `Long.class`. Memory properties still participate in Redis entity serialization; explicitly setting one through a holder still creates a write.
 
-    private String name;
+Properties and indexes register when their factory methods execute. `DeclarationLoader.load(ExampleProperty.class, ExampleIndex.class)` forces static initialization. Pass declaration classes to repository and holder construction before contexts capture their declarations. Registries are shared static maps keyed by entity class, without duplicate-declaration validation or reset.
 
-    private Long coins;
-}
-```
-
-Examples use Lombok and omit imports. The runtime reconstructs an entity using a constructor that accepts only its UUID; `@RequiredArgsConstructor` generates it for this model. The UUID is part of the entity contract and does not need property registration.
-
-Register every other persisted value with its getter, setter, and wrapper type:
-
-```java
-public final class AccountProperties {
-
-    public static final EntityProperty<Account, String> NAME = EntityProperty.registerCaseInsensitive(
-            Account.class,
-            "name",
-            Account::getName,
-            Account::setName,
-            true
-    );
-    public static final EntityProperty<Account, Long> COINS = EntityProperty.register(
-            Account.class,
-            "coins",
-            Account::getCoins,
-            Account::setCoins,
-            Long.class,
-            true
-    );
-}
-```
-
-| Registration choice | Behavior |
-| --- | --- |
-| `register(..., valueType, true)` | Persist the property in PostgreSQL |
-| `register(..., valueType, false)` | Keep it in cache storage only |
-| `registerCaseInsensitive(...)` | Preserve the stored string while normalizing lookup/index comparisons |
-| `registerWithConverter(...)` | Persist a custom value using a converter |
-
-Property types use wrappers such as `Long.class`, not primitive classes. `id` and `tenant_id` are reserved names. Registered superclass properties are inherited by subclasses. Registration happens during class initialization; pass the property-holder class to the Core repository constructor so it is loaded before schema inspection.
-
-## Value converters
-
-`ValueConverter<Value, Stored>` exposes `getValueType()`, `getStoredType()`, `serialize(value)`, and `deserialize(stored)`. Both PostgreSQL mapping and Redis codecs use this metadata.
-
-Core provides `JsonValueConverter.of`, `ofList`, `ofSet`, and `ofMap` for JSONB values, plus `EnumValueConverter` for enum names. Enum values can also be persisted by name without an explicit converter. See the [Core guide](../Database-Core/README.md#schema-and-value-mapping) for supported column types.
-
-## Queries and pagination
-
-```java
-final Query<Account> query = Query.where(AccountProperties.COINS, Operator.GREATER_THAN, 1000L)
-        .orderBy(AccountProperties.COINS, Direction.DESCENDING)
-        .limit(10);
-
-final List<Account> accountList = accountRepository.findMany(query);
-final EntityPage<Account> entityPage = accountRepository.findPage(query, 1, 10);
-```
-
-These examples assume the Core repository from the [Database quick start](../README.md#quick-start). Query methods mutate and return the same query object; build separate queries when filters need independent lifecycles.
-
-| Method or operator | Purpose |
-| --- | --- |
-| `Query.of(Account.class)` | Start without a property condition |
-| `where(...)` / `and(...)` | Add a condition; multiple conditions are combined with AND |
-| `whereIn(...)` / `andIn(...)` | Match a collection of values |
-| `EQUALS`, `NOT_EQUALS` | Equality checks |
-| `GREATER_THAN`, `GREATER_THAN_OR_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUALS` | Range checks |
-| `LIKE` | SQL pattern matching |
-| `IS_NULL`, `IS_NOT_NULL` | Null checks |
-| `andIdNotEquals(id)` | Exclude one built-in UUID without registering it as a property |
-| `orderBy(...)`, `limit(...)`, `offset(...)` | Sort and limit direct query results |
-| `tenant(tenantId)` / `allTenants()` | Override the default own-tenant query selection |
-
-Use `whereIn` and `andIn` for `IN`; passing `Operator.IN` to an ordinary condition is rejected. Repository queries read PostgreSQL directly and see writes after commit.
-
-Core pagination uses one-based page numbers, requires a positive size, and clamps the requested page to the available range. Use `getEntities()`, `getTotalCount()`, `getPage()`, and `getSize()` on the result. Choose a deterministic ordering for repeatable page contents.
-
-## Repositories and holders
-
-| Operation | Repository | Holder |
-| --- | --- | --- |
-| UUID lookup | `findById`, `findManyById` | `getById` through selected cache tiers |
-| Property/query lookup | `findOne`, `findMany` | `getByProperty`, `getByIndex` |
-| Counts and pages | `count`, `exists`, `findPage` | Use the repository |
-| Creation and mutation | `save`, `update`, `delete` | `save`, `update`, `delete` with tracking and cache coordination |
-| Local retention | Not applicable | `cache`, `evict`, `pin`, `unpin`, `getPinned` |
-| Atomic numeric update | Runtime-specific implementation | `increment` |
-| Transfer a unique value | Runtime-specific implementation | `transferUniqueProperty` |
-
-The holder interface uses two type parameters: `EntityHolder<Account, AccountRepository>`. Some extended operations have default implementations that throw `UnsupportedOperationException`; Core's holder implements them.
-
-`LookupTier` selects `LOCAL`, `REDIS`, and `DATABASE`. `InstanceMode` chooses single-instance tracking or multi-instance coordination. `RedisMode` enables or disables Redis for that holder. See the [Core guide](../Database-Core/README.md#holder-modes-and-cache-consistency) for supported combinations.
+See [generic examples](../README.md#generic-examples) for entity, property and holder declarations.
 
 ## Indexes
 
-| Definition | Purpose |
+`UniqueIndex.of(name, property)` maps a value to one UUID; `GroupedIndex.of(name, property)` maps a value to several UUIDs. Both offer `derived(...)` factories with a value extractor and dependency properties for computed keys.
+
+An empty index tier set inherits the holder's resolved tiers. Supply an explicit set to override it, particularly `Set.of(Tier.LOCAL)` for grouped indexes when Redis is enabled. Unique runtime stores exclude POSTGRES providers. Runtime indexes are lookup structures; PostgreSQL indexes are declared separately by the repository.
+
+## Holders and repositories
+
+| Operation | Contract |
 | --- | --- |
-| `getIndexes()` with `IndexType.UNIQUE` | A unique property, also used by holder value-to-ID indexes |
-| `IndexType.BTREE` | A regular PostgreSQL index |
-| `IndexType.GIN_TRGM` | A trigram index for pattern searches |
-| `IndexType.BRIN` | A PostgreSQL block range index |
-| `getCompositeIndexes()` with `EntityIndex.of(name, properties...)` | A unique combination of persistent properties |
+| `Holder.get(id)` | Tiered lookup returning Optional |
+| `getByProperty(property, value)` | Property lookup with implementation-specific fallback |
+| `getByIndex`, `getAllByIndex` | Unique or grouped runtime lookup |
+| `hold`, `holdAll`, `release`, `holds`, `getHeld` | Explicit local retention |
+| `save`, `set`, `increment`, `decrement`, `delete` | Write through the configured authority |
+| `reindex` | Rebuild lookup keys |
+| `Repository.findById`, `find`, `count` | Direct persistent queries |
+| `Repository.apply(write)` | Apply a low-level write and return its version |
 
-Composite lookups supply values in the declared property order. See [lookup indexes](../Database-Lookup/README.md#property-and-composite-indexes) for cache behavior.
+`decrementIfAtLeast` is declared on Holder, but EntityHolder leaves it abstract. A concrete manager must implement it or explicitly reject it. There is no supplied atomic floor check.
 
-## Tenants
+## Queries and changes
 
-For `new Tenant("api", 1)`:
+`Query.where(property, value)` creates equality conditions; `Query.ordered(property, direction, limit)` creates ordering; `Query.all()` has no conditions or pagination. For multiple conditions and offsets, use the public constructor with `List<Condition>`, `List<Order>`, limit and offset. PostgreSQL combines conditions with AND. Operators are EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, IN and CONTAINS; directions are ASCENDING and DESCENDING.
 
-| Scope | Resolved tenant ID | Rows shared by |
-| --- | --- | --- |
-| `NONE` | No tenant column | All callers of the table |
-| `GLOBAL` | `*` | All instances using that scope |
-| `GROUP` | `api` | The group |
-| `INSTANCE` | `api-1` | That specific instance |
+Query values are passed as supplied, without property conversion. Use stored representations for converted fields. Memory-only fields have no PostgreSQL column.
 
-Tenant scope partitions rows within a selected database. `GlobalDatabase` and `LocalDatabase` select configured database contexts; they do not replace tenant scope.
+Write carries an EntityKey (table, tenant, UUID), kind, changes and expected version. Kinds are SAVE, UPDATE and DELETE; changes are SET, INCREMENT, ADD and REMOVE. PostgreSQL rejects ADD/REMOVE; contract declarations do not imply backend support.
 
-## Exceptions
+ChangeEvent carries EntityKey, version, WriteKind and changes. Its constructor takes those four values in that order. It carries no origin field: Core reads origin from the Redis wire message before decoding and drops messages published by its own driver instance.
 
-All persistence exceptions extend unchecked `DatabaseException`.
+## Storage and exceptions
 
-| Exception | Meaning |
-| --- | --- |
-| `ConnectionException` | Driver connection failure or use before connecting |
-| `SchemaException` | Invalid entity, property, converter, or repository setup |
-| `QueryException` | Unsupported or invalid query construction |
-| `UniqueValueTakenException` | A unique value is already claimed by another entity |
-| `OptimisticLockException` | A persisted revision no longer matches the editing snapshot |
+Namespace contains name, value class, key encoder, string value converter and TTL. Storage supports get, put, remove, contains, values and refresh. Redis rejects enumeration through values(); Local supplies it. SharedMarker exposes claim, await and release for load coordination. Tier defines LOCAL, REDIS, POSTGRES and the ALL set.
 
-Background write failures are delivered to the Core failure handler rather than necessarily being thrown by the earlier mutation call.
+API exceptions extend DatabaseException: ConnectionException, SchemaException, QueryException, VersionConflictException and UniqueValueTakenException. UniqueValueTakenException is declared but is not thrown by current runtime index stores. Backend failures are not universally translated into API exceptions.
 
 ## Installation and build
+
+Compile dependencies: Foundation Utilities. Parent dependencies also supply SLF4J and provided Lombok.
 
 ```xml
 <dependency>
@@ -195,10 +95,10 @@ Background write failures are delivered to the Core failure handler rather than 
 </dependency>
 ```
 
-This module has no persistence-driver runtime dependency. From the repository root with JDK 25 and Maven:
+From the repository root, using JDK 25 and Maven:
 
 ```shell
 mvn -pl Database/Database-API -am install
 ```
 
-API tests need no external services. Return to the [Database guide](../README.md) or [Foundation](../../README.md).
+See the [Database guide](../README.md) for generic wiring and test commands. Return to [Foundation](../../README.md).

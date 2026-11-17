@@ -1,15 +1,13 @@
 <h1 align="center">Database-Core</h1>
 
-<p align="center">PostgreSQL persistence, schema synchronization, repositories, and cache-aware holders.</p>
+<p align="center">Database instances, per-holder contexts, and persistence lifecycle.</p>
 
 <p align="center">
   <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white"></a>
-  <a href="https://www.postgresql.org/"><img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-Persistence-4169E1?logo=postgresql&logoColor=white"></a>
-  <a href="https://redis.io/"><img alt="Optional Redis" src="https://img.shields.io/badge/Redis-Optional-DC382D?logo=redis&logoColor=white"></a>
-  <a href="https://maven.apache.org/"><img alt="Maven library" src="https://img.shields.io/badge/Maven-Library-C71A36?logo=apachemaven&logoColor=white"></a>
+  <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Library-C71A36?logo=apachemaven&logoColor=white"></a>
 </p>
 
-Database-Core assembles the [API](../Database-API/README.md), [storage](../Database-Storage/README.md), and [lookup](../Database-Lookup/README.md) layers into a persistence runtime. PostgreSQL access uses jOOQ, HikariCP, and JDBC. Redis adds shared caching and coordination when configured; application wiring can be manual, through Injector, or through Spring.
+Database-Core assembles PostgreSQL repositories, entity holders, Local storage, Redis, indexes and batching. Holders are application beans; their constructors use Core's HolderContextFactory to create their context and register themselves. Core has no runtime dependency on a DI container.
 
 ## Contents
 
@@ -17,14 +15,13 @@ Database-Core assembles the [API](../Database-API/README.md), [storage](../Datab
 <summary>On this page</summary>
 
 - [At a glance](#at-a-glance)
-- [Connect and start](#connect-and-start)
-- [Repositories and holders](#repositories-and-holders)
-- [Holder modes and cache consistency](#holder-modes-and-cache-consistency)
-- [Writes, durability, and failures](#writes-durability-and-failures)
-- [Optimistic locking and atomic operations](#optimistic-locking-and-atomic-operations)
-- [Schema and value mapping](#schema-and-value-mapping)
-- [Database contexts and tenants](#database-contexts-and-tenants)
-- [Installation and testing](#installation-and-testing)
+- [Construction and registration](#construction-and-registration)
+- [Per-holder tiers](#per-holder-tiers)
+- [Settings](#settings)
+- [Read and write paths](#read-and-write-paths)
+- [Lifecycle](#lifecycle)
+- [Tenants and packaging](#tenants-and-packaging)
+- [Installation and build](#installation-and-build)
 
 </details>
 
@@ -32,187 +29,91 @@ Database-Core assembles the [API](../Database-API/README.md), [storage](../Datab
 
 | Type | Responsibility |
 | --- | --- |
-| `CoreDatabase` | Repository registration, schema startup, queue lifecycle, and failure reporting |
-| `GlobalDatabase` / `LocalDatabase` | Distinct injectable database contexts with independent queues and drivers |
-| `PostgresDriver` / `PostgresSettings` | Connection pool and jOOQ context |
-| `AbstractEntityRepository<Entity>` | PostgreSQL reads, schema metadata, and queued writes |
-| `AbstractEntityHolder<Entity, Repository>` | Cache-aware lookups, tracking, claims, and mutations |
-| `BatchQueue` | Coalesce and flush writes in transactional chunks |
-| `CacheInvalidationOutbox` | Persist invalidation events with committed changes and retry Redis delivery |
-| `JsonValueConverter` / `EnumValueConverter` | Built-in value conversion |
+| `CoreDatabase` | Drivers, instance tenant, schema and scheduler lifecycle |
+| `DatabaseSettings` | Enabled tiers, tenant and durations |
+| `ContextFactory` | HolderContextFactory implementation and holder registration |
+| `EntityRegistry` | Entity-class lookup and table-based write dispatch |
+| `NamespaceFactory` | Entity/index namespaces and tenant prefixes |
+| `EntityPayloadConverter`, `UuidConverter` | Shared-load payloads and index UUID conversion |
 
-## Connect and start
+## Construction and registration
 
-Define the entity and properties as shown in the [Database quick start](../README.md#quick-start). Connect drivers, create the database, construct repositories and holders, then start the runtime:
+Construct `CoreDatabase(settings, postgresDriver, redisDriver)`. Redis may be null. Core creates its TenantScope from settings. Use coreDatabase.getTenantScope() for repositories and coreDatabase.getContextFactory() for holders.
+
+A DI container constructs each repository and holder before coreDatabase.start(). The holder constructor loads declaration classes, creates its context with its own tier set and registers through the factory. There is no separate CoreDatabase.register(...) operation.
 
 ```java
-final PostgresDriver postgresDriver = new PostgresDriver(new PostgresSettings(
-        "localhost",
-        5432,
-        "app",
-        "postgres",
-        "password",
-        10
-));
-postgresDriver.connect();
-
-final CoreDatabase coreDatabase = new CoreDatabase(
+final ExampleRepository exampleRepository = new ExampleRepository(
         postgresDriver,
-        null,
-        new Tenant("api", 1),
-        Duration.ofMillis(250),
-        500,
-        10_000
+        coreDatabase.getTenantScope()
 );
-coreDatabase.setFailureHandler(databaseException -> databaseException.printStackTrace());
-
-final AccountRepository accountRepository = new AccountRepository(coreDatabase);
-final AccountHolder accountHolder = new AccountHolder(accountRepository);
-coreDatabase.start();
-
-try {
-    final Account account = new Account(UUID.randomUUID());
-    account.setName("alice");
-    accountHolder.save(account);
-} finally {
-    coreDatabase.stop();
-    postgresDriver.disconnect();
-}
+final ExampleHolder exampleHolder = new ExampleHolder(
+        exampleRepository,
+        coreDatabase.getContextFactory()
+);
 ```
 
-The password is an example connection value. Supply deployment settings from application configuration. This example disables Redis for the holder shown below.
+The [holder guide](../Database-Holder/README.md#creating-a-holder) defines the holder shape. DI providers should expose these same repository, scope and factory objects, with one lifecycle owner starting Core after bean construction.
 
-All three database classes currently use the same six constructor arguments:
+The registry stores one holder/repository per entity class and one repository per table. Registering the same class or table again replaces those entries. Independent database instances have independent registries.
 
-| Argument | Purpose | Example |
-| --- | --- | --- |
-| `postgresDriver` | Connected PostgreSQL driver | Application-owned driver |
-| `redisDriver` | Optional connected Redis driver | `null` for PostgreSQL-only use |
-| `tenant` | Tenant identity for scoped repositories | `new Tenant("api", 1)` |
-| `flushInterval` | Delay between background flushes | `Duration.ofMillis(250)` |
-| `chunkSize` | Maximum writes in a transaction chunk | `500` |
-| `maximumPendingWrites` | Outstanding distinct write-key capacity | `10_000` |
+## Per-holder tiers
 
-The numeric values above are explicit application choices. The current database constructors require them; there are no shorter database constructor overloads. A tenant may be null only when repositories use `TenantScope.NONE`.
+ContextFactory intersects the holder's tier set with DatabaseSettings.tiers. Database settings enable available tiers; the holder chooses which of them to use.
 
-`start()` synchronizes registered schemas and starts the queue. `stop()` stops background work and attempts to drain pending writes. Drivers remain application-owned and must be disconnected afterwards. Repositories created after startup are synchronized as they register.
-
-## Repositories and holders
-
-```java
-public final class AccountRepository extends AbstractEntityRepository<Account> {
-
-    public AccountRepository(final CoreDatabase coreDatabase) {
-        super(coreDatabase, Account.class, "accounts", TenantScope.NONE, false, AccountProperties.class);
-    }
-
-    @Override
-    public Map<EntityProperty<? super Account, ?>, IndexType> getIndexes() {
-        return Map.of(AccountProperties.NAME, IndexType.UNIQUE);
-    }
-}
-
-public final class AccountHolder extends AbstractEntityHolder<Account, AccountRepository> {
-
-    public AccountHolder(final AccountRepository accountRepository) {
-        super(
-                accountRepository,
-                InstanceMode.SINGLE_INSTANCE,
-                RedisMode.DISABLED,
-                Duration.ofMinutes(30),
-                Duration.ofHours(1)
-        );
-    }
-}
-```
-
-The repository constructor takes the database, entity class, table name, tenant scope, optimistic-locking flag, and property-holder classes. Pass every property-holder class required to initialize the registry. A database rejects duplicate repository registrations for the same entity type.
-
-Repository queries read PostgreSQL directly. Holder lookups use cache tiers and track loaded entities. Mutate entities through the holder when those entities can be cached: direct repository writes bypass holder cache coordination and can leave cached values stale.
-
-| Holder method | Purpose |
+| Holder tiers | Behavior |
 | --- | --- |
-| `getById`, `getByProperty`, `getByIndex` | Read through the selected tiers |
-| `save` | Cache and track a new entity, then queue an insert |
-| `update` | Queue changed persistent properties for an existing entity |
-| `delete` | Remove the entity and queue deletion |
-| `cache`, `evict` | Manage local retention; eviction first processes tracked changes |
-| `pin`, `unpin`, `getPinned` | Retain single-instance entities until unpinned |
+| LOCAL, POSTGRES | Local retention and synchronous PostgreSQL writes |
+| REDIS, POSTGRES | Shared Redis authority and queued PostgreSQL persistence; no local hold |
+| LOCAL, REDIS, POSTGRES | Local working set, Redis authority/events and queued PostgreSQL persistence |
 
-The holder registers a pre-flush task that detects dirty tracked values, including entries expiring from local storage. Explicit `update` makes the mutation intent clear and performs the holder's checks immediately.
+Providers are created from database-level enabled tiers. A Redis driver is required for Redis storage. PostgreSQL connects during Core startup regardless of the resolved holder tier set. A supplied Redis driver also selects the shared Redis load marker, including for holders without a REDIS storage tier.
 
-## Holder modes and cache consistency
+## Settings
 
-| Mode | Redis requirement | Local cache | Pinning |
-| --- | --- | --- | --- |
-| `SINGLE_INSTANCE` | Optional; supports `RedisMode.DISABLED` | Fixed expiry | Supported |
-| `MULTI_INSTANCE` | `RedisMode.ENABLED` and a configured Redis driver | Sliding idle expiry, bounded by a five-minute maximum age for unpinned entries | Supported |
+DatabaseSettings has a single constructor, without defaults:
 
-`RedisMode.DISABLED` keeps a single-instance holder's cache, claim, and write-invalidation path off Redis even when its database has a Redis driver for other holders. Multi-instance configuration without Redis is rejected during holder construction.
-
-Committed holder writes record cache invalidations in the same PostgreSQL transaction. Redis ownership markers target only multi-instance holders currently caching the entity. Peer refreshes preserve pins and pending local edits; deletion removes both the cached entry and its pin. The durable outbox retries notifications after dispatch failures.
-
-Existing holder commit callbacks run after write completion without waiting for cache acknowledgements. All holder callbacks use dedicated framework virtual threads, even for unchanged updates or rejected writes; application failure handlers are isolated as well. To wait explicitly, call `saveAndSynchronize`, `updateAndSynchronize`, or `deleteAndSynchronize`. Their full overload takes an entity, per-call `Duration`, synchronized-success runnable, write-failure runnable, and `Consumer<SynchronizationException>`; the shorter overload uses five seconds. Synchronization failure means the write committed but owners did not confirm refresh, and never invokes the write-failure runnable. Each coalesced waiter has its own deadline. Receivers retry failed refreshes with bounded backoff independently of the sender's timeout, preserving cached values, pins, and pending edits until repair succeeds. Late acknowledgements never turn a timed-out operation into success. Cache admission and reconnect fencing continue to protect newly admitted copies.
-
-## Writes, durability, and failures
-
-| Behavior | Result |
+| Argument | Use |
 | --- | --- |
-| Insert-only `save` | An existing UUID is rejected rather than overwritten |
-| Update-only `update` | A missing row is not recreated |
-| Coalescing | Pending changes to one entity merge by column where supported |
-| Transactional chunks | Each chunk commits independently |
-| Temporary PostgreSQL failure | Writes remain pending for a later flush |
-| Permanently rejected write | Isolate the failing write, continue other work, and report failure |
-| Queue capacity reached | A new distinct write throws `DatabaseException` synchronously |
-| Shutdown | Up to ten drain attempts, then report remaining writes |
+| tiers | Available tiers intersected with each holder's set |
+| tenant | Instance tenant; null/blank means no tenant |
+| entityTtl | Redis entity and unique-index expiry |
+| refreshInterval | Held-entry expiry refresh |
+| batchInterval | PostgreSQL queue flush |
+| markerLease | Shared-load claim duration |
+| markerTimeout | Shared-load wait before direct fallback |
 
-The queue is in memory. Enqueueing is not a durability acknowledgment, and process termination can lose uncommitted writes. Reads through the repository see committed PostgreSQL data. `getBatchQueue().flush()` requests an immediate flush but temporary failures can leave writes pending; observe failure reporting and queue state when a workflow needs to establish completion.
+Use positive scheduler intervals and a positive Redis TTL longer than refreshInterval. Zero TTL skips expiry on puts but refresh still calls PEXPIRE with zero. Settings do not validate these combinations.
 
-Set `setFailureHandler(...)` before starting work. The default handler performs no action. Background failures, including optimistic-lock conflicts, are reported there. Outstanding callback registrations are also bounded, with a current default of 100,000 across queued and in-flight work.
+## Read and write paths
 
-## Optimistic locking and atomic operations
+ID lookup checks LOCAL, REDIS and POSTGRES in that order. Local hits return immediately; successful repository reads can backfill Redis and an existing local hold. Holder contexts also expose a UUID-to-version callback: Redis contexts read the hash version; contexts without Redis return 0. Hold and reload use that callback to initialize tracked versions.
 
-Set the repository constructor's `optimisticLocking` argument to `true` to require the expected revision on changed writes. Foundation stores revisions internally and in a PostgreSQL `revision` column; entity classes need no revision field.
+Without Redis entity storage, repository.apply is the authority and the persistence callback does nothing. There is one PostgreSQL write. With Redis entity storage, Lua is the authority; when POSTGRES is enabled, Core copies the write with expected version 0 and queues that copy for the repository. The same conversion applies if ContextFactory has no queue and persists immediately.
 
-A stale snapshot produces `OptimisticLockException` through failure reporting. Reload or merge before retrying. Locking detects conflicts rather than automatically merging edits. Avoid reusing a deleted UUID while old instances of the entity may still exist, because revisions restart for recreated rows.
+EntityWriter mutates the property, invokes authority, records a positive returned version, then calls persistence. Lua atomically changes the hash, increments version, refreshes TTL and publishes version, origin, WriteKind and changes. ContextFactory rejects events with its own RedisDriver instance ID before decoding or applying them.
 
-| Holder operation | Guarantee |
-| --- | --- |
-| `increment(entity, property, delta)` | PostgreSQL atomic numeric update and returned committed value |
-| `transferUniqueProperty(claimantId, currentOwnerId, property, claimedValue, replacementValue)` | Transfer a persistent unique value between two existing entities in one transaction |
+Redis writes still require an existing hash and return zero when absent. The queue is process-local. PostgreSQL replication uses expected version 0, keeping Redis authority versions separate from SQL versions. There is no durable replay or transactional replication across both stores.
 
-Both operations first flush pending writes on their database queue and reject the atomic operation if the queue cannot drain. Increment supports unconverted persistent `Long` or `Integer` values that do not participate in unique or composite indexes. A transfer verifies ownership, checks conflicts and revisions, and records both invalidations in the transaction.
+## Lifecycle
 
-## Schema and value mapping
+start() connects drivers, synchronizes registered PostgreSQL schemas, starts the batch scheduler and starts registered holder refreshers. Construct holders before start so schema and refresher registration are complete.
 
-Startup creates missing tables and columns. Removed properties leave their columns intact. Foundation-managed indexes are synchronized with repository declarations; separately created indexes are retained. `GIN_TRGM` declarations require PostgreSQL to enable `pg_trgm`.
+stop() calls close() on registered holders, stopping their refreshers and shutting down their refetch executors. It then attempts a final batch flush and disconnects drivers. Failed writes can remain queued. Scheduler instances cannot restart after stop.
 
-| Java value | PostgreSQL type |
-| --- | --- |
-| `String`, enum | `varchar` |
-| `UUID` | `uuid` |
-| `Long`, `Integer`, `Short`, `Byte` | `bigint`, `integer`, `smallint`, `smallint` |
-| `Double`, `Float` | `double precision`, `real` |
-| `Boolean` | `boolean` |
-| `BigDecimal`, `BigInteger` | `numeric` |
-| `Instant` | `timestamp with time zone` |
-| `byte[]` | `bytea` |
-| `JsonValueConverter` values | `jsonb` |
+isReady() checks driver connection state only. It does not verify queue drainage, schema completion or executor health. Startup has no automatic rollback; the application owns cleanup.
 
-Use `JsonValueConverter.of(type)`, `ofList(type)`, `ofSet(type)`, or `ofMap(keyType, valueType)` for structured values. Mapping support for PostgreSQL and Redis is separate; see the [storage codecs](../Database-Storage/README.md#codecs) when enabling Redis.
+## Tenants and packaging
 
-## Database contexts and tenants
+Core derives TenantScope from DatabaseSettings.tenant. Entity and index namespaces use that tenant at context creation; write keys capture it too. Repository reads resolve their supplied scope per call.
 
-`CoreDatabase`, `GlobalDatabase`, and `LocalDatabase` share the implementation. The latter two provide distinct injectable types so repository constructors can select an intended database when an application has both.
+Use one fixed tenant per Core instance. Changing the scope around an existing holder does not rebuild its namespace or captured write tenant. Shared-load keys currently contain table and UUID without tenant. SQL UUID primary keys also span tenants.
 
-Each context has its own driver, queue, repository registry, and revision state. Configure the destination database through its `PostgresSettings`; choose `TenantScope` separately for row partitioning, and `InstanceMode` separately for holder coordination.
+Depend on Core at compile scope when wiring refers to implementation classes. Core contains no service descriptor or automatic bean scanning; use the application's DI container.
 
-Redis keys include the table and tenant, not the PostgreSQL database name. Use separate Redis databases or distinct namespaces if independent PostgreSQL contexts contain the same table and tenant identifiers.
+## Installation and build
 
-See [dependency injection](../README.md#dependency-injection) for Injector and Spring wiring.
-
-## Installation and testing
+Compile dependencies: Database-Holder, Database-Local, Database-Postgres and Database-Redis. The parent also supplies SLF4J and provided Lombok. Test-only dependencies do not become part of the runtime.
 
 ```xml
 <dependency>
@@ -222,10 +123,10 @@ See [dependency injection](../README.md#dependency-injection) for Injector and S
 </dependency>
 ```
 
-Core includes the other Database modules, jOOQ, HikariCP, PostgreSQL JDBC, Lettuce, and Gson transitively. From the repository root with JDK 25 and Maven:
+From the repository root, using JDK 25 and Maven:
 
 ```shell
 mvn -pl Database/Database-Core -am install
 ```
 
-Integration tests use real PostgreSQL and Redis. Follow the [isolated test setup](../README.md#building-and-testing) for Docker Compose, connection properties, multi-JVM checks, and opt-in recovery tests. Unreachable-service tests can be skipped, so inspect the skipped count when verifying persistence behavior.
+See the [Database guide](../README.md) for generic examples and test commands. Return to [Foundation](../../README.md).

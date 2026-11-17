@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>me.trae.foundation.database</groupId>
+        <artifactId>Database</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>Database-Holder</artifactId>
+
+    <dependencies>
+        <!-- Database-Batch -->
+        <dependency>
+            <groupId>me.trae.foundation.database</groupId>
+            <artifactId>Database-Batch</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <!-- Database-Index -->
+        <dependency>
+            <groupId>me.trae.foundation.database</groupId>
+            <artifactId>Database-Index</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <!-- Database-Lookup -->
+        <dependency>
+            <groupId>me.trae.foundation.database</groupId>
+            <artifactId>Database-Lookup</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>me.trae.foundation.database</groupId>
+            <artifactId>Database-Local</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>me.trae.foundation.database</groupId>
+            <artifactId>Database-Postgres</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>me.trae.foundation.database</groupId>
+            <artifactId>Database-Redis</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>me.trae.foundation.injector</groupId>
+            <artifactId>Injector-API</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>me.trae.foundation.injector</groupId>
+            <artifactId>Injector-Core</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>2.0.5</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <version>2.0.5</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+</project>

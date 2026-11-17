@@ -16,9 +16,16 @@
 
     <modules>
         <module>Database-API</module>
+        <module>Database-Batch</module>
+        <module>Database-Concurrency</module>
         <module>Database-Core</module>
+        <module>Database-Holder</module>
+        <module>Database-Index</module>
+        <module>Database-Local</module>
         <module>Database-Lookup</module>
-        <module>Database-Storage</module>
+        <module>Database-Postgres</module>
+        <module>Database-Redis</module>
+        <module>Database-Tenant</module>
     </modules>
 
 </project>

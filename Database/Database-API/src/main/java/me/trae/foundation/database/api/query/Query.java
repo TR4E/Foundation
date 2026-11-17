@@ -1,85 +1,33 @@
 package me.trae.foundation.database.api.query;
 
-import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import me.trae.foundation.database.api.entity.Entity;
-import me.trae.foundation.database.api.exception.QueryException;
-import me.trae.foundation.database.api.property.EntityProperty;
+import me.trae.foundation.database.api.property.Property;
+import me.trae.foundation.database.api.query.condition.Condition;
+import me.trae.foundation.database.api.query.condition.Operator;
+import me.trae.foundation.database.api.query.order.Direction;
+import me.trae.foundation.database.api.query.order.Order;
 
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
 
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@AllArgsConstructor
 @Getter
-public final class Query<E extends Entity> {
+public final class Query {
 
-    private final List<Condition<E>> conditionList = new ArrayList<>();
-    private final List<Order<E>> orderList = new ArrayList<>();
+    private final List<Condition> conditions;
+    private final List<Order> orders;
+    private final int limit, offset;
 
-    private int limit, offset;
-    private UUID excludedId;
-    private TenantSelection tenantSelection = TenantSelection.OWN;
-    private String tenantId;
-
-    public static <E extends Entity> Query<E> of(final Class<E> entityType) {
-        return new Query<>();
+    public static <Value> Query where(final Property<?, Value> property, final Value value) {
+        return new Query(List.of(new Condition(property.getColumn(), Operator.EQUALS, value)), Collections.emptyList(), 0, 0);
     }
 
-    public static <E extends Entity, Value> Query<E> where(final EntityProperty<? super E, Value> entityProperty, final Operator operator, final Value value) {
-        return new Query<E>().and(entityProperty, operator, value);
+    public static Query ordered(final Property<?, ?> property, final Direction direction, final int limit) {
+        return new Query(Collections.emptyList(), List.of(new Order(property.getColumn(), direction)), limit, 0);
     }
 
-    public static <E extends Entity, Value> Query<E> whereIn(final EntityProperty<? super E, Value> entityProperty, final Collection<? extends Value> values) {
-        return new Query<E>().andIn(entityProperty, values);
-    }
-
-    public <Value> Query<E> and(final EntityProperty<? super E, Value> entityProperty, final Operator operator, final Value value) {
-        if (operator == Operator.IN) {
-            throw new QueryException("Use whereIn or andIn for IN conditions on %s".formatted(entityProperty.getName()));
-        }
-
-        this.conditionList.add(new Condition<>(entityProperty, operator, value));
-        return this;
-    }
-
-    public <Value> Query<E> andIn(final EntityProperty<? super E, Value> entityProperty, final Collection<? extends Value> values) {
-        this.conditionList.add(new Condition<>(entityProperty, Operator.IN, List.copyOf(values)));
-        return this;
-    }
-
-    public Query<E> andIdNotEquals(final UUID id) {
-        this.excludedId = Objects.requireNonNull(id, "id");
-        return this;
-    }
-
-    public Query<E> orderBy(final EntityProperty<? super E, ?> entityProperty, final Direction direction) {
-        this.orderList.add(new Order<>(entityProperty, direction));
-        return this;
-    }
-
-    public Query<E> limit(final int limit) {
-        this.limit = limit;
-        return this;
-    }
-
-    public Query<E> offset(final int offset) {
-        this.offset = offset;
-        return this;
-    }
-
-    public Query<E> tenant(final String tenantId) {
-        this.tenantSelection = TenantSelection.SPECIFIC;
-        this.tenantId = tenantId;
-        return this;
-    }
-
-    public Query<E> allTenants() {
-        this.tenantSelection = TenantSelection.ALL;
-        this.tenantId = null;
-        return this;
+    public static Query all() {
+        return new Query(Collections.emptyList(), Collections.emptyList(), 0, 0);
     }
 }

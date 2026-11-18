@@ -16,7 +16,9 @@ import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.storage.StorageProvider;
 import me.trae.foundation.database.api.tier.Tier;
 import me.trae.foundation.database.api.write.Write;
+import me.trae.foundation.database.api.write.WriteGate;
 import me.trae.foundation.database.api.write.WriteKind;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.batch.BatchQueue;
 import me.trae.foundation.database.concurrency.InFlight;
 import me.trae.foundation.database.concurrency.Stampede;
@@ -49,6 +51,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.ToLongFunction;
 
 @AllArgsConstructor
@@ -61,13 +64,15 @@ public final class ContextFactory implements HolderContextFactory {
     private final List<StorageProvider> providers;
     private final SharedMarker marker;
     private final BatchQueue batchQueue;
+    private final WriteGate gate;
     private final RedisDriver redisDriver;
     private final EntityRegistry registry;
 
     @Override
     public <EntityType extends Entity> HolderContext<EntityType> create(final Repository<EntityType> repository, final Set<Tier> tiers) {
-        final Set<Tier> resolved = EnumSet.copyOf(tiers);
+        final Set<Tier> resolved = EnumSet.noneOf(Tier.class);
 
+        resolved.addAll(tiers);
         resolved.retainAll(this.settings.getTiers());
 
         final List<Property<?, ?>> properties = PropertyRegistry.getProperties(repository.getEntityType());
@@ -84,7 +89,7 @@ public final class ContextFactory implements HolderContextFactory {
 
         final IndexStores indexStores = new IndexStores(repository.getEntityType(), resolved, this.providers, this.namespaceFactory::index);
 
-        return new HolderContext<>(resolved, repository.getTable(), this.tenant(), repository, storageMap, this.lookup(repository, storageMap, converter, resolved), indexStores, this.authority(repository, redisStorage, properties), this.persistence(repository, redisStorage != null, resolved), this.subscriber(repository.getTable(), redisStorage), this.unsubscriber(redisStorage), ValueCodec::decode, this.version(redisStorage), this.refresher(storageMap, indexStores), this.settings.getRefreshInterval());
+        return new HolderContext<>(resolved, repository.getTable(), this.tenant(), repository, storageMap, this.lookup(repository, storageMap, converter, resolved), indexStores, this.authority(repository, redisStorage, properties), this.persistence(repository, redisStorage != null, resolved), this.gate, this.subscriber(repository.getTable(), redisStorage), this.unsubscriber(redisStorage), ValueCodec::decode, this.version(redisStorage), this.refresher(storageMap, indexStores), this.settings.getRefreshInterval());
     }
 
     @Override
@@ -115,18 +120,24 @@ public final class ContextFactory implements HolderContextFactory {
     }
 
     private <EntityType extends Entity> EntityLookup<EntityType> lookup(final Repository<EntityType> repository, final LinkedHashMap<Tier, Storage<UUID, EntityType>> storageMap, final ValueConverter<EntityType, String> converter, final Set<Tier> tiers) {
-        final Stampede stampede = new Stampede(this.marker, this.settings.getMarkerLease(), this.settings.getMarkerTimeout());
-
-        final LoadGuard<EntityType> guard = new LoadGuard<>(stampede, converter, id -> "load:" + repository.getTable() + ":" + id);
+        final LoadGuard<EntityType> guard = new LoadGuard<>(this.stampede(tiers), converter, id -> "load:" + this.tenant() + ":" + repository.getTable() + ":" + id);
 
         final Backfill<EntityType> backfill = new Backfill<>(storageMap, id -> storageMap.containsKey(Tier.LOCAL) && storageMap.get(Tier.LOCAL).contains(id));
 
         return new EntityLookup<>(tiers, storageMap, repository, new InFlight<>(), guard, backfill);
     }
 
-    private <EntityType extends Entity> ToLongFunction<Write> authority(final Repository<EntityType> repository, final RedisEntityStorage<EntityType> storage, final List<Property<?, ?>> properties) {
+    private Stampede stampede(final Set<Tier> tiers) {
+        if (this.marker == null || !tiers.contains(Tier.REDIS)) {
+            return null;
+        }
+
+        return new Stampede(this.marker, this.settings.getMarkerLease(), this.settings.getMarkerTimeout());
+    }
+
+    private <EntityType extends Entity> Function<Write, WriteResult> authority(final Repository<EntityType> repository, final RedisEntityStorage<EntityType> storage, final List<Property<?, ?>> properties) {
         if (storage == null) {
-            return repository::apply;
+            return write -> new WriteResult(repository.apply(write), null);
         }
 
         final RedisEntityWriter writer = new RedisEntityWriter(this.redisDriver, properties);
@@ -134,12 +145,13 @@ public final class ContextFactory implements HolderContextFactory {
         return write -> this.write(writer, storage, write);
     }
 
-    private <EntityType extends Entity> long write(final RedisEntityWriter writer, final RedisEntityStorage<EntityType> storage, final Write write) {
+    private <EntityType extends Entity> WriteResult write(final RedisEntityWriter writer, final RedisEntityStorage<EntityType> storage, final Write write) {
         final UUID id = write.getKey().getId();
 
         if (write.getKind() == WriteKind.DELETE) {
             writer.delete(storage.path(id), storage.channel(id), write.getExpectedVersion());
-            return 0L;
+
+            return new WriteResult(0L, null);
         }
 
         return writer.apply(storage.path(id), storage.channel(id), write, this.settings.getEntityTtl());

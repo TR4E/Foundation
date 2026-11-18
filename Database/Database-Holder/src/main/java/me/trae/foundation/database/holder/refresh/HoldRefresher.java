@@ -1,6 +1,7 @@
 package me.trae.foundation.database.holder.refresh;
 
 import lombok.AllArgsConstructor;
+import lombok.CustomLog;
 import lombok.Getter;
 import me.trae.foundation.database.api.entity.Entity;
 
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+@CustomLog
 @AllArgsConstructor
 @Getter
 public final class HoldRefresher<EntityType extends Entity> {
@@ -36,7 +38,19 @@ public final class HoldRefresher<EntityType extends Entity> {
         this.executor.shutdownNow();
     }
 
+    private void refresh(final EntityType entity) {
+        try {
+            this.refresher.accept(entity);
+        } catch (final RuntimeException exception) {
+            LOGGER.warn("Failed to refresh {}, {}", entity.getId(), exception.getMessage());
+        }
+    }
+
     public void refresh() {
-        this.held.get().forEach(this.refresher);
+        try {
+            this.held.get().forEach(this::refresh);
+        } catch (final RuntimeException exception) {
+            LOGGER.warn("Failed to collect held entities, {}", exception.getMessage());
+        }
     }
 }

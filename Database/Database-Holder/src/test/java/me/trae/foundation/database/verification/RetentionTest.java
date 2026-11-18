@@ -1,5 +1,6 @@
 package me.trae.foundation.database.verification;
 
+import me.trae.foundation.database.api.exception.VersionConflictException;
 import me.trae.foundation.database.api.tier.Tier;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +15,8 @@ import static me.trae.foundation.database.verification.DatabaseFixture.AccountRe
 import static me.trae.foundation.database.verification.DatabaseFixture.account;
 import static me.trae.foundation.database.verification.DatabaseFixture.holder;
 import static me.trae.foundation.database.verification.DatabaseFixture.repository;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.when;
@@ -35,7 +38,7 @@ public final class RetentionTest {
     }
 
     @Test
-    void deleteClearsVersionAndAllIndexMaps() throws Exception {
+    void deleteRetainsMarkerAndClearsAllIndexMaps() throws Exception {
         final AccountRepository accountRepository = repository();
         final Account account = account();
         final AccountHolder accountHolder = holder(accountRepository, Set.of(Tier.LOCAL, Tier.POSTGRES));
@@ -45,7 +48,9 @@ public final class RetentionTest {
         accountHolder.increment(account, AccountDeclaration.COUNTER, 1L);
         accountHolder.delete(account);
 
-        this.assertEmpty(accountHolder);
+        assertEquals(Set.of(account.getId()), accountHolder.getWriter().getVersionMap().keySet());
+        assertThrows(VersionConflictException.class, () -> accountHolder.increment(account, AccountDeclaration.COUNTER, 1L));
+        this.assertEmptyStores(accountHolder);
     }
 
     @Test
@@ -83,6 +88,10 @@ public final class RetentionTest {
 
     private void assertEmpty(final AccountHolder accountHolder) throws Exception {
         assertTrue(accountHolder.getWriter().getVersionMap().isEmpty(), "Version map retained an entity");
+        this.assertEmptyStores(accountHolder);
+    }
+
+    private void assertEmptyStores(final AccountHolder accountHolder) throws Exception {
         assertTrue(accountHolder.getHeld().isEmpty(), "Local store retained an entity");
 
         for (final var uniqueIndexStore : accountHolder.getContext().getIndexStores().getUniqueStores()) {

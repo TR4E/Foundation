@@ -39,15 +39,13 @@ Database-Holder provides `EntityHolder<EntityType, RepositoryType>`. Each applic
 A container constructs holders as ordinary beans. Pass the repository, factory, holder tier set and declaration classes to the superclass. Package declarations/imports are omitted.
 
 ```java
-public abstract class ExampleHolder extends EntityHolder<ExampleEntity, ExampleRepository> {
+public final class ExampleHolder extends EntityHolder<ExampleEntity, ExampleRepository> {
 
-    protected ExampleHolder(final ExampleRepository exampleRepository, final HolderContextFactory holderContextFactory) {
+    public ExampleHolder(final ExampleRepository exampleRepository, final HolderContextFactory holderContextFactory) {
         super(ExampleEntity.class, exampleRepository, holderContextFactory, Set.of(Tier.LOCAL, Tier.REDIS, Tier.POSTGRES), ExampleProperty.class, ExampleIndex.class);
     }
 }
 ```
-
-This example is abstract because EntityHolder leaves Holder.decrementIfAtLeast unimplemented. A concrete bean must implement that operation or explicitly reject it. There is no supplied atomic floor check.
 
 Declarations initialize before factory.create(repository, tiers). The constructor then registers the holder. getRepository() retains the concrete repository type. Core's factory intersects the requested tiers with database-level enabled tiers.
 
@@ -57,27 +55,25 @@ get(id) checks resolved tiers; get(id, tiers) requests a specific set. getByProp
 
 getByIndex and getAllByIndex have no SQL fallback. Grouped results omit IDs whose entity lookup returns empty; this does not remove the stale index member. hold loads, inserts into Local when present, indexes and subscribes. holdAll queries every row and takes each. getHeld returns a list snapshot of Local values. Without LOCAL, holds is false and getHeld is empty, although take still creates index entries and a subscription. take initializes the writer version from the context version callback before indexing and subscribing.
 
-release unindexes by UUID, removes any Local entry, unsubscribes and clears the writer version. Cleanup does not require a Local entity, so it also removes remembered index entries for holders without LOCAL. release no longer performs a LOCAL-only lookup.
-
-Local storage contains object references, not snapshots synchronized for application writes. A Local hit does not check or repair Redis expiry.
+`release` unindexes by UUID, removes any Local entry and unsubscribes. It clears a live tracked version and retains a delete marker. Holders without LOCAL still use UUID-based index and subscription cleanup.
 
 ## Writing entities
 
-save produces SET changes for persistent properties. set changes one property; increment/decrement operate on Long values. The writer first mutates the Java object, invokes authority, records a positive returned version and dispatches persistence. set/increment restore their previous Java value on runtime failure, without rolling back a backend write that already completed.
+`save` produces SET changes for persistent properties. `set` writes one property. The writer calls the authority before assigning a local property and uses the returned version to decide whether to apply the result. With Redis and POSTGRES, Core submits successful writes to the PostgreSQL queue. Holders update affected runtime indexes and request a reload when a write uses a different object from the held copy.
 
-Holder operations update affected indexes after writing. delete writes deletion and calls release for UUID-based index, Local, subscription and version cleanup. reindex only maintains runtime keys. Direct setters bypass persistence and index maintenance.
+Use unconverted `Long` properties for counters. `increment` and `decrement` return the new value. `decrementIfAtLeast(entity, property, delta, floor)` returns whether the authority accepted the debit. It accepts a result equal to the floor. A refusal keeps the Java property unchanged and produces no persistence write. In the Redis path, an accepted debit publishes and persists as a negative increment.
 
-Versions default to zero. hold/holdAll and asynchronous reload initialize the tracked version through HolderContext.version. Core reads that value from the Redis hash when Redis storage exists; without Redis its callback returns 0. A plain get does not itself initialize writer tracking. Zero skips positive-version comparisons in the current backends. Concurrent mutation of one held Java object is not made atomic by the Redis script.
+Hold and reload read the Redis hash version when that storage is available. A plain `get` leaves tracking alone. An ordinary write with no tracked version can fall through to PostgreSQL when the hash is absent. A guarded decrement requires a Redis hash when Redis is the authority. A delete marker rejects later writes on the deleted entity. A successful SAVE can recreate it.
+
+`delete` calls the authority and releases the ID. `reindex` updates runtime keys. Use direct setters to construct values before a full save.
 
 ## Remote events and refresh
 
-Core filters own-origin messages before EventApplier. Without Local storage the applier does nothing. DELETE is handled first. For other kinds, versions at/below the tracked version are ignored; the next version applies SET/INCREMENT, records version and reindexes.
+Core filters own-origin messages. The holder dispatches events on a single FIFO executor. For held entities, the next version applies its SET and INCREMENT changes and refreshes runtime index keys. Duplicate UPDATE versions are ignored. DELETE evicts the held object, unindexes the ID and leaves a delete marker before version checks for other write kinds.
 
-A gap submits a reload to the holder's daemon Database-Refetch executor. Reload reads Redis/PostgreSQL, replaces Local, reads the context version and reindexes, without unsubscribing.
+A version gap, a failed event application or a SAVE at or below the tracked version queues a reload on the holder's refetch executor. A reload checks that the ID is still held, reads Redis directly when available, then falls back through the Redis/POSTGRES lookup on a miss. It checks the backend version before and after the read. If the backend version changed, the reload retries up to three attempts. Under the state lock it installs the result only if the tracked version has stayed the same. This also lets a SAVE that recreated a hash at a lower version refresh the held copy.
 
-ChangeEvent includes WriteKind. A remote DELETE evicts Local, unindexes by UUID and clears the tracked version before version comparisons, including when its version equals the tracked value. Eviction does not unsubscribe. The Redis delete writer publishes the supplied expected version without incrementing it.
-
-HoldRefresher uses a daemon scheduler to refresh Redis entity and unique-index TTLs for getHeld(). It does not poll PostgreSQL or replay events. EntityHolder.close() stops its refresher and shuts down its refetch executor. Core stop calls close() on its registered holders. Uncaught refresher exceptions can terminate subsequent scheduled runs.
+`HoldRefresher` uses a daemon scheduler to refresh Redis entity and unique-index TTLs for held IDs. A failing entity does not prevent other callbacks from running on the same tick. `close()` stops the refresher and shuts down both event and refetch executors. Core closes its registered holders during shutdown.
 
 ## Installation and build
 

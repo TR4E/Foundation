@@ -4,6 +4,7 @@ import me.trae.foundation.database.api.event.ChangeEvent;
 import me.trae.foundation.database.api.key.EntityKey;
 import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.tier.Tier;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.holder.context.HolderContextFactory;
 import me.trae.foundation.database.local.LocalMarker;
 import me.trae.foundation.database.local.LocalStorageProvider;
@@ -345,7 +346,7 @@ public final class HolderLookupTest {
     }
 
     @Test
-    void directApplierRequiresOriginFilteringBeforeDispatch() {
+    void directApplierInterleavingLeavesSingleIncrement() {
         final AccountRepository accountRepository = repository();
         final Account account = account();
         final java.util.concurrent.atomic.AtomicReference<AccountHolder> holderReference = new java.util.concurrent.atomic.AtomicReference<>();
@@ -357,7 +358,7 @@ public final class HolderLookupTest {
                 write -> {
                     holderReference.get().getApplier().apply(new ChangeEvent(write.getKey(), 1L, write.getKind(), write.getChanges()));
 
-                    return 1L;
+                    return new WriteResult(1L, null);
                 },
                 _ -> {},
                 (_, _) -> {},
@@ -371,7 +372,7 @@ public final class HolderLookupTest {
         accountHolder.hold(account.getId());
 
         assertEquals(1L, accountHolder.increment(account, AccountDeclaration.COUNTER, 1L));
-        assertEquals(2L, account.getCounter(), "Direct applier dispatch bypasses the origin filter in Core ContextFactory");
+        assertEquals(1L, account.getCounter(), "Assigning the write result must preserve a single increment");
     }
 
     @Test
@@ -382,7 +383,7 @@ public final class HolderLookupTest {
                 tiers,
                 storages(tiers),
                 new LocalMarker(),
-                accountRepository::apply,
+                write -> new WriteResult(accountRepository.apply(write), null),
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -429,7 +430,7 @@ public final class HolderLookupTest {
                 tiers,
                 storages(tiers),
                 new LocalMarker(),
-                accountRepository::apply,
+                write -> new WriteResult(accountRepository.apply(write), null),
                 _ -> {},
                 (_, _) -> {},
                 _ -> unsubscribeCount.incrementAndGet(),

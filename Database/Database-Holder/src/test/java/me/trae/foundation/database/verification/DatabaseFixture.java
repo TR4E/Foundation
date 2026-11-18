@@ -20,7 +20,9 @@ import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.storage.StorageProvider;
 import me.trae.foundation.database.api.tier.Tier;
 import me.trae.foundation.database.api.write.Write;
+import me.trae.foundation.database.api.write.WriteGate;
 import me.trae.foundation.database.api.write.WriteKind;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.api.write.change.Change;
 import me.trae.foundation.database.api.write.change.ChangeType;
 import me.trae.foundation.database.concurrency.InFlight;
@@ -52,7 +54,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.ToLongFunction;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -135,7 +136,7 @@ public final class DatabaseFixture {
             final Set<Tier> tiers,
             final LinkedHashMap<Tier, Storage<UUID, Account>> storageMap,
             final SharedMarker sharedMarker,
-            final ToLongFunction<Write> authority,
+            final Function<Write, WriteResult> authority,
             final Consumer<Write> persistence,
             final BiConsumer<UUID, Consumer<ChangeEvent>> subscriber,
             final Consumer<UUID> unsubscriber,
@@ -153,6 +154,7 @@ public final class DatabaseFixture {
                 new IndexStores(Account.class, tiers, providerList, index -> indexNamespace(index.getName())),
                 authority,
                 persistence,
+                new WriteGate(),
                 subscriber,
                 unsubscriber,
                 ValueCodec::decode,
@@ -168,7 +170,7 @@ public final class DatabaseFixture {
                 resolved,
                 storages(resolved),
                 new LocalMarker(),
-                accountRepository::apply,
+                write -> new WriteResult(accountRepository.apply(write), null),
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -248,11 +250,6 @@ public final class DatabaseFixture {
 
         public AccountHolder(final AccountRepository accountRepository, final HolderContextFactory holderContextFactory, final Set<Tier> tiers) {
             super(Account.class, accountRepository, holderContextFactory, tiers, AccountDeclaration.class);
-        }
-
-        @Override
-        public boolean decrementIfAtLeast(final Account account, final Property<Account, Long> property, final long delta, final long floor) {
-            throw new UnsupportedOperationException("Not implemented by production EntityHolder");
         }
     }
 

@@ -38,8 +38,10 @@ public final class ChangeMerge {
             return incoming;
         }
 
-        final long value = Long.class.cast(existing.getValue()) + Long.class.cast(incoming.getValue());
+        return new Change(existing.getColumn(), existing.getType(), number(existing.getValue()) + number(incoming.getValue()));
+    }
 
-        return new Change(existing.getColumn(), existing.getType(), value);
+    private static long number(final Object value) {
+        return value == null ? 0L : Long.class.cast(value);
     }
 }

@@ -8,7 +8,6 @@ import me.trae.foundation.database.api.entity.EntityInstantiator;
 import me.trae.foundation.database.api.property.Property;
 import me.trae.foundation.database.postgres.value.PostgresValues;
 import me.trae.foundation.database.postgres.write.PostgresWrite;
-import org.jooq.impl.DSL;
 
 import java.util.List;
 
@@ -41,7 +40,7 @@ public final class PostgresRow<EntityType extends Entity> {
     }
 
     private static <Value, Stored> Value convert(final org.jooq.Record record, final String column, final ValueConverter<Value, Stored> converter) {
-        final Stored stored = record.get(DSL.field(DSL.name(column), converter.getStoredType()));
+        final Stored stored = PostgresValues.read(record, column, converter.getStoredType());
 
         return stored == null ? null : converter.deserialize(stored);
     }

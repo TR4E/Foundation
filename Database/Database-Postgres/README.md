@@ -40,7 +40,7 @@ Database-Postgres supplies persistence through jOOQ, HikariCP and PostgreSQL JDB
 
 PostgresSettings(host, port, database, username, password, maximumPoolSize) builds jdbc:postgresql://<host>:<port>/<database>. connect() creates a Hikari pool and PostgreSQL DSL context. getDslContext() throws ConnectionException before connection; disconnect() closes the pool. isConnected() checks pool existence and closed state. Hikari can recover connections when the same PostgreSQL endpoint returns after an outage; failed batched writes remain in the queue until a successful flush. No driver reconnect call is required for that pool recovery.
 
-On SQL state 3D000, the driver connects to the postgres maintenance database and attempts CREATE DATABASE. The user requires CREATEDB for that path. Pre-create the database when application credentials should not create databases.
+On SQL state 3D000, the driver connects to the postgres maintenance database and attempts CREATE DATABASE. The user requires CREATEDB for that path. Concurrent database creation retries SQL states 55006 and 23505 up to ten attempts, with a 250 ms delay. Duplicate database state 42P04 is accepted. Pre-create the database when application credentials should not create databases.
 
 ## Repositories and queries
 
@@ -71,12 +71,15 @@ DDL interpolates names; keep them application-owned, simple SQL-safe identifiers
 | Float, Double | real, double precision |
 | Instant | timestamptz |
 | byte[] | bytea |
+| BigDecimal, BigInteger | numeric |
 
-Converters select schema type through getStoredType(). Unsupported types throw SchemaException. PostgresValues writes enums as names and reads them from text. Instant values are written as UTC OffsetDateTime and converted back on reads. Both mappings preserve null values. PostgreSQL rejects ADD/REMOVE collection changes; use child entities.
+Converters select schema type through getStoredType(). Unsupported types throw SchemaException. PostgresValues writes enums as names and reads them from text. Instant values are written as UTC OffsetDateTime and converted back on reads. Both mappings preserve null values. BigDecimal preserves scale through the repository. For `BigInteger`, `PostgresValues` reads `numeric` as `BigDecimal` and converts it to `BigInteger` before row assignment or converter deserialization. PostgreSQL rejects ADD/REMOVE collection changes; use child entities.
 
 ## Writes and tenants
 
-SAVE upserts on UUID and assigns the write's expected version, without comparing or incrementing it. UPDATE applies changes and increments version; no matching row throws VersionConflictException. DELETE checks the affected row count and throws VersionConflictException when no row was deleted and expected version is positive. Otherwise it returns the expected version. Only positive expected versions add a comparison predicate.
+SAVE upserts by UUID, or by tenant and UUID when tenanted. An insert starts at expected version plus one. On conflict, SAVE increments the existing row's version. UPDATE applies changes and increments the row version. Positive expected versions add a version predicate to UPDATE and DELETE. If no row matches, an ordinary UPDATE or a versioned DELETE throws `VersionConflictException`.
+
+Counter arithmetic treats SQL NULL as zero. A guarded decrement adds `coalesce(column, 0) - delta >= floor` to the UPDATE predicate. The operation returns a refusal when the UPDATE matches no row.
 
 Core derives the instance tenant scope from DatabaseSettings.tenant. Reads resolve the repository's supplied scope; writes use Write.key.tenant. New tenanted tables use a composite (tenant, id) primary key, and tenanted SAVE uses that same conflict target. The same UUID can identify independent rows in different tenants. Existing tables need an explicit primary-key migration; additive startup does not replace an old UUID-only key. A no-tenant scope does not filter out tenanted rows.
 

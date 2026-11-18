@@ -29,7 +29,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -37,6 +39,7 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,10 +47,10 @@ public final class RuntimeEdgesTest extends RuntimeFixture {
 
     @Test
     void collidingTenantIdsRemainIndependentInPostgres() {
+        this.dropTenantTable();
+
         try (final TenantNode firstTenantNode = new TenantNode("edge_alpha");
              final TenantNode secondTenantNode = new TenantNode("edge_beta")) {
-            firstTenantNode.getPostgresDriver().getDslContext().execute("TRUNCATE deep_items");
-
             final UUID id = UUID.randomUUID();
 
             firstTenantNode.getItemRepository().apply(new Write(new EntityKey("deep_items", "edge_alpha", id), WriteKind.SAVE, List.of(set("name", "alpha")), 0L));
@@ -205,14 +208,12 @@ public final class RuntimeEdgesTest extends RuntimeFixture {
 
     @Test
     void stopWaitsForAcceptedWriteToReachPersistence() throws Exception {
-        try (final Node node = new Node(AllBean.class, Duration.ofSeconds(30));
-             final var executorService = Executors.newSingleThreadExecutor()) {
-            final Item item = node.seed();
-
-            node.getItemHolder().hold(item.getId());
-
+        try (final Node node = new Node(RedisBean.class, Duration.ofSeconds(30));
+             final ExecutorService executorService = Executors.newFixedThreadPool(2)) {
+            final Item item = node.getItemHolder().get(node.seed().getId()).orElseThrow();
             final CountDownLatch authorityCompleted = new CountDownLatch(1);
             final CountDownLatch resumePersistence = new CountDownLatch(1);
+            final CountDownLatch stopStarted = new CountDownLatch(1);
             final Consumer<Write> persistence = node.getItemHolder().getWriter().getPersistence();
             final Field field = node.getItemHolder().getWriter().getClass().getDeclaredField("persistence");
 
@@ -230,23 +231,31 @@ public final class RuntimeEdgesTest extends RuntimeFixture {
                 persistence.accept(write);
             });
 
-            final var future = executorService.submit(() -> node.getItemHolder().increment(node.getItemHolder().get(item.getId()).orElseThrow(), ItemProperty.COUNTER, 1L));
+            final Future<Long> writeFuture = executorService.submit(() -> node.getItemHolder().increment(item, ItemProperty.COUNTER, 1L));
+
+            assertTrue(authorityCompleted.await(5, TimeUnit.SECONDS));
+
+            final Future<?> stopFuture = executorService.submit(() -> {
+                stopStarted.countDown();
+                node.getCoreDatabase().stop();
+            });
 
             try {
-                assertTrue(authorityCompleted.await(5, TimeUnit.SECONDS));
-                node.getCoreDatabase().stop();
+                assertTrue(stopStarted.await(5, TimeUnit.SECONDS));
+                assertFalse(stopFuture.isDone(), "Stop must wait for the authority-accepted write");
             } finally {
                 resumePersistence.countDown();
             }
 
-            assertEquals(1L, future.get(5, TimeUnit.SECONDS));
+            assertEquals(1L, writeFuture.get(5, TimeUnit.SECONDS));
+            stopFuture.get(7, TimeUnit.SECONDS);
 
             final PostgresDriver postgresDriver = new PostgresDriver(node.getPostgresDriver().getPostgresSettings());
 
             postgresDriver.connect();
 
             try {
-                final long actual = postgresDriver.getDslContext().fetchOne("SELECT counter FROM deep_items WHERE id = ?", item.getId()).get(0, Long.class);
+                final long actual = new ItemRepository(postgresDriver, node.getCoreDatabase().getTenantScope()).findById(item.getId()).orElseThrow().getCounter();
 
                 assertAll(
                         () -> assertEquals(0, node.getCoreDatabase().getBatchQueue().size(), "Stop left an accepted write stranded in the queue"),

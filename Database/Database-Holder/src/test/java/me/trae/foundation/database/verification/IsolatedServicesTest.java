@@ -15,6 +15,7 @@ import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.storage.Namespace;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.WriteKind;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.api.write.change.Change;
 import me.trae.foundation.database.api.write.change.ChangeType;
 import me.trae.foundation.database.postgres.driver.PostgresDriver;
@@ -48,6 +49,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -109,15 +111,16 @@ public final class IsolatedServicesTest {
         redisDriver.subscribe(redisEntityStorage.channel(probe.getId()), payloadQueue::add);
 
         try {
-            assertEquals(
-                    1L,
-                    this.writer().apply(
-                            redisEntityStorage.path(probe.getId()),
-                            redisEntityStorage.channel(probe.getId()),
-                            this.write(probe.getId(), WriteKind.UPDATE, 0L, "changed"),
-                            Duration.ofSeconds(10)
-                    )
+            final WriteResult writeResult = this.writer().apply(
+
+                    redisEntityStorage.path(probe.getId()),
+                    redisEntityStorage.channel(probe.getId()),
+                    this.write(probe.getId(), WriteKind.UPDATE, 0L, "changed"),
+                    Duration.ofSeconds(10)
             );
+
+            assertEquals(1L, writeResult.getVersion());
+            assertNull(writeResult.getValue());
 
             final String payload = payloadQueue.poll(5, TimeUnit.SECONDS);
 
@@ -167,21 +170,21 @@ public final class IsolatedServicesTest {
     void stalePostgresDeleteThrowsAndPreservesRow() {
         final UUID id = UUID.randomUUID();
 
-        probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed"));
-        assertEquals(1L, probeRepository.apply(this.write(id, WriteKind.UPDATE, 0L, "version-one")));
+        final long savedVersion = probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed"));
 
-        assertThrows(VersionConflictException.class, () -> probeRepository.apply(this.write(id, WriteKind.DELETE, 2L, null)));
-        assertEquals("version-one", probeRepository.findById(id).orElseThrow().getName());
+        assertEquals(savedVersion + 1L, probeRepository.apply(this.write(id, WriteKind.UPDATE, savedVersion, "updated")));
+        assertThrows(VersionConflictException.class, () -> probeRepository.apply(this.write(id, WriteKind.DELETE, savedVersion, null)));
+        assertEquals("updated", probeRepository.findById(id).orElseThrow().getName());
     }
 
     @Test
     void matchingVersionPostgresDeleteRemovesRow() {
         final UUID id = UUID.randomUUID();
 
-        probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed"));
-        probeRepository.apply(this.write(id, WriteKind.UPDATE, 0L, "version-one"));
+        final long savedVersion = probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed"));
+        final long updatedVersion = probeRepository.apply(this.write(id, WriteKind.UPDATE, savedVersion, "updated"));
 
-        assertEquals(1L, probeRepository.apply(this.write(id, WriteKind.DELETE, 1L, null)));
+        assertEquals(updatedVersion, probeRepository.apply(this.write(id, WriteKind.DELETE, updatedVersion, null)));
         assertTrue(probeRepository.findById(id).isEmpty());
         assertEquals(0L, probeRepository.count(Query.all()));
     }

@@ -4,6 +4,8 @@ import lombok.experimental.UtilityClass;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.Property;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -20,6 +22,8 @@ public final class ColumnTypes {
             Map.entry(Long.class, "bigint"),
             Map.entry(Float.class, "real"),
             Map.entry(Double.class, "double precision"),
+            Map.entry(BigDecimal.class, "numeric"),
+            Map.entry(BigInteger.class, "numeric"),
             Map.entry(Instant.class, "timestamptz"),
             Map.entry(byte[].class, "bytea")
     );

@@ -7,7 +7,7 @@
   <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Multi--module-C71A36?logo=apachemaven&logoColor=white"></a>
 </p>
 
-Database is Foundation's Java 25 persistence stack. PostgreSQL supplies durable repositories and additive schema setup. See [installation](INSTALLATION.md) for complete repository and manager wiring. Holders are DI beans extending EntityHolder with entity and repository type parameters. Each holder chooses its tier set; a database instance supplies the enabled tiers, tenant, drivers and lifecycle.
+Database is Foundation's Java 25 persistence stack. PostgreSQL supplies durable repositories and additive schema setup. See [installation](INSTALLATION.md) for complete repository and manager wiring. Holders are DI beans extending EntityHolder with entity and repository type parameters. Each holder chooses its tier set. A database instance supplies the available tiers, tenant, drivers and lifecycle.
 
 ## Contents
 
@@ -63,7 +63,7 @@ The generic examples omit packages/imports and use Lombok. Put public types in s
 
 ## Per-holder tiers
 
-Core's ContextFactory intersects each holder's tiers with DatabaseSettings.tiers. Database-level tiers enable availability; the holder chooses its access mode.
+Core's `ContextFactory` intersects each holder's tiers with `DatabaseSettings.tiers`. Database settings make the tiers available to holders.
 
 | Holder tiers | Entity storage | Write authority | PostgreSQL persistence |
 | --- | --- | --- | --- |
@@ -71,7 +71,9 @@ Core's ContextFactory intersects each holder's tiers with DatabaseSettings.tiers
 | REDIS, POSTGRES | Shared Redis hashes | Redis script | Queued |
 | LOCAL, REDIS, POSTGRES | Local working set and Redis | Redis script | Queued |
 
-A Redis driver must be supplied for Redis storage. Without LOCAL, holds is false and getHeld is empty. Unique index declarations inherit the holder's resolved tiers and omit POSTGRES providers. Grouped indexes are local maps and reject a resolved REDIS tier; explicitly place grouped working-set indexes in LOCAL.
+For a Spring `MULTI_INSTANCE` application that uses shared storage, choose `Set.of(Tier.REDIS, Tier.POSTGRES)` for those holders and enable both tiers in the database settings. A holder with this set resolves IDs through Redis and PostgreSQL. `holds(id)` returns `false` and `getHeld()` is empty. See [Spring multi-instance wiring](INSTALLATION.md#spring-multi-instance).
+
+A Redis driver supplies Redis storage. Unique index declarations inherit the holder's resolved tiers and exclude `POSTGRES` providers. Grouped indexes are process-local maps. Give grouped working-set indexes an explicit `LOCAL` tier when Redis is enabled.
 
 ## Generic examples
 
@@ -130,18 +132,13 @@ public final class ExampleRepository extends PostgresRepository<ExampleEntity> {
 }
 ```
 
-The holder constructor declares its tiers and registers itself through the factory. A concrete holder must implement or explicitly reject the currently abstract floor-check operation.
+The holder constructor declares its tiers and registers the holder through the factory.
 
 ```java
 public final class ExampleHolder extends EntityHolder<ExampleEntity, ExampleRepository> {
 
     public ExampleHolder(final ExampleRepository exampleRepository, final HolderContextFactory holderContextFactory) {
         super(ExampleEntity.class, exampleRepository, holderContextFactory, Set.of(Tier.LOCAL, Tier.POSTGRES), ExampleProperty.class, ExampleIndex.class);
-    }
-
-    @Override
-    public boolean decrementIfAtLeast(final ExampleEntity exampleEntity, final Property<ExampleEntity, Long> property, final long delta, final long floor) {
-        throw new UnsupportedOperationException("Atomic floor checks require an implementation");
     }
 }
 ```
@@ -181,27 +178,25 @@ try {
 
 Here application is an application-owned object annotated with Injector's Application annotation. Add Injector's artifacts when choosing this integration. Another container can supply the same constructor dependencies. Register one holder per entity class per database instance; the registry replaces duplicate class/table entries.
 
-Core start connects drivers, applies registered repository DDL, and starts batching and refreshers. Stop consumers before Core shutdown. Core stop closes registered holders, stopping their refreshers and refetch executors; see [holder lifecycle](Database-Holder/README.md#remote-events-and-refresh).
+Core start connects drivers, applies registered repository DDL, and starts batching and refreshers. Core stop drains admitted writes, closes registered holders and gives the batch scheduler a final flush window before disconnecting the drivers. See [holder lifecycle](Database-Holder/README.md#remote-events-and-refresh) and [batch shutdown](Database-Batch/README.md#scheduling-and-failures).
 
 ## Read and write paths
 
-ID reads check Local, Redis and PostgreSQL. Ordinary get does not create a new Local hold. hold/holdAll retain active entities; release removes remembered index entries by UUID, any Local retention, subscriptions and tracked version. It does not need a Local entity to perform cleanup.
+ID reads use the enabled tiers in LOCAL, REDIS, POSTGRES order. `hold` and `holdAll` populate the Local working set when enabled. `release` removes remembered index entries by UUID, removes any Local entry and unsubscribes. It clears live version tracking and preserves delete markers.
 
-getByProperty tries a matching unique runtime index, or a held scan when no matching index exists, then PostgreSQL if enabled. getByIndex/getAllByIndex have no SQL fallback.
+`getByProperty` tries a matching unique runtime index, or a held scan when no matching index exists, then PostgreSQL if enabled. `getByIndex` and `getAllByIndex` resolve IDs from runtime indexes.
 
-Writes mutate the entity, call authority, record a positive returned version, dispatch persistence and update indexes. Redis authority publishes version, origin, WriteKind and changes. Core filters its own origin before event application, preventing a local write from applying its own published delta again.
+The holder calls the write authority before applying local property changes. With Redis, the successful script advances the version, publishes the origin, kind and changes with that version, and Core queues PostgreSQL persistence when enabled. Core filters events from its own Redis driver instance. Without Redis, the repository is the synchronous authority. A Redis SAVE can create a missing hash. Core queues SQL copies with expected version `0`, keeping the two version counters independent.
 
-Other-instance consecutive events update held objects. Gaps submit reloads to a separate executor without unsubscribing. Hold and reload initialize writer tracking through the context version callback, reading the Redis hash version when available. Without Redis, the callback returns 0. Remote DELETE events evict Local, runtime index entries and the tracked version before UPDATE duplicate/gap checks. The delete writer publishes the supplied expected version without incrementing it.
+`increment`, `decrement` and `decrementIfAtLeast` operate on unconverted `Long` properties. The guarded decrement returns `false` when the resulting value would fall below the floor. The authority checks the floor atomically. A refused debit leaves the held property's value unchanged and produces no persistence write or event.
 
-Redis scripts require an existing hash; save does not bootstrap it. Successful repository ID reads can backfill Redis. Core copies Redis-authoritative writes with expected version 0 for immediate or batched PostgreSQL replication. Redis and SQL versions are not compared. The queue remains in memory, without durable replay.
+Other-instance events for held entities are processed in order on the holder's event executor. Version gaps and SAVE events at or below the tracked version queue a reload. Reload reads Redis directly before falling back through the lookup, checks that the backend version stayed stable, and installs the snapshot only if the tracked version has stayed the same. Remote DELETE evicts the held object, removes its runtime index entries and marks the ID deleted. See [Database-Holder](Database-Holder/README.md#remote-events-and-refresh).
 
 ## Schema and coalescing
 
-Schema synchronization creates tables, missing columns and declared BTREE, UNIQUE or BRIN indexes under an advisory lock. It does not rename/drop columns, change stored types or migrate existing index methods.
+Schema synchronization creates tables, missing columns and declared BTREE, UNIQUE or BRIN indexes under an advisory lock. Use explicit migrations for renames, removals, type changes and changes to existing indexes.
 
-InFlight shares one active load per UUID and requested tier set representation within one lookup instance. Stampede uses a shared marker to publish a result to concurrent waiters, including an empty result for a missing row. Timeout permits a fallback read; this is not global exactly-once loading.
-
-In-process coalescing distinguishes requested tier selections, and release no longer performs a LOCAL-only lookup. Shared marker keys still omit tier selection and tenant. See [Lookup](Database-Lookup/README.md) for backfill and restriction details.
+`InFlight` shares one active load per UUID and requested tier set within a lookup instance. Holders without REDIS load from the repository without shared marker coordination. Holders with REDIS and a configured marker can also share repository results across instances, including empty results. Shared marker keys include tenant, table and UUID. See [Database-Lookup](Database-Lookup/README.md#shared-loads).
 
 ## Building and testing
 
@@ -211,10 +206,7 @@ From the repository root:
 mvn -pl Database/Database-Core -am test
 ```
 
-Verification suites live under Database-Holder/src/test/java and Database-Core/src/test/java. JUnit/Mockito cover contracts and isolated behavior; Testcontainers runs real PostgreSQL and Redis tests. Docker-dependent classes skip when Docker is unavailable. The Core suite also includes convergence tests, a sixty-second mixed-workload soak with allocation/GC measurements, service interruption tests, a two-JVM DDL race, tenant collisions, type/null round trips and a 100k-row hold measurement. Assertions describe required behavior; test presence does not mean every assertion passes.
-
-The suites cover regression contracts, concurrency, retention and convergence; they do not repair production code. Fixtures must use the current HolderContext and ChangeEvent constructor signatures and the current event headers. Stored reports describe the source at their run time, not subsequent edits.
-
-Benchmark workloads are kept for comparison, but hand-built payloads must match the current protocol. The event header now requires version, origin and WriteKind. Older publish-benchmark payloads without those headers are incompatible.
+Verification suites live under `Database-Holder/src/test/java` and `Database-Core/src/test/java`. JUnit and Mockito cover contracts and isolated behavior. Testcontainers provides PostgreSQL and Redis for integration tests. The Core suite also includes benchmarks, convergence tests and a mixed-workload soak. Select a holder tier set that matches the deployment when comparing results.
 
 Return to [Foundation](../README.md).
+

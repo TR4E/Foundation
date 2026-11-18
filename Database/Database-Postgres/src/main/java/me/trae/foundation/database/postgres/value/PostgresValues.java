@@ -4,6 +4,8 @@ import lombok.experimental.UtilityClass;
 import me.trae.foundation.database.api.exception.SchemaException;
 import org.jooq.impl.DSL;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -35,6 +37,12 @@ public final class PostgresValues {
             final OffsetDateTime timestamp = record.get(DSL.field(DSL.name(column), OffsetDateTime.class));
 
             return timestamp == null ? null : type.cast(timestamp.toInstant());
+        }
+
+        if (type == BigInteger.class) {
+            final BigDecimal number = record.get(DSL.field(DSL.name(column), BigDecimal.class));
+
+            return number == null ? null : type.cast(number.toBigInteger());
         }
 
         return record.get(DSL.field(DSL.name(column), type));

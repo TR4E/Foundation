@@ -33,7 +33,7 @@ Database-API defines the types shared by every Database module. Applications use
 | Declarations | `Property`, `PropertyRegistry`, `IndexRegistry`, `DeclarationLoader` |
 | Access | `Holder`, `Repository`, `Query`, `Condition`, `Order` |
 | Storage | `Storage`, `StorageProvider`, `Namespace`, `Tier` |
-| Changes | `Write`, `WriteKind`, `Change`, `ChangeType`, `ChangeEvent`, `EntityKey` |
+| Changes | `Write`, `WriteKind`, `WriteResult`, `WriteGate`, `Change`, `ChangeType`, `ChangeEvent`, `EntityKey` |
 | Conversion and coordination | `ValueConverter`, `SharedMarker` |
 
 ## Entities and declarations
@@ -60,12 +60,12 @@ An empty index tier set inherits the holder's resolved tiers. Supply an explicit
 | `getByProperty(property, value)` | Property lookup with implementation-specific fallback |
 | `getByIndex`, `getAllByIndex` | Unique or grouped runtime lookup |
 | `hold`, `holdAll`, `release`, `holds`, `getHeld` | Explicit local retention |
-| `save`, `set`, `increment`, `decrement`, `delete` | Write through the configured authority |
+| `save`, `set`, `increment`, `decrement`, `decrementIfAtLeast`, `delete` | Write through the configured authority. Counter operations require an unconverted `Long` property |
 | `reindex` | Rebuild lookup keys |
 | `Repository.findById`, `find`, `count` | Direct persistent queries |
 | `Repository.apply(write)` | Apply a low-level write and return its version |
 
-`decrementIfAtLeast` is declared on Holder, but EntityHolder leaves it abstract. A concrete manager must implement it or explicitly reject it. There is no supplied atomic floor check.
+`decrementIfAtLeast(entity, property, delta, floor)` returns `true` when the authority applies the debit. A result equal to the floor is accepted. Redis checks the floor inside its Lua script, and PostgreSQL checks it in the UPDATE predicate.
 
 ## Queries and changes
 
@@ -73,13 +73,13 @@ An empty index tier set inherits the holder's resolved tiers. Supply an explicit
 
 Query values are passed as supplied, without property conversion. Use stored representations for converted fields. Memory-only fields have no PostgreSQL column.
 
-Write carries an EntityKey (table, tenant, UUID), kind, changes and expected version. Kinds are SAVE, UPDATE and DELETE; changes are SET, INCREMENT, ADD and REMOVE. PostgreSQL rejects ADD/REMOVE; contract declarations do not imply backend support.
+Write carries an EntityKey (table, tenant, UUID), kind, changes and expected version. Write kinds are SAVE, UPDATE and DELETE. Change kinds are SET, INCREMENT, DECREMENT_IF, ADD and REMOVE. A guarded change carries a `Decrement` with delta and floor. PostgreSQL rejects ADD and REMOVE.
 
 ChangeEvent carries EntityKey, version, WriteKind and changes. Its constructor takes those four values in that order. It carries no origin field: Core reads origin from the Redis wire message before decoding and drops messages published by its own driver instance.
 
 ## Storage and exceptions
 
-Namespace contains name, value class, key encoder, string value converter and TTL. Storage supports get, put, remove, contains, values and refresh. Redis rejects enumeration through values(); Local supplies it. SharedMarker exposes claim, await and release for load coordination. Tier defines LOCAL, REDIS, POSTGRES and the ALL set.
+Namespace contains name, value class, key encoder, string value converter and TTL. Storage supports get, put, remove, contains, values and refresh. Redis rejects enumeration through values(); Local supplies it. SharedMarker exposes claim, await and release for load coordination. Tier defines LOCAL, REDIS and POSTGRES. `Tier.ALL` is unmodifiable.
 
 API exceptions extend DatabaseException: ConnectionException, SchemaException, QueryException, VersionConflictException and UniqueValueTakenException. UniqueValueTakenException is declared but is not thrown by current runtime index stores. Backend failures are not universally translated into API exceptions.
 

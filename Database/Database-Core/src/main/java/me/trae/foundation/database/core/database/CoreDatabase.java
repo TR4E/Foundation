@@ -9,6 +9,7 @@ import me.trae.foundation.database.api.marker.SharedMarker;
 import me.trae.foundation.database.api.repository.Repository;
 import me.trae.foundation.database.api.storage.StorageProvider;
 import me.trae.foundation.database.api.tier.Tier;
+import me.trae.foundation.database.api.write.WriteGate;
 import me.trae.foundation.database.batch.BatchQueue;
 import me.trae.foundation.database.batch.BatchScheduler;
 import me.trae.foundation.database.core.context.ContextFactory;
@@ -27,15 +28,21 @@ import me.trae.foundation.database.redis.storage.RedisStorageProvider;
 import me.trae.foundation.database.tenant.Tenant;
 import me.trae.foundation.database.tenant.TenantScope;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @CustomLog
 @Getter
 public final class CoreDatabase implements Database {
 
+    private static final Duration DRAIN_TIMEOUT = Duration.ofSeconds(5);
+
     private final EntityRegistry registry = new EntityRegistry();
     private final List<StorageProvider> providers = new ArrayList<>();
+    private final WriteGate writeGate = new WriteGate();
+    private final AtomicBoolean stopped = new AtomicBoolean();
 
     private final DatabaseSettings settings;
     private final PostgresDriver postgresDriver;
@@ -63,7 +70,7 @@ public final class CoreDatabase implements Database {
 
         this.batchQueue = new BatchQueue();
         this.batchScheduler = new BatchScheduler(this.batchQueue, this.registry::apply, settings.getBatchInterval());
-        this.contextFactory = new ContextFactory(settings, this.tenantScope, new NamespaceFactory(settings, this.tenantScope), this.providers, marker, this.batchQueue, redisDriver, this.registry);
+        this.contextFactory = new ContextFactory(settings, this.tenantScope, new NamespaceFactory(settings, this.tenantScope), this.providers, marker, this.batchQueue, this.writeGate, redisDriver, this.registry);
     }
 
     @Override
@@ -78,7 +85,13 @@ public final class CoreDatabase implements Database {
             this.redisDriver.connect();
         }
 
-        new PostgresSynchronizer(this.postgresDriver).synchronize(this.statements());
+        final List<String> statements = this.statements();
+
+        if (statements.isEmpty() && LOGGER.isWarnEnabled()) {
+            LOGGER.warn("No repositories were registered before start, any holder created after this point gets no table or indexes");
+        }
+
+        new PostgresSynchronizer(this.postgresDriver).synchronize(statements);
 
         this.batchScheduler.start();
 
@@ -87,17 +100,21 @@ public final class CoreDatabase implements Database {
 
     @Override
     public void stop() {
-        if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("Stopping database with tiers {} and tenant {}", this.settings.getTiers(), this.settings.getTenant());
+        if (!this.stopped.compareAndSet(false, true)) {
+            return;
         }
+
         if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("Closing {} database holders", this.registry.getHolders().size());
+            LOGGER.info("Stopping database with tiers {} and tenant {}, closing {} holders", this.settings.getTiers(), this.settings.getTenant(), this.registry.getHolders().size());
+        }
+
+        if (!this.writeGate.drain(DRAIN_TIMEOUT) && LOGGER.isWarnEnabled()) {
+            LOGGER.warn("Writes were still in flight after {} seconds, continuing with shutdown", DRAIN_TIMEOUT.toSeconds());
         }
 
         this.registry.getHolders().forEach(EntityHolder::close);
 
         this.batchScheduler.stop();
-        this.batchScheduler.flush();
 
         if (this.redisDriver != null) {
             this.redisDriver.disconnect();

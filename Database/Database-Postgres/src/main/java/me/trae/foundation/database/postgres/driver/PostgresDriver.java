@@ -21,6 +21,9 @@ import java.sql.Statement;
 @RequiredArgsConstructor
 public final class PostgresDriver {
 
+    private static final int CREATION_ATTEMPTS = 10;
+    private static final long CREATION_RETRY_DELAY = 250L;
+
     static {
         System.setProperty("org.jooq.no-logo", "true");
         System.setProperty("org.jooq.no-tips", "true");
@@ -111,25 +114,63 @@ public final class PostgresDriver {
     private void createDatabaseIfMissing() {
         final String jdbcUrl = "jdbc:postgresql://%s:%s/postgres".formatted(this.postgresSettings.getHost(), this.postgresSettings.getPort());
 
-        try (final Connection connection = DriverManager.getConnection(jdbcUrl, this.postgresSettings.getUsername(), this.postgresSettings.getPassword());
-             final PreparedStatement preparedStatement = connection.prepareStatement("SELECT 1 FROM pg_database WHERE datname = ?")) {
+        for (int attempt = 0; attempt < CREATION_ATTEMPTS; attempt++) {
+            try (final Connection connection = DriverManager.getConnection(jdbcUrl, this.postgresSettings.getUsername(), this.postgresSettings.getPassword())) {
+                if (!this.databaseExists(connection)) {
+                    this.createDatabase(connection);
+                }
+
+                return;
+            } catch (final SQLException exception) {
+                if (!this.isRetryable(exception)) {
+                    throw new ConnectionException("Failed to create PostgreSQL database %s using the postgres maintenance database".formatted(this.postgresSettings.getDatabase()), exception);
+                }
+
+                this.sleep();
+            }
+        }
+
+        throw new ConnectionException("Failed to create PostgreSQL database %s after %s attempts, another instance is still copying the template".formatted(this.postgresSettings.getDatabase(), CREATION_ATTEMPTS));
+    }
+
+    private boolean databaseExists(final Connection connection) throws SQLException {
+        try (final PreparedStatement preparedStatement = connection.prepareStatement("SELECT 1 FROM pg_database WHERE datname = ?")) {
             preparedStatement.setString(1, this.postgresSettings.getDatabase());
 
             try (final ResultSet resultSet = preparedStatement.executeQuery()) {
-                if (resultSet.next()) {
-                    return;
-                }
+                return resultSet.next();
             }
+        }
+    }
 
-            try (final Statement statement = connection.createStatement()) {
-                statement.execute("CREATE DATABASE %s".formatted(this.quoteIdentifier(this.postgresSettings.getDatabase())));
-            } catch (final SQLException exception) {
-                if (!"42P04".equals(exception.getSQLState())) {
-                    throw exception;
-                }
-            }
+    private void createDatabase(final Connection connection) throws SQLException {
+        try (final Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE %s".formatted(this.quoteIdentifier(this.postgresSettings.getDatabase())));
         } catch (final SQLException exception) {
-            throw new ConnectionException("Failed to create PostgreSQL database %s using the postgres maintenance database".formatted(this.postgresSettings.getDatabase()), exception);
+            if (!"42P04".equals(exception.getSQLState())) {
+                throw exception;
+            }
+        }
+    }
+
+    private boolean isRetryable(final SQLException exception) {
+        if ("55006".equals(exception.getSQLState())) {
+            return true;
+        }
+
+        if ("23505".equals(exception.getSQLState())) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void sleep() {
+        try {
+            Thread.sleep(CREATION_RETRY_DELAY);
+        } catch (final InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ConnectionException("Interrupted while waiting to create PostgreSQL database %s".formatted(this.postgresSettings.getDatabase()), exception);
         }
     }
 

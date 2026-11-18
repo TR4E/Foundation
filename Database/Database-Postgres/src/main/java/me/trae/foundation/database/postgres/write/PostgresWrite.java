@@ -6,6 +6,7 @@ import me.trae.foundation.database.api.property.Property;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.change.Change;
 import me.trae.foundation.database.api.write.change.ChangeType;
+import me.trae.foundation.database.api.write.change.Decrement;
 import me.trae.foundation.database.postgres.value.PostgresValues;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public final class PostgresWrite {
 
@@ -37,17 +39,24 @@ public final class PostgresWrite {
         final Map<Field<?>, Object> values = values(properties, write);
 
         values.put(ID, write.getKey().getId());
-        values.put(VERSION, write.getExpectedVersion());
 
         if (write.getKey().getTenant() != null) {
             values.put(TENANT, write.getKey().getTenant());
         }
 
+        final LinkedHashMap<Field<?>, Object> inserted = new LinkedHashMap<>(values);
+
+        final LinkedHashMap<Field<?>, Object> updated = new LinkedHashMap<>(values);
+
+        inserted.put(VERSION, write.getExpectedVersion() + 1);
+
+        updated.put(VERSION, DSL.field(DSL.name(table.getName(), "version"), Long.class).add(1));
+
         return dslContext.insertInto(table)
-                .set(values)
+                .set(inserted)
                 .onConflict(write.getKey().getTenant() == null ? new Field<?>[]{ID} : new Field<?>[]{TENANT, ID})
                 .doUpdate()
-                .set(values)
+                .set(updated)
                 .returningResult(VERSION)
                 .fetchOne(0, long.class);
     }
@@ -60,7 +69,7 @@ public final class PostgresWrite {
                         .returningResult(VERSION)
                         .fetchOne())
                 .map(record -> record.get(0, long.class))
-                .orElseThrow(() -> new VersionConflictException("Update of %s expected version %s".formatted(write.getKey().getId(), write.getExpectedVersion())));
+                .orElseGet(() -> unmatched(write));
     }
 
     private static long delete(final DSLContext dslContext, final Table<?> table, final Write write) {
@@ -73,6 +82,14 @@ public final class PostgresWrite {
         }
 
         return write.getExpectedVersion();
+    }
+
+    private static long unmatched(final Write write) {
+        if (guards(write).isEmpty()) {
+            throw new VersionConflictException("Update of %s expected version %s".formatted(write.getKey().getId(), write.getExpectedVersion()));
+        }
+
+        return Decrement.REFUSED;
     }
 
     private static Map<Field<?>, Object> values(final List<Property<?, ?>> properties, final Write write) {
@@ -88,10 +105,17 @@ public final class PostgresWrite {
             throw new QueryException("%s on column %s has no Postgres form, use a child entity".formatted(change.getType(), change.getColumn()));
         }
 
+        if (change.getValue() instanceof final Decrement decrement) {
+            final Field<Long> field = DSL.field(DSL.name(change.getColumn()), Long.class);
+
+            values.put(field, DSL.coalesce(field, 0L).sub(decrement.getDelta()));
+            return;
+        }
+
         if (change.getType() == ChangeType.INCREMENT) {
             final Field<Long> field = DSL.field(DSL.name(change.getColumn()), Long.class);
 
-            values.put(field, field.add(Long.class.cast(change.getValue())));
+            values.put(field, DSL.coalesce(field, 0L).add(Long.class.cast(change.getValue())));
             return;
         }
 
@@ -110,6 +134,12 @@ public final class PostgresWrite {
         return property.getConverter() == null ? value : property.getConverter().serialize(property.getType().cast(value));
     }
 
+    private static List<Change> guards(final Write write) {
+        return write.getChanges().stream()
+                .filter(change -> change.getValue() instanceof Decrement)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
     private static List<org.jooq.Condition> conditions(final Write write) {
         final List<org.jooq.Condition> conditions = new ArrayList<>();
 
@@ -119,10 +149,26 @@ public final class PostgresWrite {
             conditions.add(TENANT.eq(write.getKey().getTenant()));
         }
 
-        if (write.getExpectedVersion() > 0) {
-            conditions.add(VERSION.eq(write.getExpectedVersion()));
+        final List<Change> guards = guards(write);
+
+        if (guards.isEmpty()) {
+            if (write.getExpectedVersion() > 0) {
+                conditions.add(VERSION.eq(write.getExpectedVersion()));
+            }
+
+            return conditions;
         }
 
+        guards.forEach(change -> conditions.add(guard(change)));
+
         return conditions;
+    }
+
+    private static org.jooq.Condition guard(final Change change) {
+        final Field<Long> field = DSL.field(DSL.name(change.getColumn()), Long.class);
+
+        final Decrement decrement = Decrement.class.cast(change.getValue());
+
+        return DSL.coalesce(field, 0L).sub(decrement.getDelta()).ge(decrement.getFloor());
     }
 }

@@ -41,9 +41,9 @@ Construct `Stampede(marker, lease, timeout)` and call `load(key, converter, load
 
 A successful claim runs the supplier, publishes the serialized result and releases. An empty result publishes an empty string. Runtime failures release without a payload. A caller that cannot claim waits; timeout or absent payload falls back to its own supplier. This reduces duplicate reads but does not guarantee one global execution. Claims are not renewed during the supplier call; if a query outlives its lease, another instance can claim and run the same query concurrently.
 
-[LocalMarker](../Database-Local/README.md#local-marker) always grants claims. [RedisMarker](../Database-Redis/README.md#expiry-and-load-markers) supplies shared leases. Keep marker keys unique across workloads. Core marker keys contain table and UUID, without tenant.
+[LocalMarker](../Database-Local/README.md#local-marker) always grants claims. [RedisMarker](../Database-Redis/README.md#expiry-and-load-markers) supplies shared leases. Core configures shared coordination when the resolved holder includes REDIS and a marker is available. Other holders use the same in-process `InFlight` mechanism and call the loader directly. Core shared keys contain tenant, table and UUID.
 
-Published empty strings represent missing rows, so concurrent waiters can reuse a negative result without a second query. A later caller that successfully claims after release can query again; this is not a general negative cache. InFlight keys only by its supplied key. Lookup supplies a String combining UUID and the requested tier set representation, separating in-process loads for different tier selections. Core shared-marker keys still contain only table and UUID, without tier selection or tenant.
+Published empty strings represent missing rows, so concurrent waiters can reuse a negative result without a second query. A later caller that successfully claims after release can query again; this is not a general negative cache. InFlight keys only by its supplied key. Lookup supplies a String combining UUID and the requested tier set representation, separating in-process loads for different tier selections. Core shared-marker keys omit tier selection.
 
 ## Installation and build
 

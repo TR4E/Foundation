@@ -49,7 +49,9 @@ public final class RedisEntityStorage<EntityType extends Entity> implements Stor
             commands.hdel(path, missing.toArray(String[]::new));
         }
 
-        commands.hset(path, fieldMap);
+        if (!fieldMap.isEmpty()) {
+            commands.hset(path, fieldMap);
+        }
 
         if (!this.namespace.getTtl().isZero()) {
             commands.pexpire(path, this.namespace.getTtl().toMillis());

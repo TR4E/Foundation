@@ -35,11 +35,11 @@ Construct LocalStorage with a Namespace. Keys use its encoder; values remain obj
 
 get returns Optional; put replaces; remove deletes; contains checks presence. values() exposes the concurrent map's live values collection; clear() empties it. refresh does nothing. Separate LocalStorage instances have separate maps even with identical namespace names.
 
-Entity retention is explicit: hold/holdAll populate Local, release removes entries. Ordinary reads do not create new local holds. Application code remains responsible for mutable value threading. Local storage makes map operations concurrent; it does not make multi-step entity mutation or hold/release atomic. A Local hit returns immediately without checking Redis expiry.
+Entity retention is explicit: hold/holdAll populate Local, release removes entries. Ordinary reads do not create new local holds. Application code remains responsible for mutable value threading. Local storage makes map operations concurrent; it does not make multi-step entity mutation or hold/release atomic. A queued holder reload skips an ID released before the task starts. That check does not make a reload already in progress atomic with release.
 
 ## Local marker
 
-LocalMarker.claim always returns true; await always returns empty; release methods do nothing. It provides no leasing or shared coordination. Local simultaneous-load sharing is handled by InFlight in Lookup/Concurrency.
+LocalMarker.claim always returns true; await always returns empty; release methods do nothing. It provides no leasing or shared coordination. Core skips the shared marker path for holders without REDIS. [Database-Lookup](../Database-Lookup/README.md#shared-loads) still uses `InFlight` to join simultaneous reads for the same UUID and tier selection.
 
 ## Installation and build
 

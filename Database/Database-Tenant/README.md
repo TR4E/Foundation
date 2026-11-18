@@ -53,7 +53,7 @@ Repository reads resolve scope at call time. Holder contexts capture tenant iden
 
 A tenant adds a PostgreSQL predicate and tenant column during schema setup. Without a tenant, repository reads are unfiltered. Unique SQL indexes include tenant when schema generation sees one.
 
-New tenanted tables use (tenant, id) as their primary key and SAVE conflict target, allowing the same UUID in different tenants. Existing tables with an id-only primary key require an explicit migration. Core cache namespaces include tenant, while shared-load marker keys currently do not. Core registries use entity class/table rather than tenant. TenantScope supplies execution context, not authorization.
+New tenanted tables use (tenant, id) as their primary key and SAVE conflict target, allowing the same UUID in different tenants. Existing tables with an id-only primary key require an explicit migration. Core cache namespaces include tenant. Holders with shared Redis load coordination also include tenant in their marker keys. Marker keys resolve scope at lookup time, while cache namespaces remain fixed for an existing holder. The marker prefix uses the literal string `null` for an absent tenant. Core registries use entity class/table rather than tenant. TenantScope supplies execution context, not authorization.
 
 ## Installation and build
 

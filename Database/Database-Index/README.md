@@ -57,13 +57,13 @@ Redis unique values are UUID strings, with the entity TTL. Reverse maps remain p
 
 IndexUpdater.index(entity, property) updates only indexes declaring that dependency, plus indexes with empty dependency sets. Derived extractors can compute keys from several properties; declare every property affecting their result.
 
-index(entity) rebuilds all stores; refresh(entity) refreshes unique stores only. Holder save, hold, property-query results, reindex and remote event application populate indexes. Direct repository reads do not.
+`index(entity)` rebuilds all stores. `refresh(entity)` refreshes unique stores and skips null keys. Holder save, hold, property-query results, reindex and remote event application populate indexes. Direct repository reads do not.
 
 getByIndex/getAllByIndex have no SQL fallback. getByProperty can query PostgreSQL after an index miss and warm its indexes. Runtime lookup absence does not prove persistent absence.
 
 ## Removal and retained entries
 
-IndexUpdater.unindex(id) removes a UUID from all unique and grouped stores. Each store removes its remembered reverse mapping, then removes the corresponding key/member entry. A UUID with no remembered key is a no-op; removal no longer needs an entity or its current property values.
+IndexUpdater.unindex(id) removes a UUID from all unique and grouped stores. Each store removes its remembered reverse mapping, then removes the corresponding key/member entry. A UUID with no remembered key is a no-op; removal no longer needs an entity or its current property values. A holder reload queued before release skips rebuilding these mappings if its ID is no longer held when the task starts.
 
 Holder release uses this UUID-based cleanup whether or not LOCAL is enabled. Unique cleanup also removes shared Redis mappings. Reverse maps are still process-local, so cleanup only knows keys indexed by that store instance. Indexes are lookup hints, not a distributed uniqueness or lifetime protocol.
 

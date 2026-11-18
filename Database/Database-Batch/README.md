@@ -31,7 +31,7 @@ Database-Batch keeps pending writes in memory by EntityKey, combining changes be
 
 ## Queue and merge rules
 
-Keys include table, tenant and UUID. size() counts pending keys, not individual changes. drain() snapshots values and conditionally removes the exact writes observed.
+Keys include table, tenant and UUID. size() counts pending keys, not individual changes. drain() walks pending keys and returns only entries it atomically removes. Concurrent drainers cannot return the same entry, though their writer callbacks can complete in a different order.
 
 The table shows the resulting kind for an existing write followed by an incoming write:
 
@@ -43,17 +43,17 @@ The table shows the resulting kind for an existing write followed by an incoming
 
 An incoming SAVE or DELETE replaces the prior write. An UPDATE after DELETE keeps DELETE. Other incoming UPDATEs merge changes, retain the existing kind and use the incoming expected version.
 
-For one column, SET replaces prior changes. INCREMENT after SET adds its Long delta and keeps SET; repeated INCREMENTs sum. ADD/REMOVE append separately. Arithmetic merging expects Long values.
+For one column, SET replaces prior changes. INCREMENT after SET adds its Long delta and keeps SET, treating a null SET as zero. Repeated INCREMENTs sum. ADD/REMOVE append separately. Arithmetic merging expects Long values.
 
 Preserving SAVE keeps a pending insert when UPDATE follows it. BatchQueue itself retains the incoming expected version when merging. Core converts Redis-authoritative writes to expected version 0 before queueing them for PostgreSQL, so Redis versions are not used as PostgreSQL comparison predicates. A custom writer using BatchQueue directly must choose its own version policy.
 
 ## Scheduling and failures
 
-BatchScheduler(queue, writer, interval) runs fixed-delay flushes on the daemon Database-Batch thread. flush() drains and calls the writer once per write, without a shared SQL transaction. Runtime failures are re-added. A PostgreSQL outage therefore leaves failed writes queued for a later flush; reconnecting a pool alone does not flush them. The queue has no durable storage.
+`BatchScheduler(queue, writer, interval)` runs fixed-delay flushes on the daemon Database-Batch thread. Each flush snapshots the pending keys and attempts each key once. A failed open-queue write merges back as the older entry, so a pending newer write keeps its ordering. The failed key waits for a later pass. Core routes writes by table.
 
-stop() calls shutdownNow() and makes one final flush attempt. Failed final writes remain in memory. There is no durable journal, bounded capacity, retry backoff or dead-letter store. Process failure loses pending work.
+`stop()` is idempotent. It shuts down the scheduled worker, waits up to five seconds and interrupts the worker if needed. It then closes the queue and makes a final flush attempt with a five-second deadline. The deadline bounds the wait for the persistence lock and the time for starting new writes in that pass. The warning reports the keys still queued. A persistence call already in flight can outlast the deadline.
 
-Requeueing a failed older write while a newer write is pending can change merge order. The queue does not provide exactly-once delivery or a multi-store transaction. Core routes each write to a repository by its table name.
+A closed queue sends new `add` calls to its synchronous writer. `requeue` returns false after close, so a failed write during final flush is logged as dropped. Pending writes live in memory. Core drains its write gate before calling the scheduler's shutdown. See [Database-Core](../Database-Core/README.md#lifecycle).
 
 ## Installation and build
 

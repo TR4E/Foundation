@@ -20,6 +20,10 @@ public final class LoadGuard<EntityType extends Entity> {
     private final Function<UUID, String> keyFactory;
 
     public Optional<EntityType> load(final UUID id, final Supplier<Optional<EntityType>> loader) {
+        if (this.stampede == null) {
+            return loader.get();
+        }
+
         return this.stampede.load(this.keyFactory.apply(id), this.converter, loader);
     }
 }

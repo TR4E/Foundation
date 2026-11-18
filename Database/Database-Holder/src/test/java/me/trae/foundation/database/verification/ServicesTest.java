@@ -14,11 +14,14 @@ import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.tier.Tier;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.WriteKind;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.api.write.change.Change;
 import me.trae.foundation.database.holder.context.HolderContext;
 import me.trae.foundation.database.holder.context.HolderContextFactory;
 import me.trae.foundation.database.local.LocalStorage;
 import me.trae.foundation.database.local.LocalStorageProvider;
+import me.trae.foundation.database.postgres.driver.PostgresDriver;
+import me.trae.foundation.database.postgres.repository.PostgresRepository;
 import me.trae.foundation.database.postgres.schema.PostgresSynchronizer;
 import me.trae.foundation.database.postgres.schema.SchemaDefinition;
 import me.trae.foundation.database.redis.driver.RedisDriver;
@@ -112,8 +115,10 @@ public final class ServicesTest extends ServiceFixture {
     void updateBumpsVersion() {
         final Account account = this.persistedAccount();
 
-        assertEquals(1L, accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 0L, set("name", "updated"))));
-        assertEquals(2L, accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 1L, increment(2L))));
+        final long version = accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 1L, set("name", "updated")));
+
+        assertEquals(2L, version);
+        assertEquals(version + 1L, accountRepository.apply(write(account.getId(), WriteKind.UPDATE, version, increment(2L))));
         assertEquals(2L, accountRepository.findById(account.getId()).orElseThrow().getCounter());
     }
 
@@ -121,10 +126,11 @@ public final class ServicesTest extends ServiceFixture {
     void staleExpectedVersionThrows() {
         final Account account = this.persistedAccount();
 
-        accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 0L, set("name", "first")));
-        accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 1L, set("name", "second")));
+        final long version = accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 0L, set("name", "first")));
 
-        assertThrows(VersionConflictException.class, () -> accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 1L, set("name", "stale"))));
+        accountRepository.apply(write(account.getId(), WriteKind.UPDATE, version, set("name", "second")));
+
+        assertThrows(VersionConflictException.class, () -> accountRepository.apply(write(account.getId(), WriteKind.UPDATE, version, set("name", "stale"))));
     }
 
     @Test
@@ -149,23 +155,17 @@ public final class ServicesTest extends ServiceFixture {
 
     @Test
     void tenantPredicateFiltersOnlyWhenTenantPresent() {
-        new PostgresSynchronizer(postgresDriver).synchronize(SchemaDefinition.statements(
-                "accounts",
-                true,
-                PropertyRegistry.getProperties(Account.class),
-                Map.of()
-        ));
-
+        final TenantAccountRepository alphaRepository = new TenantAccountRepository(postgresDriver, new TenantScope(Tenant.of("alpha")));
+        final TenantAccountRepository betaRepository = new TenantAccountRepository(postgresDriver, new TenantScope(Tenant.of("beta")));
+        final TenantAccountRepository unscopedRepository = new TenantAccountRepository(postgresDriver, new TenantScope(null));
         final UUID id = UUID.randomUUID();
 
-        accountRepository.apply(new Write(new EntityKey("accounts", "alpha", id), WriteKind.SAVE, List.of(set("name", "tenant-account")), 0L));
-
-        final AccountRepository alphaRepository = new AccountRepository(postgresDriver, new TenantScope(Tenant.of("alpha")));
-        final AccountRepository betaRepository = new AccountRepository(postgresDriver, new TenantScope(Tenant.of("beta")));
+        new PostgresSynchronizer(postgresDriver).synchronize(alphaRepository.getStatements());
+        alphaRepository.apply(new Write(new EntityKey(alphaRepository.getTable(), "alpha", id), WriteKind.SAVE, List.of(set("name", "tenant-account")), 0L));
 
         assertTrue(alphaRepository.findById(id).isPresent());
         assertTrue(betaRepository.findById(id).isEmpty());
-        assertTrue(accountRepository.findById(id).isPresent());
+        assertTrue(unscopedRepository.findById(id).isPresent());
     }
 
     @Test
@@ -193,7 +193,7 @@ public final class ServicesTest extends ServiceFixture {
                         redisEntityStorage.channel(account.getId()),
                         write(account.getId(), WriteKind.UPDATE, 0L, increment(1L)),
                         Duration.ofSeconds(10)
-                )
+                ).getVersion()
         );
         assertEquals(
                 2L,
@@ -202,7 +202,7 @@ public final class ServicesTest extends ServiceFixture {
                         redisEntityStorage.channel(account.getId()),
                         write(account.getId(), WriteKind.UPDATE, 1L, increment(1L)),
                         Duration.ofSeconds(10)
-                )
+                ).getVersion()
         );
         assertEquals("2", redisDriver.getCommands().hget(redisEntityStorage.path(account.getId()), "version"));
         assertTrue(redisDriver.getCommands().pttl(redisEntityStorage.path(account.getId())) > 8000L);
@@ -232,7 +232,7 @@ public final class ServicesTest extends ServiceFixture {
                         redisEntityStorage.channel(account.getId()),
                         write(account.getId(), WriteKind.UPDATE, 0L, increment(1L)),
                         Duration.ofSeconds(10)
-                )
+                ).getVersion()
         );
         assertFalse(redisEntityStorage.contains(account.getId()));
     }
@@ -364,7 +364,7 @@ public final class ServicesTest extends ServiceFixture {
                 tiers,
                 firstMap,
                 redisMarker,
-                countedRepository::apply,
+                write -> new WriteResult(countedRepository.apply(write), null),
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -375,7 +375,7 @@ public final class ServicesTest extends ServiceFixture {
                 tiers,
                 secondMap,
                 redisMarker,
-                countedRepository::apply,
+                write -> new WriteResult(countedRepository.apply(write), null),
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -470,7 +470,7 @@ public final class ServicesTest extends ServiceFixture {
                             write,
                             Duration.ofSeconds(10)
                     )
-                            : countedRepository::apply,
+                            : write -> new WriteResult(countedRepository.apply(write), null),
                     tiers.contains(Tier.REDIS) ? countedRepository::apply : _ -> {},
                     (_, _) -> {},
                     _ -> {},
@@ -569,6 +569,13 @@ public final class ServicesTest extends ServiceFixture {
         private String name, added;
     }
 
+    private static final class TenantAccountRepository extends PostgresRepository<Account> {
+
+        private TenantAccountRepository(final PostgresDriver postgresDriver, final TenantScope tenantScope) {
+            super(Account.class, "tenant_accounts", postgresDriver, tenantScope, AccountDeclaration.class);
+        }
+    }
+
     @Getter
     public static final class Node implements AutoCloseable {
 
@@ -613,7 +620,7 @@ public final class ServicesTest extends ServiceFixture {
                             this.redisDriver,
                             PropertyRegistry.getProperties(Account.class)
                     ).apply(redisEntityStorage.path(write.getKey().getId()), redisEntityStorage.channel(write.getKey().getId()), write, Duration.ofSeconds(10)),
-                    this.accountRepository::apply,
+                    write -> this.accountRepository.apply(new Write(write.getKey(), write.getKind(), write.getChanges(), 0L)),
                     (
                             id,
                             listener

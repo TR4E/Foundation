@@ -7,7 +7,7 @@
   <a href="https://maven.apache.org/"><img alt="Maven" src="https://img.shields.io/badge/Maven-Library-C71A36?logo=apachemaven&logoColor=white"></a>
 </p>
 
-Database-Lookup resolves UUIDs across configured caches and repositories. It uses [Concurrency](../Database-Concurrency/README.md) to share simultaneous work; writing and holding belong to other modules.
+Database-Lookup resolves UUIDs across configured caches and repositories. It uses [Concurrency](../Database-Concurrency/README.md) to share simultaneous work.
 
 ## Contents
 
@@ -27,26 +27,26 @@ Database-Lookup resolves UUIDs across configured caches and repositories. It use
 | Type | Responsibility |
 | --- | --- |
 | `EntityLookup` | LOCAL → REDIS → POSTGRES resolution |
-| `LoadGuard` | Shared marker and payload conversion |
+| `LoadGuard` | Optional shared marker and payload conversion |
 | `Backfill` | Store repository results in requested caches |
 
 ## Lookup order
 
-find(id) uses configured tiers. find(id, tiers) checks Local, then enters an InFlight load keyed by UUID plus the requested tier set representation. That load checks Redis, then a guarded repository lookup if POSTGRES is requested. Missing stores are skipped. Results are Optional; misses are not retained as persistent cache entries.
+`find(id)` uses the holder's configured tiers. `find(id, tiers)` checks Local, then enters an `InFlight` load keyed by UUID and the requested tier set. That load checks Redis, then calls the repository if POSTGRES was requested. Missing stores are skipped.
 
-In-process loads for different requested tier selections use different keys. The key uses the Set's String representation rather than a canonical sorted encoding, so differently ordered representations can also split otherwise equivalent requests. Holder release now cleans up directly by UUID and does not start a LOCAL-only lookup.
+The in-process key uses the requested set's string representation. Requests for different tier selections use separate keys.
 
 ## Shared loads
 
-LoadGuard takes a Stampede, entity/string converter and UUID-to-key factory. The claim owner loads and publishes a payload; waiters decode it. Timeout or absent result allows a direct fallback read. Core uses `load:<table>:<uuid>` keys without tenant identity or tier selection. Shared-marker coordination therefore has broader identity than the in-process key. Marker leases are not extended while the repository loads; an expired lease allows a second instance to query before the first finishes.
+`LoadGuard` takes an optional `Stampede`, an entity payload converter and a UUID-to-key factory. Without a `Stampede`, it calls the loader directly. Core configures a `Stampede` when the holder's resolved tiers include REDIS and a marker is available. Holders without REDIS still share simultaneous loads through `InFlight`.
+
+With a shared marker, the claim owner runs the repository lookup and publishes the result for waiters. Timeout or a missing payload permits a direct lookup. Core uses `load:<tenant>:<table>:<uuid>` keys for the shared marker. Those keys are shared across tier selections.
 
 ## Backfill and retention
 
-Successful repository ID reads backfill requested cache tiers. Local is written only when the held predicate is already true; Core tests whether Local already contains the UUID. Ordinary get therefore does not create a new hold.
+Successful repository ID reads backfill storage for requested cache tiers. Redis can be repopulated from a PostgreSQL result. Local is updated only when the ID is already held. Redis hits and decoded marker results return without the repository backfill step.
 
-Redis hits and decoded shared-marker results return directly without that repository backfill step. This module does not subscribe to events or populate runtime indexes.
-
-With REDIS/POSTGRES and no Local hit, an expired Redis hash falls through to the repository and is repopulated. With LOCAL enabled, a held hit does not inspect or repair Redis. There is no automatic lifetime coupling between an unrefreshed Local reference and a Redis TTL.
+Runtime indexes and subscriptions are maintained by [Database-Holder](../Database-Holder/README.md).
 
 ## Installation and build
 

@@ -35,7 +35,9 @@ public final class EventApplier<EntityType extends Entity> {
             return;
         }
 
-        this.storage.get(event.getKey().getId()).ifPresent(entity -> this.apply(entity, event));
+        synchronized (this.writer.state(event.getKey().getId())) {
+            this.storage.get(event.getKey().getId()).ifPresent(entity -> this.apply(entity, event));
+        }
     }
 
     private void apply(final EntityType entity, final ChangeEvent event) {
@@ -45,6 +47,15 @@ public final class EventApplier<EntityType extends Entity> {
         }
 
         final long current = this.writer.getVersion(entity.getId());
+
+        if (event.getKind() == WriteKind.SAVE && event.getVersion() <= current) {
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Save on {} arrived below the tracked version, tracked {}, received {}", entity.getId(), current, event.getVersion());
+            }
+
+            this.refetch.accept(entity.getId());
+            return;
+        }
 
         if (event.getVersion() <= current) {
             if (LOGGER.isTraceEnabled()) {
@@ -57,21 +68,31 @@ public final class EventApplier<EntityType extends Entity> {
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("Version gap on {}, tracked {}, received {}", entity.getId(), current, event.getVersion());
             }
+
             this.refetch.accept(entity.getId());
             return;
         }
 
-        event.getChanges().forEach(change -> this.change(entity, change));
-
         this.writer.setVersion(entity.getId(), event.getVersion());
+
+        try {
+            event.getChanges().forEach(change -> this.change(entity, change));
+        } catch (final RuntimeException exception) {
+            this.refetch.accept(entity.getId());
+
+            throw exception;
+        }
 
         this.updater.index(entity);
     }
 
     private void evict(final EntityType entity) {
         this.updater.unindex(entity.getId());
+
         this.storage.remove(entity.getId());
-        this.writer.clearVersion(entity.getId());
+
+        this.writer.markDeleted(entity.getId());
+
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Evicted {} after remote delete", entity.getId());
         }

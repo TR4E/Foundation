@@ -5,13 +5,13 @@ import me.trae.foundation.database.api.converter.ValueConverter;
 import me.trae.foundation.database.api.exception.SchemaException;
 import me.trae.foundation.database.api.property.Property;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,7 +35,8 @@ public final class ValueCodec {
             Map.entry(Character.class, raw -> raw.charAt(0)),
             Map.entry(BigDecimal.class, BigDecimal::new),
             Map.entry(BigInteger.class, BigInteger::new),
-            Map.entry(Instant.class, Instant::parse)
+            Map.entry(Instant.class, Instant::parse),
+            Map.entry(byte[].class, raw -> Base64.getDecoder().decode(raw))
     );
 
     public <Value> String encode(final Property<?, Value> property, final Value value) {
@@ -69,6 +70,10 @@ public final class ValueCodec {
     private String stringify(final Object value) {
         if (value == null) {
             return null;
+        }
+
+        if (value instanceof final byte[] bytes) {
+            return Base64.getEncoder().encodeToString(bytes);
         }
 
         return value instanceof final Enum<?> enumValue ? enumValue.name() : String.valueOf(value);
@@ -110,7 +115,7 @@ public final class ValueCodec {
         try {
             return method.invoke(null, raw);
         } catch (final ReflectiveOperationException exception) {
-            throw new SchemaException("Failed to parse %s as %s".formatted(raw, method.getDeclaringClass().getName()), exception instanceof final InvocationTargetException invocationTargetException ? invocationTargetException.getCause() : exception);
+            throw new SchemaException("Failed to parse %s as %s".formatted(raw, method.getDeclaringClass().getName()), exception);
         }
     }
 }

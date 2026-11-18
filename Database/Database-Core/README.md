@@ -58,10 +58,10 @@ ContextFactory intersects the holder's tier set with DatabaseSettings.tiers. Dat
 | Holder tiers | Behavior |
 | --- | --- |
 | LOCAL, POSTGRES | Local retention and synchronous PostgreSQL writes |
-| REDIS, POSTGRES | Shared Redis authority and queued PostgreSQL persistence; no local hold |
+| REDIS, POSTGRES | Redis-first reads, Redis authority and queued PostgreSQL persistence |
 | LOCAL, REDIS, POSTGRES | Local working set, Redis authority/events and queued PostgreSQL persistence |
 
-Providers are created from database-level enabled tiers. A Redis driver is required for Redis storage. PostgreSQL connects during Core startup regardless of the resolved holder tier set. A supplied Redis driver also selects the shared Redis load marker, including for holders without a REDIS storage tier.
+Database settings control the available storage providers. Redis storage requires a Redis driver. Core connects PostgreSQL at startup. For a Spring `MULTI_INSTANCE` holder with shared entity storage, use `Set.of(Tier.REDIS, Tier.POSTGRES)`. The holder resolves IDs through Redis and PostgreSQL and has no Local entity store.
 
 ## Settings
 
@@ -81,27 +81,27 @@ Use positive scheduler intervals and a positive Redis TTL longer than refreshInt
 
 ## Read and write paths
 
-ID lookup checks LOCAL, REDIS and POSTGRES in that order. Local hits return immediately; successful repository reads can backfill Redis and an existing local hold. Holder contexts also expose a UUID-to-version callback: Redis contexts read the hash version; contexts without Redis return 0. Hold and reload use that callback to initialize tracked versions.
+ID lookup checks LOCAL, REDIS and POSTGRES in that order for the enabled tiers. Repository results can backfill Redis and an existing local hold. `InFlight` shares simultaneous reads for the same UUID and requested tiers in the holder. `ContextFactory` supplies shared `Stampede` coordination when the resolved holder has REDIS and a marker is available. With no `Stampede`, `LoadGuard` calls the repository loader directly.
 
-Without Redis entity storage, repository.apply is the authority and the persistence callback does nothing. There is one PostgreSQL write. With Redis entity storage, Lua is the authority; when POSTGRES is enabled, Core copies the write with expected version 0 and queues that copy for the repository. The same conversion applies if ContextFactory has no queue and persists immediately.
+Without Redis entity storage, `repository.apply` is the synchronous authority. With Redis, Lua handles entity writes and publishes the version, origin, kind and changes for successful writes. Core filters messages whose origin is its own driver instance ID. If POSTGRES is enabled alongside Redis, Core queues the write with expected version `0`. A context without a batch queue applies that SQL copy immediately.
 
-EntityWriter mutates the property, invokes authority, records a positive returned version, then calls persistence. Lua atomically changes the hash, increments version, refreshes TTL and publishes version, origin, WriteKind and changes. ContextFactory rejects events with its own RedisDriver instance ID before decoding or applying them.
+A Redis SAVE can create a missing hash. A Redis UPDATE returns zero for a missing hash. The holder can send an ordinary untracked UPDATE to PostgreSQL in that case. A tracked UPDATE or guarded decrement rejects a missing hash. Core reads the hash version for holds and reloads when Redis is available.
 
-Redis writes still require an existing hash and return zero when absent. The queue is process-local. PostgreSQL replication uses expected version 0, keeping Redis authority versions separate from SQL versions. There is no durable replay or transactional replication across both stores.
+Redis and SQL keep separate version counters. The PostgreSQL queue is in memory. See [Database-Holder](../Database-Holder/README.md#writing-entities) and [Database-Redis](../Database-Redis/README.md#entity-writes).
 
 ## Lifecycle
 
-start() connects drivers, synchronizes registered PostgreSQL schemas, starts the batch scheduler and starts registered holder refreshers. Construct holders before start so schema and refresher registration are complete.
+`start()` connects drivers, applies registered repository DDL and starts the batch scheduler and holder refreshers. Construct holders before startup to register their schemas and refreshers.
 
-stop() calls close() on registered holders, stopping their refreshers and shutting down their refetch executors. It stops the batch scheduler, performs its stop-time flush and an additional explicit flush, then disconnects drivers. Failed writes can remain queued. stop does not wait for application writes between authority and persistence; a write can enqueue after the final drain. Stop and join application writers before stopping Core. Scheduler instances cannot restart after stop.
+`stop()` is idempotent. It closes admission to the write gate and waits up to five seconds for admitted operations before closing holders. It then stops the batch scheduler and gives its final flush a deadline before disconnecting the drivers. See [batch shutdown](../Database-Batch/README.md#scheduling-and-failures) for pending writes and retry behavior. Construct a new runtime for a new lifecycle.
 
-isReady() checks driver connection state only. It does not verify queue drainage, schema completion or executor health. Startup has no automatic rollback; the application owns cleanup.
+`isReady()` checks driver connection state. The application owns startup failure cleanup.
 
 ## Tenants and packaging
 
 Core derives TenantScope from DatabaseSettings.tenant. Entity and index namespaces use that tenant at context creation; write keys capture it too. Repository reads resolve their supplied scope per call.
 
-Use one fixed tenant per Core instance. Changing the scope around an existing holder does not rebuild its namespace or captured write tenant. Shared-load keys currently contain table and UUID without tenant. New tenanted SQL tables use a composite (tenant, id) primary key; old schemas require an explicit migration.
+Use one fixed tenant per Core instance. Changing the scope around an existing holder does not rebuild its namespace or captured write tenant. Shared-load keys include tenant, table and UUID. They resolve the active tenant at lookup time, while entity namespaces are captured when the holder is constructed. New tenanted SQL tables use a composite (tenant, id) primary key; old schemas require an explicit migration.
 
 Depend on Core at compile scope when wiring refers to implementation classes. Core contains no service descriptor or automatic bean scanning; use the application's DI container.
 

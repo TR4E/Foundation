@@ -30,20 +30,24 @@ import static org.mockito.Mockito.when;
 public final class SevenFixesRegressionTest extends RuntimeFixture {
 
     @Test
-    void remoteDeleteClearsLocalIndexesAndTrackedVersion() throws Exception {
+    void remoteDeleteClearsLocalIndexesAndRetainsDeleteMarker() throws Exception {
         try (final Node firstNode = new Node(AllBean.class, Duration.ofSeconds(30));
              final Node secondNode = new Node(AllBean.class, Duration.ofSeconds(30))) {
             final Item item = firstNode.seed();
 
             firstNode.getItemHolder().hold(item.getId());
             secondNode.getItemHolder().hold(item.getId());
+
+            final Item detachedItem = secondNode.getItemHolder().get(item.getId()).orElseThrow();
+
             firstNode.getItemHolder().increment(firstNode.getItemHolder().get(item.getId()).orElseThrow(), ItemProperty.COUNTER, 1L);
             firstNode.flush();
             await(() -> secondNode.getItemHolder().getWriter().getVersion(item.getId()) == 1L);
             firstNode.getItemHolder().delete(firstNode.getItemHolder().get(item.getId()).orElseThrow());
             firstNode.flush();
-            Thread.sleep(150L);
+            await(() -> secondNode.getItemHolder().getWriter().getVersion(item.getId()) < 0);
 
+            assertThrows(VersionConflictException.class, () -> secondNode.getItemHolder().increment(detachedItem, ItemProperty.COUNTER, 1L));
             this.assertReleased(secondNode, item.getId());
         }
     }
@@ -104,6 +108,7 @@ public final class SevenFixesRegressionTest extends RuntimeFixture {
             node.getItemHolder().hold(item.getId());
             node.getItemHolder().release(item.getId());
 
+            assertFalse(node.getItemHolder().getWriter().getVersionMap().containsKey(item.getId()), "Tracked version retained");
             this.assertReleased(node, item.getId());
         }
     }
@@ -130,7 +135,6 @@ public final class SevenFixesRegressionTest extends RuntimeFixture {
         final List<org.junit.jupiter.api.function.Executable> assertionList = new ArrayList<>();
 
         assertionList.add(() -> assertFalse(node.getItemHolder().holds(id), "Local copy retained"));
-        assertionList.add(() -> assertFalse(node.getItemHolder().getWriter().getVersionMap().containsKey(id), "Tracked version retained"));
 
         for (final var uniqueIndexStore : node.getItemHolder().getContext().getIndexStores().getUniqueStores()) {
             assertionList.add(() -> assertFalse(this.map(uniqueIndexStore, "keyMap").containsKey(id), "Unique reverse map retained"));

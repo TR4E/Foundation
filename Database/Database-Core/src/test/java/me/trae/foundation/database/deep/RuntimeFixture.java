@@ -137,11 +137,6 @@ public abstract class RuntimeFixture {
         public ItemHolder(final ItemRepository itemRepository, final HolderContextFactory holderContextFactory, final Set<Tier> tiers) {
             super(Item.class, itemRepository, holderContextFactory, tiers, ItemProperty.class, ItemIndex.class);
         }
-
-        @Override
-        public boolean decrementIfAtLeast(final Item item, final Property<Item, Long> property, final long delta, final long floor) {
-            throw new UnsupportedOperationException("Production holder does not implement this operation");
-        }
     }
 
     public static final class LocalBean extends ItemHolder {

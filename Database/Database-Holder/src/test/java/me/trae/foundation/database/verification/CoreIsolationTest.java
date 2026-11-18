@@ -2,6 +2,7 @@ package me.trae.foundation.database.verification;
 
 import me.trae.foundation.database.api.repository.Repository;
 import me.trae.foundation.database.api.tier.Tier;
+import me.trae.foundation.database.api.write.WriteGate;
 import me.trae.foundation.database.api.write.WriteKind;
 import me.trae.foundation.database.batch.BatchQueue;
 import me.trae.foundation.database.holder.context.HolderContext;
@@ -81,7 +82,7 @@ public final class CoreIsolationTest {
         ).invoke(contextFactory, accountRepository, Set.of(Tier.LOCAL, Tier.POSTGRES));
         final var write = write(UUID.randomUUID(), WriteKind.UPDATE, 0L, set("name", "value"));
 
-        holderContext.getAuthority().applyAsLong(write);
+        holderContext.getAuthority().apply(write);
         holderContext.getPersistence().accept(write);
 
         verify(accountRepository, times(1)).apply(write);
@@ -157,6 +158,7 @@ public final class CoreIsolationTest {
                 List.of(new LocalStorageProvider()),
                 new LocalMarker(),
                 new BatchQueue(),
+                new WriteGate(),
                 null,
                 classLoader.loadClass("me.trae.foundation.database.core.registry.EntityRegistry").getConstructor().newInstance()
         );

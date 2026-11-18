@@ -4,6 +4,7 @@ import me.trae.foundation.database.api.exception.VersionConflictException;
 import me.trae.foundation.database.api.key.EntityKey;
 import me.trae.foundation.database.api.property.PropertyRegistry;
 import me.trae.foundation.database.api.write.WriteKind;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.redis.driver.RedisDriver;
 import me.trae.foundation.database.redis.driver.RedisSettings;
 import me.trae.foundation.database.redis.event.RedisEvents;
@@ -329,7 +330,10 @@ public final class DeepRuntimeTest extends RuntimeFixture {
         try (final Node node = new Node(RedisBean.class, Duration.ofSeconds(30))) {
             final UUID id = UUID.randomUUID();
 
-            assertEquals(0L, this.writer(node).apply(path(id), channel(id), write(id, WriteKind.UPDATE, 0L, increment(1L)), Duration.ofSeconds(30)));
+            final WriteResult writeResult = this.writer(node).apply(path(id), channel(id), write(id, WriteKind.UPDATE, 0L, increment(1L)), Duration.ofSeconds(30));
+
+            assertEquals(0L, writeResult.getVersion());
+            assertNull(writeResult.getValue());
             assertFalse(node.getRedisDriver().getCommands().exists(path(id)) > 0);
         }
     }
@@ -446,18 +450,19 @@ public final class DeepRuntimeTest extends RuntimeFixture {
         try (final Node node = new Node(LocalBean.class, Duration.ofSeconds(30))) {
             final Item item = node.seed();
 
-            node.getItemRepository().apply(write(
+            final long version = node.getItemRepository().apply(write(
                     item.getId(),
                     WriteKind.UPDATE,
                     0L,
-                    set("value", "version-one")
+                    set("value", "updated")
             ));
 
             assertThrows(VersionConflictException.class, () -> node.getItemRepository().apply(write(
                     item.getId(),
                     WriteKind.DELETE,
-                    2L
+                    version - 1L
             )), "A stale delete must not report success while leaving the row");
+            assertEquals("updated", node.getItemRepository().findById(item.getId()).orElseThrow().getValue());
         }
     }
 

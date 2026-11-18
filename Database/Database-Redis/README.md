@@ -46,21 +46,21 @@ RedisSubscriptions keeps one consumer per channel, so another subscribe replaces
 
 Generic RedisStorage stores converter-serialized strings. RedisEntityStorage stores one hash field per encoded property. Paths are namespace plus encoded key; entity channels append :events. Core prefixes namespaces with the instance tenant when set. Both stores reject values() enumeration. RedisEntityStorage.version(id) reads the infrastructure version hash field, returning 0 when absent. Core uses it to initialize holder versions on hold and reload.
 
-EntityCodec includes persistent and memory properties, omitting nulls on encode. Hash puts remove declared property fields omitted by the codec before HSET, so replacing a value with null clears its previous field. Scripted null SET uses UNSET and removes that field.
+EntityCodec includes persistent and memory properties, omitting nulls on encode. Hash puts remove declared property fields omitted by the codec before HSET, so replacing a value with null clears its previous field. Scripted null SET uses UNSET and removes that field. Hash puts skip empty HSET calls. Clearing the last property drops a hash with no metadata, while a version field can keep the hash readable.
 
-ValueCodec supports strings, UUIDs, boxed numeric/boolean/character values, BigDecimal, BigInteger, Instant and enum names. Other values require a compatible static valueOf(String) or ValueConverter. PostgreSQL has a different stored-type set. Raw byte arrays have no built-in Redis string parser; supply a converter, such as a Base64 String representation.
+ValueCodec supports strings, UUIDs, boxed numeric/boolean/character values, BigDecimal, BigInteger, Instant and enum names. Other values require a compatible static valueOf(String) or ValueConverter. PostgreSQL has a different stored-type set. Raw byte arrays use Base64, including an empty array stored as an empty string.
 
 ## Entity writes
 
-The Lua write script requires an existing hash. Missing hashes return zero without creating fields, updating TTL or publishing. SAVE and UPDATE share this script; save does not create a new Redis entity.
+SAVE and UPDATE use the same Lua script. SAVE can create a missing hash and publish the resulting version. For other kinds, a missing hash returns version `0` without creating a key or publishing. An unversioned hash can be seeded from a positive expected version. A positive expected version must match the current version once it is present. A mismatch throws `VersionConflictException`.
 
-For an existing hash, a positive expected version must match. A mismatch becomes VersionConflictException before fields, version or TTL change. Zero skips the comparison. SET writes a value; null produces UNSET/HDEL; INCREMENT uses HINCRBY and a missing counter starts at zero.
+SET writes the encoded property value. A null SET uses HDEL. INCREMENT uses HINCRBY, with a missing counter treated as zero. The script projects all guarded changes before applying them. It refuses a debit below the floor and rejects out-of-range guarded arithmetic. Guarded operands and the current value must have magnitude below `2^53`.
 
-A successful script increments version, refreshes a positive TTL and publishes version, origin, WriteKind and encoded changes. Concurrent scripts update counters atomically. This does not synchronize the held Java object or guarantee PostgreSQL replication.
+A successful write advances the version, refreshes a positive TTL and publishes the version, origin, kind and changes. A successful guarded decrement publishes a negative INCREMENT. An arithmetic write returns the resulting counter as well as the version.
 
-DELETE removes the hash and publishes expected version, origin and the DELETE kind, with no changes. It does not compare expected version or increment it. EventApplier handles DELETE before its duplicate-version check, evicting the remote held copy, runtime indexes and tracked version even at the same version.
+DELETE removes the hash and publishes the supplied expected version, origin and DELETE kind with no changes. A remote holder evicts a held copy and marks that ID deleted before it considers duplicate versions.
 
-Core optionally persists a copy with expected version 0 to PostgreSQL, immediately or through the batch queue. Redis remains the authority; its version is not used as a SQL comparison predicate. The queue is in memory and is not durable.
+When POSTGRES is enabled, Core submits a copy with expected version `0` for SQL persistence. Redis and PostgreSQL maintain their own versions.
 
 ## Events and scripts
 
@@ -77,15 +77,15 @@ Additional changes occupy additional lines. Values use Base64, with ~ reserved f
 
 Core's ContextFactory drops messages whose origin equals its RedisDriver instanceId before decoding/application. Other origins reach EventApplier. Raw RedisDriver subscribers do not automatically get this filter.
 
-Event value encoding uses String.valueOf rather than universally using property converters. Pub/Sub has no replay or delivery guarantee after disconnect. RedisScript caches a loaded SHA and reloads on NOSCRIPT, including after SCRIPT FLUSH. Other connection or command failures propagate; the wrapper does not retry them. Losing the command connection leaves the caller unable to infer whether Redis committed a write.
+RedisEntityWriter encodes property SET values once for both the script and the event. Null remains null on the wire. INCREMENT keeps the numeric delta. Holder counter operations require unconverted `Long` properties. Pub/Sub has no replay or delivery guarantee after disconnect. RedisScript caches a loaded SHA and reloads on NOSCRIPT, including after SCRIPT FLUSH. Other connection or command failures propagate; the wrapper does not retry them. Losing the command connection leaves the caller unable to infer whether Redis committed a write.
 
 ## Expiry and load markers
 
 Positive TTLs apply to entity and generic puts. Zero TTL skips expiry there, but refresh unconditionally uses PEXPIRE, so zero TTL deletes a refreshed key. Held Local entities keep their Redis hashes and unique indexes alive through HoldRefresher.
 
-A REDIS/POSTGRES miss can fall through to PostgreSQL and repopulate Redis. A LOCAL hit returns immediately and does not repair an expired Redis hash.
+A Redis miss can fall through to PostgreSQL and backfill the hash when POSTGRES is enabled.
 
-RedisMarker uses SET NX PX with the driver's instanceId. Waiters poll claim/result keys every 5 ms; published results live two seconds. Claim release checks the stored instance ID. Core load keys use table and UUID without a tenant prefix. Markers coordinate reads, not writes.
+RedisMarker uses SET NX PX with the driver's instanceId. Waiters poll claim/result keys every 5 ms; published results live two seconds. Claim release checks the stored instance ID. Core uses shared markers for holders with REDIS and an available marker. Load keys include tenant, table and UUID.
 
 ## Installation and build
 

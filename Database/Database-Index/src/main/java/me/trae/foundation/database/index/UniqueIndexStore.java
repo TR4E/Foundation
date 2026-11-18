@@ -59,6 +59,10 @@ public final class UniqueIndexStore {
     public void refresh(final Entity entity) {
         final Object key = extract(this.index, entity);
 
+        if (key == null) {
+            return;
+        }
+
         this.storages.forEach(storage -> storage.refresh(key));
     }
 

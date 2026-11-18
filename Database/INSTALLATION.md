@@ -100,7 +100,7 @@ The application example reads these environment variables:
 
 These names belong to the example; Foundation does not automatically read environment variables or an application.yaml file.
 
-DatabaseSettings requires all values, including the tenant String after the enabled tier set. Null or blank selects no tenant. The example enables LOCAL and POSTGRES and supplies a five-minute entity TTL, one-minute refresh, one-second batch interval, five-second marker lease and two-second marker wait. TTL/marker values prepare the same settings shape for optional Redis; PostgreSQL writes in the initial setup are synchronous.
+DatabaseSettings requires all values, including the tenant String after the enabled tier set. Null or blank selects no tenant. The example enables LOCAL and POSTGRES and supplies a five-minute entity TTL, one-minute refresh, one-second batch interval, five-second marker lease and two-second marker wait. The initial setup writes synchronously to PostgreSQL and uses in-process coalescing for simultaneous ID loads.
 
 ## Account entity
 
@@ -215,21 +215,14 @@ public final class AccountManager extends EntityHolder<Account, AccountRepositor
     public long recordLogin(final Account account) {
         return this.increment(account, AccountProperty.LOGIN_COUNT, 1L);
     }
-
-    @Override
-    public boolean decrementIfAtLeast(final Account account, final Property<Account, Long> property, final long delta, final long floor) {
-        throw new UnsupportedOperationException("Atomic floor checks require an application implementation");
-    }
 }
 ```
 
-The rejection is deliberate: Holder declares decrementIfAtLeast, but EntityHolder does not implement it. This example supplies the required override without claiming an atomic balance/floor operation. The sample never invokes it.
-
-The holder now keeps its typed AccountRepository, available through the inherited getRepository(). Its constructor loads declarations, asks HolderContextFactory.create(repository, tiers) for the context, initializes its helpers and calls HolderContextFactory.register(this). The factory implementation must register the holder and repository with the runtime that owns their lifecycle. Core's ContextFactory implements this contract and registers the holder with the database instance.
+The holder exposes its typed `AccountRepository` through the inherited `getRepository()`. Its constructor loads declarations, asks HolderContextFactory.create(repository, tiers) for the context, initializes its helpers and calls HolderContextFactory.register(this). The factory implementation must register the holder and repository with the runtime that owns their lifecycle. Core's ContextFactory implements this contract and registers the holder with the database instance.
 
 findByUsername uses getByProperty, allowing a PostgreSQL fallback on a cold runtime index. getByIndex(AccountIndexes.USERNAME, username) would only search index entries already populated. getIndexedByRegion likewise has no SQL fallback; use AccountRepository.findByRegion for all persisted matches.
 
-Inherited save, set, increment, decrement and delete build tracked writes and update relevant indexes. Direct setters are appropriate while constructing a new entity; use manager methods for later persistent mutations.
+Inherited `save`, `set`, `increment`, `decrement`, `decrementIfAtLeast` and `delete` perform tracked writes and maintain runtime indexes. Use direct setters to prepare a new entity before saving it.
 
 ## Application wiring
 
@@ -277,9 +270,9 @@ Holder construction registers it through HolderContextFactory before start, so d
 
 This example creates a new demo row on each run. save completes synchronously against PostgreSQL because no Redis entity storage is configured. hold retains a locally loaded copy; the example retrieves that held object before changing it.
 
-Use one runtime per application lifecycle. Keep it alive while request handlers or services use AccountManager and AccountRepository, then stop it after those consumers stop. In a long-running application, let the DI container construct these beans with the database instance's driver, tenant scope and holder factory, then start Core after construction. Stop it from the application shutdown callback. Stop and join in-flight application writers before Core shutdown so they cannot enqueue persistence after its final flush. Core stop calls EntityHolder.close(), stopping both holder refreshers and refetch executors. The scheduler executors cannot restart after stop.
+Use one runtime per application lifecycle. Let the DI container construct the repository and manager before starting Core. In the application shutdown callback, stop accepting new work and call `coreDatabase.stop()`. Core drains admitted writes, closes registered holders and gives the batch scheduler a final flush window before disconnecting the drivers. Construct a fresh runtime for a new lifecycle.
 
-Database does not automatically integrate with Injector or Spring. Register or provide these same constructed objects in your container, share the same drivers/scope, and give one lifecycle owner responsibility for Core start/stop. CoreDatabase.getHolder(Account.class) and getRepository(Account.class) expose the API contracts after registration.
+Register the driver, tenant scope and holder factory in your application container. Use one lifecycle owner for Core startup and shutdown. `CoreDatabase.getHolder(Account.class)` and `getRepository(Account.class)` expose the API contracts after registration.
 
 ## Reads and writes
 
@@ -294,35 +287,46 @@ Database does not automatically integrate with Injector or Spring. Register or p
 | Read indexed region matches | accountManager.getIndexedByRegion(region) | Current process's grouped entries |
 | Rename | accountManager.rename(account, username) | Property write and index update |
 | Increment counter | accountManager.recordLogin(account) | Long increment write |
+| Decrement with a floor | accountManager.decrementIfAtLeast(account, AccountProperty.LOGIN_COUNT, 1L, 0L) | Returns true only when the authority accepts the debit |
 | Delete | accountManager.delete(account) | Authority, persistence, indexes and release |
 | Stop retaining | accountManager.release(id) | Remove hold/index entries and unsubscribe |
 
 holdAll() loads every repository row and retains/indexes each one; use it only when that working set fits memory. release is not deletion. save does not automatically hold an entity. Reindex changes runtime keys without persisting values.
 
-hold/holdAll and asynchronous reload initialize writer tracking through HolderContext.version. Core reads the Redis hash version when Redis entity storage exists; without Redis the callback returns 0. A plain get does not initialize the writer map. Expected version 0 skips backend comparison, so not every loaded object has strict optimistic protection. Holder operations do not create multi-entity transactions.
+`hold` and `holdAll` seed tracked versions from Redis when it is configured for the holder. Reload samples the Redis version around its read. A plain `get` leaves tracking alone. On a missing Redis hash, ordinary untracked mutations can fall through to PostgreSQL. Tracked non-SAVE writes and guarded decrements reject a missing hash. Use unconverted `Long` properties for counter operations.
 
 ## Optional Redis wiring
 
-Redis is optional in the initial example. Its current Core integration changes write authority rather than simply adding a read cache. Review [Redis entity writes](Database-Redis/README.md#entity-writes) before adopting it.
-
-Enable REDIS in both DatabaseSettings.tiers and the AccountManager superclass tier set, then supply a driver:
+Redis acts as the write authority when enabled for a holder. Supply the driver and enable REDIS in both the database settings and the holder's tier set. The following setup is for a shared deployment:
 
 ```java
+final Set<Tier> tierSet = Set.of(Tier.REDIS, Tier.POSTGRES);
+final DatabaseSettings databaseSettings = new DatabaseSettings(tierSet, null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
 final RedisDriver redisDriver = new RedisDriver(new RedisSettings("localhost", 6379, null, null, 0, Duration.ofSeconds(2)));
 final CoreDatabase coreDatabase = new CoreDatabase(databaseSettings, postgresDriver, redisDriver);
 ```
 
-This snippet replaces the corresponding construction, rather than declaring another runtime alongside it. databaseSettings and the holder must both now include REDIS, for example Set.of(Tier.LOCAL, Tier.REDIS, Tier.POSTGRES). The factory intersects the holder request with the database-enabled tiers. Keep a positive TTL longer than refreshInterval, and retain the region index's explicit LOCAL tier.
+### Spring multi-instance
 
-Core connects/disconnects Redis. It creates entity hash storage, unique index string storage, Pub/Sub subscriptions and a shared load marker.
+For a Spring application that selects a `MULTI_INSTANCE` profile, have the application's wiring give `AccountManager` the same `Set.of(Tier.REDIS, Tier.POSTGRES)` tier set. Its constructor passes those tiers to `EntityHolder`:
 
-The existing Redis script returns zero when the hash is missing; save does not create it. Do not run the initial new-account example unchanged and assume Redis creation succeeds. An existing PostgreSQL account loaded by ID through the tiers can backfill a hash, but writes after hash expiry still need application handling.
+```java
+public AccountManager(final AccountRepository accountRepository, final HolderContextFactory holderContextFactory) {
+    super(Account.class, accountRepository, holderContextFactory, Set.of(Tier.REDIS, Tier.POSTGRES), AccountProperty.class, AccountIndexes.class);
+}
+```
 
-PostgreSQL persistence is now queued. Core copies Redis-authoritative writes with expected version 0 before immediate or queued SQL persistence, so Redis versions are not compared with PostgreSQL versions. The process-local queue merges updates, preserves SAVE when UPDATE follows it, and keeps DELETE over a later UPDATE. It remains non-durable; failure requeueing does not provide exactly-once delivery. Shutdown tries one final flush rather than retrying until empty.
+This manager reads from Redis first and falls back to PostgreSQL. `holds(id)` is false and `getHeld()` is empty. The username index can use shared Redis storage. To keep all runtime indexes shared, omit the LOCAL region index declaration and the corresponding manager method. Use `AccountRepository.findByRegion` for region queries.
 
-Without LOCAL, EventApplier no-ops. With LOCAL, consecutive remote events update held objects, while gaps reload off the Pub/Sub callback thread without unsubscribing. Hold and reload read the Redis version through the context callback.
+For a holder that also retains active entities in its own process, add LOCAL to the holder and database tier sets. Keep grouped indexes explicitly local and set a positive TTL longer than the holder refresh interval.
 
-The event header contains version, origin instance ID and WriteKind, followed by encoded changes. Core ignores its own origin. Null uses the ~ sentinel and remains distinct from an empty string. A remote DELETE event unindexes by UUID, removes Local and clears the tracked version before UPDATE duplicate/gap checks, including at the same tracked version. The delete writer publishes the supplied expected version without incrementing it. Pub/Sub provides no replay after disconnect.
+### Shared reads and writes
+
+A PostgreSQL lookup can backfill Redis after a miss. Holders with REDIS use shared load markers when available. Holders without REDIS still coalesce same-process lookups through `InFlight` and call the repository loader directly.
+
+Redis SAVE creates a hash when needed. Successful writes publish the version, origin, write kind and encoded changes. Core filters its own origin and sends PostgreSQL copies with expected version `0` to the in-memory batch queue. See [Redis entity writes](Database-Redis/README.md#entity-writes) and [batch scheduling](Database-Batch/README.md#scheduling-and-failures).
+
+For holders with LOCAL, remote events update held objects via the holder's event executor. Gaps and SAVE events at or below the tracked version trigger a reload. A remote DELETE removes the held object and its index entries and leaves a delete marker. Redis Pub/Sub supplies live delivery.
 
 ## Tenant wiring
 
@@ -336,7 +340,7 @@ Core creates TenantScope from that setting. Pass coreDatabase.getTenantScope() t
 
 Do not switch a registered holder across tenants using TenantScope.run/call. Those overrides affect repository reads at call time, while its cache namespaces and write tenant were captured at registration. Use separate runtimes with fixed scopes. New tenanted tables use (tenant, id) as their primary key and SAVE conflict target; existing UUID-only primary keys require an explicit migration.
 
-A no-tenant repository is unfiltered. Shared-load keys currently omit tenant. TenantScope supplies context; it is not an authorization check.
+A no-tenant repository is unfiltered. Shared-load keys include tenant, table and UUID. `TenantScope` supplies the current tenant context.
 
 ## Verification
 
@@ -361,15 +365,13 @@ WHERE region = 'au';
 | release(id) | holds(id) becomes false; SQL row remains |
 | delete on disposable account | SQL row is removed in the no-Redis setup |
 | Duplicate username save | PostgreSQL UNIQUE index rejects it |
-| decrementIfAtLeast | Example manager throws UnsupportedOperationException |
+| decrementIfAtLeast with floor 0 | The debit succeeds when it lands at 0, and a further debit returns false |
 
 Test sources live under Database-Holder/src/test/java and Database-Core/src/test/java. They include JUnit/Mockito checks, real PostgreSQL/Redis tests through Testcontainers, benchmarks and a sixty-second soak. Run them from the repository root with JDK 25:
 
 ```shell
 mvn -pl Database/Database-Core -am test
 ```
-
-Documentation examples should also be verified in the consuming project with its own credentials and lifecycle. Prior test reports describe the source state at their run time; they are not validation of subsequent code edits.
 
 For optional Redis, additionally test a missing hash, hash expiry, consecutive/conflicting writes, a cold process, disconnect/reconnect, deletion, and PostgreSQL queue drainage. Inspect both stores after each case rather than relying on isReady(), which reports driver connection state only.
 
@@ -380,14 +382,13 @@ For optional Redis, additionally test a missing hash, hash expiry, consecutive/c
 | No properties registered | Pass AccountProperty.class into the repository constructor |
 | Index is never found | Pass AccountIndexes.class to the holder superclass before context creation |
 | UUID constructor failure | Entity must declare a constructor taking UUID only |
-| Concrete manager will not compile | Implement the inherited decrementIfAtLeast contract |
 | Grouped Redis index rejected | Give that index Set.of(Tier.LOCAL) |
 | Cold runtime index misses an account | Use getByProperty or a repository query for SQL fallback |
 | New reads never appear in getHeld | Call hold explicitly; ordinary reads do not retain locally |
 | A direct setter did not persist | Use manager set/increment or save for persistent changes |
 | Missing database cannot be created | Pre-create it or grant the configured user CREATEDB |
 | Startup schema fails | Check DDL privileges, identifier names and stored property types |
-| Redis save reports no change | Hash may be absent; current script does not create it |
+| PostgreSQL has yet to reflect a Redis write | Check the batch interval and persistence logs |
 | Redis refresh removes keys | Avoid zero TTL with refresh |
 | Version conflict or stale row after batching | Redis is the authority; Core queues SQL copies with expected version 0. Inspect queue failures and compare both stores |
 | Data appears under the wrong tenant | Scope must be fixed when registering the holder |

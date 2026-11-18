@@ -11,6 +11,8 @@ import me.trae.foundation.database.api.entity.EntityInstantiator;
 import me.trae.foundation.database.api.property.Property;
 import me.trae.foundation.database.api.property.PropertyRegistry;
 import me.trae.foundation.database.api.storage.Namespace;
+import me.trae.foundation.database.api.write.WriteGate;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.holder.write.EntityWriter;
 import me.trae.foundation.database.postgres.repository.PostgresRepository;
 import me.trae.foundation.database.postgres.schema.PostgresSynchronizer;
@@ -140,7 +142,7 @@ public final class TypeEdgesTest extends RuntimeFixture {
         if (backend == Backend.POSTGRES) {
             new PostgresSynchronizer(node.getPostgresDriver()).synchronize(genericRepository.getStatements());
 
-            final EntityWriter<EntityType> entityWriter = new EntityWriter<>(genericRepository.getTable(), null, propertyList, write -> me.trae.foundation.database.postgres.write.PostgresWrite.apply(node.getPostgresDriver().getDslContext(), org.jooq.impl.DSL.table(org.jooq.impl.DSL.name(genericRepository.getTable())), propertyList, write), _ -> {});
+            final EntityWriter<EntityType> entityWriter = new EntityWriter<>(genericRepository.getTable(), null, propertyList, write -> new WriteResult(me.trae.foundation.database.postgres.write.PostgresWrite.apply(node.getPostgresDriver().getDslContext(), org.jooq.impl.DSL.table(org.jooq.impl.DSL.name(genericRepository.getTable())), propertyList, write), null), _ -> {}, _ -> {}, new WriteGate());
 
             return entity -> {
                 entityWriter.save(entity);

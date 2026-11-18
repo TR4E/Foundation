@@ -28,6 +28,10 @@ public class UtilBase64 {
     }
 
     public static byte[] decodeToBytes(final byte[] input) {
+        if (input.length % 4 != 0) {
+            throw new IllegalArgumentException("Base64 input length must be a multiple of 4");
+        }
+
         return DECODER.decode(input);
     }
 

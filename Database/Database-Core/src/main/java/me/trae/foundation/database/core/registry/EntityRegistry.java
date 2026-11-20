@@ -6,7 +6,10 @@ import me.trae.foundation.database.api.repository.Repository;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.holder.entity.EntityHolder;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,6 +32,14 @@ public final class EntityRegistry {
         Optional.ofNullable(this.tableMap.get(write.getKey().getTable())).ifPresent(repository -> repository.apply(write));
     }
 
+    public void apply(final List<Write> writes) {
+        final LinkedHashMap<String, List<Write>> tableWrites = new LinkedHashMap<>();
+
+        writes.forEach(write -> tableWrites.computeIfAbsent(write.getKey().getTable(), _ -> new ArrayList<>()).add(write));
+
+        tableWrites.forEach(this::apply);
+    }
+
     @SuppressWarnings("unchecked")
     public <EntityType extends Entity> Repository<EntityType> getRepository(final Class<EntityType> entityType) {
         return (Repository<EntityType>) this.repositoryMap.get(entityType);
@@ -41,5 +52,9 @@ public final class EntityRegistry {
 
     public Collection<EntityHolder<?, ?>> getHolders() {
         return this.holderMap.values();
+    }
+
+    private void apply(final String table, final List<Write> writes) {
+        Optional.ofNullable(this.tableMap.get(table)).ifPresent(repository -> repository.apply(writes));
     }
 }

@@ -68,7 +68,7 @@ public final class CoreDatabase implements Database {
 
         final SharedMarker marker = redisDriver == null ? new LocalMarker() : new RedisMarker(redisDriver);
 
-        this.batchQueue = new BatchQueue();
+        this.batchQueue = new BatchQueue(settings.getBatchLimit());
         this.batchScheduler = new BatchScheduler(this.batchQueue, this.registry::apply, settings.getBatchInterval());
         this.contextFactory = new ContextFactory(settings, this.tenantScope, new NamespaceFactory(settings, this.tenantScope), this.providers, marker, this.batchQueue, this.writeGate, redisDriver, this.registry);
     }

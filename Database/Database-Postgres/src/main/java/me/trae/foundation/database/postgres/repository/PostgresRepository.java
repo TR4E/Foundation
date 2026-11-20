@@ -10,6 +10,7 @@ import me.trae.foundation.database.api.property.PropertyRegistry;
 import me.trae.foundation.database.api.query.Query;
 import me.trae.foundation.database.api.repository.Repository;
 import me.trae.foundation.database.api.write.Write;
+import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.postgres.driver.PostgresDriver;
 import me.trae.foundation.database.postgres.index.PostgresIndexType;
 import me.trae.foundation.database.postgres.query.PostgresQuery;
@@ -63,16 +64,31 @@ public abstract class PostgresRepository<EntityType extends Entity> implements R
     }
 
     @Override
-    public long apply(final Write write) {
+    public boolean claim(final String tenant) {
+        return this.driver.claim(this.table, tenant);
+    }
+
+    @Override
+    public void verify() {
+        this.driver.verify();
+    }
+
+    @Override
+    public WriteResult apply(final Write write) {
         return PostgresWrite.apply(this.driver.getDslContext(), this.table(), this.properties, write);
+    }
+
+    @Override
+    public void apply(final List<Write> writes) {
+        PostgresWrite.applyAll(this.driver.getDslContext(), this.table(), this.properties, writes);
     }
 
     @Override
     public Optional<EntityType> findById(final UUID id) {
         return Optional.ofNullable(this.driver.getDslContext()
-                        .select()
+                        .select(this.row.getFields())
                         .from(this.table())
-                        .where(PostgresQuery.conditions(Query.all(), this.tenant()))
+                        .where(PostgresQuery.conditions(Query.all(), this.tenant(), this.properties))
                         .and(PostgresWrite.ID.eq(id))
                         .fetchOne())
                 .map(this.row::map);
@@ -82,8 +98,9 @@ public abstract class PostgresRepository<EntityType extends Entity> implements R
     public List<EntityType> find(final Query query) {
         final SelectQuery<org.jooq.Record> select = this.driver.getDslContext().selectQuery();
 
+        select.addSelect(this.row.getFields());
         select.addFrom(this.table());
-        select.addConditions(PostgresQuery.conditions(query, this.tenant()));
+        select.addConditions(PostgresQuery.conditions(query, this.tenant(), this.properties));
         select.addOrderBy(PostgresQuery.orders(query));
 
         if (query.getLimit() > 0) {
@@ -102,7 +119,7 @@ public abstract class PostgresRepository<EntityType extends Entity> implements R
         return this.driver.getDslContext()
                 .selectCount()
                 .from(this.table())
-                .where(PostgresQuery.conditions(query, this.tenant()))
+                .where(PostgresQuery.conditions(query, this.tenant(), this.properties))
                 .fetchOne(0, long.class);
     }
 

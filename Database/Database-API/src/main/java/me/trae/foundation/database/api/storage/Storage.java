@@ -1,7 +1,9 @@
 package me.trae.foundation.database.api.storage;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 public interface Storage<Key, Value> {
 
@@ -18,4 +20,25 @@ public interface Storage<Key, Value> {
     Collection<Value> values();
 
     void refresh(final Key key);
+
+    default void putAll(final Map<Key, Value> values) {
+        values.forEach(this::put);
+    }
+
+    default boolean remove(final Key key, final Value value) {
+        if (this.get(key).filter(value::equals).isEmpty()) {
+            return false;
+        }
+
+        this.remove(key);
+
+        return true;
+    }
+
+    default void refreshAll(final Collection<Key> keys) {
+        keys.forEach(this::refresh);
+    }
+
+    default void onEviction(final Consumer<Key> listener) {
+    }
 }

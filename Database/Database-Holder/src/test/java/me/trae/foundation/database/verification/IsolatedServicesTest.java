@@ -108,7 +108,7 @@ public final class IsolatedServicesTest {
         final RedisEntityStorage<Probe> redisEntityStorage = this.storage();
         final LinkedBlockingQueue<String> payloadQueue = new LinkedBlockingQueue<>();
 
-        redisDriver.subscribe(redisEntityStorage.channel(probe.getId()), payloadQueue::add);
+        redisDriver.subscribe(Map.of(redisEntityStorage.channel(probe.getId()), payloadQueue::add));
 
         try {
             final WriteResult writeResult = this.writer().apply(
@@ -145,7 +145,7 @@ public final class IsolatedServicesTest {
         final RedisEntityStorage<Probe> redisEntityStorage = this.storage();
         final LinkedBlockingQueue<String> payloadQueue = new LinkedBlockingQueue<>();
 
-        redisDriver.subscribe(redisEntityStorage.channel(probe.getId()), payloadQueue::add);
+        redisDriver.subscribe(Map.of(redisEntityStorage.channel(probe.getId()), payloadQueue::add));
 
         try {
             this.writer().delete(redisEntityStorage.path(probe.getId()), redisEntityStorage.channel(probe.getId()), 5L);
@@ -170,9 +170,9 @@ public final class IsolatedServicesTest {
     void stalePostgresDeleteThrowsAndPreservesRow() {
         final UUID id = UUID.randomUUID();
 
-        final long savedVersion = probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed"));
+        final long savedVersion = probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed")).getVersion();
 
-        assertEquals(savedVersion + 1L, probeRepository.apply(this.write(id, WriteKind.UPDATE, savedVersion, "updated")));
+        assertEquals(savedVersion + 1L, probeRepository.apply(this.write(id, WriteKind.UPDATE, savedVersion, "updated")).getVersion());
         assertThrows(VersionConflictException.class, () -> probeRepository.apply(this.write(id, WriteKind.DELETE, savedVersion, null)));
         assertEquals("updated", probeRepository.findById(id).orElseThrow().getName());
     }
@@ -181,10 +181,10 @@ public final class IsolatedServicesTest {
     void matchingVersionPostgresDeleteRemovesRow() {
         final UUID id = UUID.randomUUID();
 
-        final long savedVersion = probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed"));
-        final long updatedVersion = probeRepository.apply(this.write(id, WriteKind.UPDATE, savedVersion, "updated"));
+        final long savedVersion = probeRepository.apply(this.write(id, WriteKind.SAVE, 0L, "seed")).getVersion();
+        final long updatedVersion = probeRepository.apply(this.write(id, WriteKind.UPDATE, savedVersion, "updated")).getVersion();
 
-        assertEquals(updatedVersion, probeRepository.apply(this.write(id, WriteKind.DELETE, updatedVersion, null)));
+        assertEquals(updatedVersion, probeRepository.apply(this.write(id, WriteKind.DELETE, updatedVersion, null)).getVersion());
         assertTrue(probeRepository.findById(id).isEmpty());
         assertEquals(0L, probeRepository.count(Query.all()));
     }

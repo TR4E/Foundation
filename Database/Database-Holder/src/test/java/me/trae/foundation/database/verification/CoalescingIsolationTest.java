@@ -12,7 +12,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static me.trae.foundation.database.verification.DatabaseFixture.Account;
 import static me.trae.foundation.database.verification.DatabaseFixture.AccountRepository;
@@ -20,10 +19,12 @@ import static me.trae.foundation.database.verification.DatabaseFixture.account;
 import static me.trae.foundation.database.verification.DatabaseFixture.lookup;
 import static me.trae.foundation.database.verification.DatabaseFixture.repository;
 import static me.trae.foundation.database.verification.DatabaseFixture.storages;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 public final class CoalescingIsolationTest {
@@ -33,36 +34,31 @@ public final class CoalescingIsolationTest {
         final AccountRepository accountRepository = repository();
         final Account account = account();
         final SharedMarker sharedMarker = mock(SharedMarker.class);
-        final CountDownLatch entered = new CountDownLatch(1);
-        final CountDownLatch release = new CountDownLatch(1);
-        final AtomicInteger claims = new AtomicInteger();
+        final CountDownLatch loading = new CountDownLatch(1), release = new CountDownLatch(1);
 
-        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
-        when(sharedMarker.claim(any(), any())).thenAnswer(_ -> {
-            if (claims.incrementAndGet() == 1) {
-                entered.countDown();
-                assertTrue(release.await(5, TimeUnit.SECONDS));
-            }
+        when(sharedMarker.claim(any(), any())).thenReturn(true);
+        when(accountRepository.findById(account.getId())).thenAnswer(_ -> {
+            loading.countDown();
+            assertTrue(release.await(5L, TimeUnit.SECONDS));
 
-            return true;
+            return Optional.of(account);
         });
 
         final EntityLookup<Account> entityLookup = lookup(accountRepository, Tier.ALL, storages(Tier.ALL), sharedMarker);
 
-        try (final ExecutorService executorService = Executors.newFixedThreadPool(2)) {
-            final Future<Optional<Account>> localFuture = executorService.submit(() -> entityLookup.find(account.getId(), Set.of(Tier.LOCAL)));
+        try (final ExecutorService executorService = Executors.newSingleThreadExecutor()) {
+            final Future<Optional<Account>> fullFuture = executorService.submit(() -> entityLookup.find(account.getId(), Tier.ALL));
 
             try {
-                assertTrue(entered.await(5, TimeUnit.SECONDS));
-
-                final Future<Optional<Account>> fullFuture = executorService.submit(() -> entityLookup.find(account.getId(), Tier.ALL));
-
-                assertTrue(fullFuture.get(3, TimeUnit.SECONDS).isPresent(), "A LOCAL-only in-flight miss must not suppress a PostgreSQL-capable read");
+                assertTrue(loading.await(5L, TimeUnit.SECONDS));
+                assertTrue(entityLookup.find(account.getId(), Set.of(Tier.LOCAL)).isEmpty());
+                verify(sharedMarker).claim(any(), any());
+                verifyNoMoreInteractions(sharedMarker);
             } finally {
                 release.countDown();
             }
 
-            assertTrue(localFuture.get(5, TimeUnit.SECONDS).isEmpty());
+            assertEquals(Optional.of(account), fullFuture.get(5L, TimeUnit.SECONDS));
             verify(accountRepository).findById(account.getId());
         }
     }

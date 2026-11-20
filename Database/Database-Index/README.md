@@ -47,6 +47,8 @@ Grouped stores use local concurrent maps even when the holder has no entity Loca
 
 ## Unique and grouped behavior
 
+The unique store skips storage writes when the extracted key matches its remembered key. Dependency tracking also skips indexes that do not use the changed property. A collection refresh batches Redis expiries by backing store.
+
 UniqueIndexStore looks up the first matching UUID across its stores. It overwrites an existing value mapping instead of atomically claiming it or throwing UniqueValueTakenException. Use a PostgreSQL UNIQUE index for persistent enforcement.
 
 GroupedIndexStore returns the UUIDs currently indexed under a value. Both kinds keep local UUID-to-old-key reverse maps so a rename can remove the previous key. A null extractor result unindexes the entity by UUID, removing its previous mapping without inserting a null key.

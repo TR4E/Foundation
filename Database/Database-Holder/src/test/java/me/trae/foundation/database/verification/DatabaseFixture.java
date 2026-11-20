@@ -18,6 +18,7 @@ import me.trae.foundation.database.api.repository.Repository;
 import me.trae.foundation.database.api.storage.Namespace;
 import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.storage.StorageProvider;
+import me.trae.foundation.database.api.storage.VersionedEntity;
 import me.trae.foundation.database.api.tier.Tier;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.WriteGate;
@@ -40,13 +41,16 @@ import me.trae.foundation.database.lookup.LoadGuard;
 import me.trae.foundation.database.postgres.driver.PostgresDriver;
 import me.trae.foundation.database.postgres.repository.PostgresRepository;
 import me.trae.foundation.database.redis.codec.ValueCodec;
+import me.trae.foundation.database.redis.storage.RedisEntityStorage;
 import me.trae.foundation.database.tenant.TenantScope;
 import me.trae.foundation.injector.api.annotation.Application;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -76,7 +80,7 @@ public final class DatabaseFixture {
 
         when(accountRepository.getEntityType()).thenReturn(Account.class);
         when(accountRepository.getTable()).thenReturn("accounts");
-        when(accountRepository.apply(any())).thenReturn(1L);
+        when(accountRepository.apply(any(Write.class))).thenReturn(new WriteResult(1L, null));
 
         return accountRepository;
     }
@@ -105,11 +109,11 @@ public final class DatabaseFixture {
         final LinkedHashMap<Tier, Storage<UUID, Account>> storageMap = new LinkedHashMap<>();
 
         if (tiers.contains(Tier.LOCAL)) {
-            storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace("local")));
+            storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace("local"), 0, Duration.ZERO));
         }
 
         if (tiers.contains(Tier.REDIS)) {
-            storageMap.put(Tier.REDIS, new LocalStorage<>(namespace("fake-redis")));
+            storageMap.put(Tier.REDIS, new LocalStorage<>(namespace("fake-redis"), 0, Duration.ZERO));
         }
 
         return storageMap;
@@ -138,7 +142,7 @@ public final class DatabaseFixture {
             final SharedMarker sharedMarker,
             final Function<Write, WriteResult> authority,
             final Consumer<Write> persistence,
-            final BiConsumer<UUID, Consumer<ChangeEvent>> subscriber,
+            final BiConsumer<Collection<UUID>, Consumer<ChangeEvent>> subscriber,
             final Consumer<UUID> unsubscriber,
             final List<StorageProvider> providerList
     ) {
@@ -159,9 +163,26 @@ public final class DatabaseFixture {
                 unsubscriber,
                 ValueCodec::decode,
                 _ -> 0L,
+                _ -> Map.of(),
+                snapshot(tiers, storageMap),
+                _ -> Map.of(),
                 _ -> {},
                 Duration.ofSeconds(10)
         );
+    }
+
+    private static Function<UUID, Optional<VersionedEntity<Account>>> snapshot(final Set<Tier> tiers, final Map<Tier, Storage<UUID, Account>> storageMap) {
+        final Storage<UUID, Account> redisStorage = storageMap.get(Tier.REDIS);
+
+        if (!tiers.contains(Tier.REDIS) || redisStorage == null) {
+            return _ -> Optional.empty();
+        }
+
+        if (redisStorage instanceof final RedisEntityStorage<Account> redisEntityStorage) {
+            return redisEntityStorage::snapshot;
+        }
+
+        return id -> redisStorage.get(id).map(entity -> new VersionedEntity<>(entity, 0L));
     }
 
     public static AccountHolder holder(final AccountRepository accountRepository, final Set<Tier> tiers) {
@@ -170,7 +191,7 @@ public final class DatabaseFixture {
                 resolved,
                 storages(resolved),
                 new LocalMarker(),
-                write -> new WriteResult(accountRepository.apply(write), null),
+                accountRepository::apply,
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},

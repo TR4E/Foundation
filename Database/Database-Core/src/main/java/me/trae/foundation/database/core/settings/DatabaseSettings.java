@@ -13,5 +13,6 @@ public final class DatabaseSettings {
 
     private final Set<Tier> tiers;
     private final String tenant;
-    private final Duration entityTtl, refreshInterval, batchInterval, markerLease, markerTimeout;
+    private final Duration entityTtl, refreshInterval, batchInterval, markerLease, markerTimeout, localTtl;
+    private final int localLimit, batchLimit;
 }

@@ -48,7 +48,7 @@ The protected constructor takes entity class, table, driver, tenant scope and de
 
 findById returns Optional. find(Query) applies AND conditions, ordering, positive limit and positive offset. count(Query) applies conditions and tenant filtering, ignoring pagination/order. IN expects a Collection. Query values bypass property converters.
 
-PostgresRow maps persistent properties through optional converters. Memory fields keep constructor/default values. Direct repository reads do not hold entities or update runtime indexes.
+PostgresRow precomputes typed fields in PostgresColumn for persistent properties. findById and find select the mapped columns, and row decoding reuses those fields. Memory fields keep constructor/default values. Direct repository reads do not hold entities or update runtime indexes.
 
 ## Schema synchronization
 

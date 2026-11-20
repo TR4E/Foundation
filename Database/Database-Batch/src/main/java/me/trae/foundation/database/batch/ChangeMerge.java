@@ -11,14 +11,28 @@ import java.util.List;
 public final class ChangeMerge {
 
     public static List<Change> merge(final List<Change> existing, final List<Change> incoming) {
-        final LinkedHashMap<String, Change> columnMap = new LinkedHashMap<>();
+        if (existing.size() == 1 && incoming.size() == 1) {
+            final Change merged = single(existing.getFirst(), incoming.getFirst());
 
-        final List<Change> appended = new ArrayList<>();
+            if (merged != null) {
+                return List.of(merged);
+            }
+        }
+
+        final int size = existing.size() + incoming.size();
+
+        final LinkedHashMap<String, Change> columnMap = new LinkedHashMap<>(Math.max(size * 2, 4));
+
+        final List<Change> appended = new ArrayList<>(0);
 
         existing.forEach(change -> accept(columnMap, appended, change));
         incoming.forEach(change -> accept(columnMap, appended, change));
 
-        return UtilJava.createCollection(new ArrayList<>(), changes -> {
+        if (appended.isEmpty()) {
+            return new ArrayList<>(columnMap.values());
+        }
+
+        return UtilJava.createCollection(new ArrayList<>(size), changes -> {
             changes.addAll(columnMap.values());
             changes.addAll(appended);
         });
@@ -31,6 +45,22 @@ public final class ChangeMerge {
         }
 
         columnMap.merge(change.getColumn(), change, ChangeMerge::combine);
+    }
+
+    private static Change single(final Change existing, final Change incoming) {
+        if (existing.getType() == ChangeType.ADD || existing.getType() == ChangeType.REMOVE) {
+            return null;
+        }
+
+        if (incoming.getType() == ChangeType.ADD || incoming.getType() == ChangeType.REMOVE) {
+            return null;
+        }
+
+        if (!existing.getColumn().equals(incoming.getColumn())) {
+            return null;
+        }
+
+        return combine(existing, incoming);
     }
 
     private static Change combine(final Change existing, final Change incoming) {

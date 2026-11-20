@@ -15,6 +15,7 @@ import me.trae.foundation.database.index.IndexUpdater;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -23,12 +24,14 @@ import java.util.function.Consumer;
 @Getter
 public final class EventApplier<EntityType extends Entity> {
 
+    private final ConcurrentHashMap<String, Property<?, ?>> columnMap = new ConcurrentHashMap<>();
+
     private final List<Property<?, ?>> properties;
     private final Storage<UUID, EntityType> storage;
     private final EntityWriter<EntityType> writer;
     private final IndexUpdater updater;
     private final BiFunction<Property<?, ?>, String, Object> decoder;
-    private final Consumer<UUID> refetch;
+    private final Consumer<UUID> refetch, release;
 
     public void apply(final ChangeEvent event) {
         if (this.storage == null) {
@@ -36,6 +39,10 @@ public final class EventApplier<EntityType extends Entity> {
         }
 
         synchronized (this.writer.state(event.getKey().getId())) {
+            if (!this.storage.contains(event.getKey().getId())) {
+                return;
+            }
+
             this.storage.get(event.getKey().getId()).ifPresent(entity -> this.apply(entity, event));
         }
     }
@@ -48,19 +55,12 @@ public final class EventApplier<EntityType extends Entity> {
 
         final long current = this.writer.getVersion(entity.getId());
 
-        if (event.getKind() == WriteKind.SAVE && event.getVersion() <= current) {
+        if (event.getVersion() <= current) {
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Save on {} arrived below the tracked version, tracked {}, received {}", entity.getId(), current, event.getVersion());
+                LOGGER.debug("Event for {} arrived at or below the tracked version, tracked {}, received {}", entity.getId(), current, event.getVersion());
             }
 
             this.refetch.accept(entity.getId());
-            return;
-        }
-
-        if (event.getVersion() <= current) {
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace("Dropped duplicate event for {}, tracked {}, received {}", entity.getId(), current, event.getVersion());
-            }
             return;
         }
 
@@ -78,18 +78,25 @@ public final class EventApplier<EntityType extends Entity> {
         try {
             event.getChanges().forEach(change -> this.change(entity, change));
         } catch (final RuntimeException exception) {
+            this.writer.clearVersion(entity.getId());
+
             this.refetch.accept(entity.getId());
 
             throw exception;
+        }
+
+        if (!this.storage.contains(entity.getId())) {
+            this.writer.clearVersion(entity.getId());
+
+            this.updater.unindex(entity.getId());
+            return;
         }
 
         this.updater.index(entity);
     }
 
     private void evict(final EntityType entity) {
-        this.updater.unindex(entity.getId());
-
-        this.storage.remove(entity.getId());
+        this.release.accept(entity.getId());
 
         this.writer.markDeleted(entity.getId());
 
@@ -99,10 +106,20 @@ public final class EventApplier<EntityType extends Entity> {
     }
 
     private void change(final EntityType entity, final Change change) {
-        this.properties.stream()
-                .filter(property -> property.getColumn().equals(change.getColumn()))
+        final Property<?, ?> property = this.property(change.getColumn());
+
+        if (property == null) {
+            return;
+        }
+
+        this.set(property, entity, change);
+    }
+
+    private Property<?, ?> property(final String column) {
+        return this.columnMap.computeIfAbsent(column, name -> this.properties.stream()
+                .filter(property -> property.getColumn().equals(name))
                 .findFirst()
-                .ifPresent(property -> this.set(property, entity, change));
+                .orElse(null));
     }
 
     private <Owner, Value> void set(final Property<Owner, Value> property, final Object entity, final Change change) {

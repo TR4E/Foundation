@@ -49,9 +49,9 @@ Preserving SAVE keeps a pending insert when UPDATE follows it. BatchQueue itself
 
 ## Scheduling and failures
 
-`BatchScheduler(queue, writer, interval)` runs fixed-delay flushes on the daemon Database-Batch thread. Each flush snapshots the pending keys and attempts each key once. A failed open-queue write merges back as the older entry, so a pending newer write keeps its ordering. The failed key waits for a later pass. Core routes writes by table.
+`BatchScheduler(queue, writer, interval)` runs fixed-delay flushes on the daemon Database-Batch thread. Each flush snapshots the pending keys and submits one write per key to an eight-worker pool. The scheduler joins the submitted tasks and keeps the persistence lock around the pass. Size the PostgreSQL pool for at least eight connections when using this flush path. A failed open-queue write merges back as the older entry, so a pending newer write keeps its ordering. The failed key waits for a later pass. Core routes writes by table.
 
-`stop()` is idempotent. It shuts down the scheduled worker, waits up to five seconds and interrupts the worker if needed. It then closes the queue and makes a final flush attempt with a five-second deadline. The deadline bounds the wait for the persistence lock and the time for starting new writes in that pass. The warning reports the keys still queued. A persistence call already in flight can outlast the deadline.
+`stop()` is idempotent. It shuts down the scheduled worker, waits up to five seconds and interrupts the worker if needed. It then closes the queue and makes a final flush attempt with a five-second deadline. The deadline bounds the wait for the persistence lock and the time for starting new writes in that pass. The warning counts keys still in the queue. Submitted tasks have already left the queue. A persistence call already in flight can outlast the deadline.
 
 A closed queue sends new `add` calls to its synchronous writer. `requeue` returns false after close, so a failed write during final flush is logged as dropped. Pending writes live in memory. Core drains its write gate before calling the scheduler's shutdown. See [Database-Core](../Database-Core/README.md#lifecycle).
 

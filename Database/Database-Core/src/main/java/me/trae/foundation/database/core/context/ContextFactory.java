@@ -14,6 +14,7 @@ import me.trae.foundation.database.api.repository.Repository;
 import me.trae.foundation.database.api.storage.Namespace;
 import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.storage.StorageProvider;
+import me.trae.foundation.database.api.storage.VersionedEntity;
 import me.trae.foundation.database.api.tier.Tier;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.WriteGate;
@@ -44,15 +45,21 @@ import me.trae.foundation.database.redis.write.RedisEntityWriter;
 import me.trae.foundation.database.tenant.Tenant;
 import me.trae.foundation.database.tenant.TenantScope;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
+import java.util.stream.Collectors;
 
 @AllArgsConstructor
 @Getter
@@ -89,7 +96,7 @@ public final class ContextFactory implements HolderContextFactory {
 
         final IndexStores indexStores = new IndexStores(repository.getEntityType(), resolved, this.providers, this.namespaceFactory::index);
 
-        return new HolderContext<>(resolved, repository.getTable(), this.tenant(), repository, storageMap, this.lookup(repository, storageMap, converter, resolved), indexStores, this.authority(repository, redisStorage, properties), this.persistence(repository, redisStorage != null, resolved), this.gate, this.subscriber(repository.getTable(), redisStorage), this.unsubscriber(redisStorage), ValueCodec::decode, this.version(redisStorage), this.refresher(storageMap, indexStores), this.settings.getRefreshInterval());
+        return new HolderContext<>(resolved, repository.getTable(), this.tenant(), repository, storageMap, this.lookup(repository, storageMap, converter, resolved), indexStores, this.authority(repository, redisStorage, properties, resolved), this.persistence(repository, redisStorage != null, resolved), this.gate, this.subscriber(repository.getTable(), redisStorage), this.unsubscriber(redisStorage), ValueCodec::decode, this.version(redisStorage), this.versions(redisStorage), this.snapshot(redisStorage), this.snapshots(redisStorage), this.refresher(storageMap, indexStores), this.settings.getRefreshInterval());
     }
 
     @Override
@@ -109,7 +116,7 @@ public final class ContextFactory implements HolderContextFactory {
         final LinkedHashMap<Tier, Storage<UUID, EntityType>> storageMap = new LinkedHashMap<>();
 
         if (tiers.contains(Tier.LOCAL)) {
-            storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace));
+            storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace, this.settings.getLocalLimit(), this.settings.getLocalTtl()));
         }
 
         if (redisStorage != null) {
@@ -135,26 +142,32 @@ public final class ContextFactory implements HolderContextFactory {
         return new Stampede(this.marker, this.settings.getMarkerLease(), this.settings.getMarkerTimeout());
     }
 
-    private <EntityType extends Entity> Function<Write, WriteResult> authority(final Repository<EntityType> repository, final RedisEntityStorage<EntityType> storage, final List<Property<?, ?>> properties) {
-        if (storage == null) {
-            return write -> new WriteResult(repository.apply(write), null);
+    private <EntityType extends Entity> Function<Write, WriteResult> authority(final Repository<EntityType> repository, final RedisEntityStorage<EntityType> storage, final List<Property<?, ?>> properties, final Set<Tier> tiers) {
+        if (storage != null) {
+            final RedisEntityWriter writer = new RedisEntityWriter(this.redisDriver, properties);
+
+            return write -> this.write(writer, storage, write);
         }
 
-        final RedisEntityWriter writer = new RedisEntityWriter(this.redisDriver, properties);
+        if (!tiers.contains(Tier.POSTGRES)) {
+            return _ -> new WriteResult(0L, null);
+        }
 
-        return write -> this.write(writer, storage, write);
+        return repository::apply;
     }
 
     private <EntityType extends Entity> WriteResult write(final RedisEntityWriter writer, final RedisEntityStorage<EntityType> storage, final Write write) {
-        final UUID id = write.getKey().getId();
+        final String path = storage.path(write.getKey().getId());
+
+        final String channel = RedisEntityStorage.channel(path);
 
         if (write.getKind() == WriteKind.DELETE) {
-            writer.delete(storage.path(id), storage.channel(id), write.getExpectedVersion());
+            writer.delete(path, channel, write.getExpectedVersion());
 
             return new WriteResult(0L, null);
         }
 
-        return writer.apply(storage.path(id), storage.channel(id), write, this.settings.getEntityTtl());
+        return writer.apply(path, channel, write, this.settings.getEntityTtl());
     }
 
     private Consumer<Write> persistence(final Repository<?> repository, final boolean redis, final Set<Tier> tiers) {
@@ -163,18 +176,18 @@ public final class ContextFactory implements HolderContextFactory {
         }
 
         if (this.batchQueue == null) {
-            return write -> repository.apply(unversioned(write));
+            return repository::apply;
         }
 
-        return write -> this.batchQueue.add(unversioned(write));
+        return this.batchQueue::add;
     }
 
-    private <EntityType extends Entity> BiConsumer<UUID, Consumer<ChangeEvent>> subscriber(final String table, final RedisEntityStorage<EntityType> storage) {
+    private <EntityType extends Entity> BiConsumer<Collection<UUID>, Consumer<ChangeEvent>> subscriber(final String table, final RedisEntityStorage<EntityType> storage) {
         if (storage == null) {
             return (_, _) -> {};
         }
 
-        return (id, listener) -> this.redisDriver.subscribe(storage.channel(id), message -> this.accept(listener, table, id, message));
+        return (ids, listener) -> this.redisDriver.subscribe(this.channels(storage, ids, table, listener));
     }
 
     private <EntityType extends Entity> Consumer<UUID> unsubscriber(final RedisEntityStorage<EntityType> storage) {
@@ -185,6 +198,30 @@ public final class ContextFactory implements HolderContextFactory {
         return id -> this.redisDriver.unsubscribe(storage.channel(id));
     }
 
+    private <EntityType extends Entity> LinkedHashMap<String, Consumer<String>> channels(final RedisEntityStorage<EntityType> storage, final Collection<UUID> ids, final String table, final Consumer<ChangeEvent> listener) {
+        final LinkedHashMap<String, Consumer<String>> listenerMap = new LinkedHashMap<>();
+
+        ids.forEach(id -> listenerMap.put(storage.channel(id), message -> this.accept(listener, table, id, message)));
+
+        return listenerMap;
+    }
+
+    private <EntityType extends Entity> Function<UUID, Optional<VersionedEntity<EntityType>>> snapshot(final RedisEntityStorage<EntityType> storage) {
+        if (storage == null) {
+            return _ -> Optional.empty();
+        }
+
+        return storage::snapshot;
+    }
+
+    private <EntityType extends Entity> Function<Collection<UUID>, Map<UUID, VersionedEntity<EntityType>>> snapshots(final RedisEntityStorage<EntityType> storage) {
+        if (storage == null) {
+            return _ -> Collections.emptyMap();
+        }
+
+        return storage::snapshots;
+    }
+
     private <EntityType extends Entity> ToLongFunction<UUID> version(final RedisEntityStorage<EntityType> storage) {
         if (storage == null) {
             return _ -> 0L;
@@ -193,7 +230,15 @@ public final class ContextFactory implements HolderContextFactory {
         return storage::version;
     }
 
-    private <EntityType extends Entity> Consumer<EntityType> refresher(final LinkedHashMap<Tier, Storage<UUID, EntityType>> storageMap, final IndexStores indexStores) {
+    private <EntityType extends Entity> Function<Collection<UUID>, Map<UUID, Long>> versions(final RedisEntityStorage<EntityType> storage) {
+        if (storage == null) {
+            return _ -> Collections.emptyMap();
+        }
+
+        return storage::versions;
+    }
+
+    private <EntityType extends Entity> Consumer<List<EntityType>> refresher(final LinkedHashMap<Tier, Storage<UUID, EntityType>> storageMap, final IndexStores indexStores) {
         final Storage<UUID, EntityType> storage = storageMap.get(Tier.REDIS);
 
         if (storage == null) {
@@ -202,9 +247,9 @@ public final class ContextFactory implements HolderContextFactory {
 
         final IndexUpdater updater = new IndexUpdater(indexStores);
 
-        return entity -> {
-            storage.refresh(entity.getId());
-            updater.refresh(entity);
+        return entities -> {
+            storage.refreshAll(entities.stream().map(Entity::getId).collect(Collectors.toCollection(ArrayList::new)));
+            updater.refresh(entities);
         };
     }
 
@@ -214,10 +259,6 @@ public final class ContextFactory implements HolderContextFactory {
         }
 
         listener.accept(RedisEvents.decode(new EntityKey(table, this.tenant(), id), message));
-    }
-
-    private static Write unversioned(final Write write) {
-        return new Write(write.getKey(), write.getKind(), write.getChanges(), 0L);
     }
 
     private String tenant() {

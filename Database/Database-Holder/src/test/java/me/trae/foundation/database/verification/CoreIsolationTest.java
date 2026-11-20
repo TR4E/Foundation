@@ -145,7 +145,10 @@ public final class CoreIsolationTest {
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(5),
-                Duration.ofSeconds(2)
+                Duration.ofSeconds(2),
+                Duration.ZERO,
+                0,
+                0
         );
         final TenantScope tenantScope = new TenantScope(Tenant.of("test"));
         final Class<?> namespaceType = classLoader.loadClass("me.trae.foundation.database.core.namespace.NamespaceFactory");
@@ -157,7 +160,7 @@ public final class CoreIsolationTest {
                 namespaceFactory,
                 List.of(new LocalStorageProvider()),
                 new LocalMarker(),
-                new BatchQueue(),
+                new BatchQueue(0),
                 new WriteGate(),
                 null,
                 classLoader.loadClass("me.trae.foundation.database.core.registry.EntityRegistry").getConstructor().newInstance()

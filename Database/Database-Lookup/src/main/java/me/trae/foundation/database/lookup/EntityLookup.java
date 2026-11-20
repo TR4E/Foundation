@@ -17,6 +17,8 @@ import java.util.UUID;
 @Getter
 public final class EntityLookup<EntityType extends Entity> {
 
+    private final InFlight<UUID, Optional<EntityType>> loads = new InFlight<>();
+
     private final Set<Tier> tiers;
     private final LinkedHashMap<Tier, Storage<UUID, EntityType>> storageMap;
     private final Repository<EntityType> repository;
@@ -29,10 +31,14 @@ public final class EntityLookup<EntityType extends Entity> {
     }
 
     public Optional<EntityType> find(final UUID id) {
-        return this.find(id, this.tiers);
+        return this.get(Tier.LOCAL, id, this.tiers).or(() -> this.loads.get(id, () -> this.load(id, this.tiers)));
     }
 
     private Optional<EntityType> load(final UUID id, final Set<Tier> tiers) {
+        if (!tiers.contains(Tier.POSTGRES)) {
+            return this.get(Tier.REDIS, id, tiers);
+        }
+
         return this.get(Tier.REDIS, id, tiers).or(() -> this.guard.load(id, () -> this.query(id, tiers)));
     }
 

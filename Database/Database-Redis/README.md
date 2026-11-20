@@ -81,6 +81,10 @@ RedisEntityWriter encodes property SET values once for both the script and the e
 
 ## Expiry and load markers
 
+snapshot(id) decodes the entity and its version from one HGETALL. The codec caches its column list, and the writer caches the property for each column.
+
+RedisDriver.subscribe accepts a channel-to-listener map and sends its channels in one SUBSCRIBE. Bulk expiry runs on the driver?s batch connection. Each nonempty refreshAll batch queues PEXPIRE commands and flushes them together once. Core refreshes entity hashes and unique-index storage in separate batches.
+
 Positive TTLs apply to entity and generic puts. Zero TTL skips expiry there, but refresh unconditionally uses PEXPIRE, so zero TTL deletes a refreshed key. Held Local entities keep their Redis hashes and unique indexes alive through HoldRefresher.
 
 A Redis miss can fall through to PostgreSQL and backfill the hash when POSTGRES is enabled.

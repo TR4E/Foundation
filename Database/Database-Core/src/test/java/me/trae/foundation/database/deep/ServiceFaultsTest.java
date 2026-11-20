@@ -73,10 +73,12 @@ public final class ServiceFaultsTest extends RuntimeFixture {
             Thread.sleep(100L);
             assertFalse(future.isDone(), "Script must still be in flight when the socket is closed");
 
-            final Field field = node.getRedisDriver().getClass().getDeclaredField("connection");
+            final Field field = node.getRedisDriver().getClass().getDeclaredField("connections");
 
             field.setAccessible(true);
-            ((StatefulRedisConnection<?, ?>) field.get(node.getRedisDriver())).close();
+            final List<?> connectionList = (List<?>) field.get(node.getRedisDriver());
+
+            connectionList.forEach(connection -> ((StatefulRedisConnection<?, ?>) connection).closeAsync());
             assertThrows(ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS), "Closing the in-flight socket must report failure to the caller");
             node.getRedisDriver().disconnect();
             node.getRedisDriver().connect();
@@ -113,7 +115,7 @@ public final class ServiceFaultsTest extends RuntimeFixture {
                 ((HikariDataSource) field.get(postgresDriver)).setConnectionTimeout(1000L);
                 new me.trae.foundation.database.postgres.schema.PostgresSynchronizer(postgresDriver).synchronize(itemRepository.getStatements());
 
-                final BatchQueue batchQueue = new BatchQueue();
+                final BatchQueue batchQueue = new BatchQueue(0);
                 final BatchScheduler batchScheduler = new BatchScheduler(batchQueue, itemRepository::apply, Duration.ofHours(1));
                 final UUID firstId = UUID.randomUUID();
                 final UUID secondId = UUID.randomUUID();

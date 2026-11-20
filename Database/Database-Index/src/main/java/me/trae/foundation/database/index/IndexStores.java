@@ -14,40 +14,39 @@ import me.trae.foundation.database.index.exception.IndexException;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Getter
 public final class IndexStores {
 
+    private final IdentityHashMap<Index<?, ?>, UniqueIndexStore> uniqueMap = new IdentityHashMap<>();
+    private final IdentityHashMap<Index<?, ?>, GroupedIndexStore> groupedMap = new IdentityHashMap<>();
+    private final IdentityHashMap<Property<?, ?>, UniqueIndexStore> propertyMap = new IdentityHashMap<>();
+
+    @Getter
     private final List<UniqueIndexStore> uniqueStores = new ArrayList<>();
+
+    @Getter
     private final List<GroupedIndexStore> groupedStores = new ArrayList<>();
 
     public IndexStores(final Class<?> entityType, final Set<Tier> tiers, final List<StorageProvider> providers, final Function<Index<?, ?>, Namespace<Object, UUID>> namespaceFactory) {
         IndexRegistry.getIndexes(entityType).forEach(index -> this.create(index, tiers, providers, namespaceFactory));
     }
 
-    public Optional<UniqueIndexStore> findUnique(final UniqueIndex<?, ?> index) {
-        return this.uniqueStores.stream()
-                .filter(store -> store.getIndex() == index)
-                .findFirst();
+    public UniqueIndexStore unique(final UniqueIndex<?, ?> index) {
+        return this.uniqueMap.get(index);
     }
 
-    public Optional<GroupedIndexStore> findGrouped(final GroupedIndex<?, ?> index) {
-        return this.groupedStores.stream()
-                .filter(store -> store.getIndex() == index)
-                .findFirst();
+    public GroupedIndexStore grouped(final GroupedIndex<?, ?> index) {
+        return this.groupedMap.get(index);
     }
 
-    public Optional<UniqueIndexStore> findByProperty(final Property<?, ?> property) {
-        return this.uniqueStores.stream()
-                .filter(store -> store.getIndex().getDependencies().size() == 1)
-                .filter(store -> store.getIndex().getDependencies().contains(property))
-                .findFirst();
+    public UniqueIndexStore byProperty(final Property<?, ?> property) {
+        return this.propertyMap.get(property);
     }
 
     private void create(final Index<?, ?> index, final Set<Tier> tiers, final List<StorageProvider> providers, final Function<Index<?, ?>, Namespace<Object, UUID>> namespaceFactory) {
@@ -58,12 +57,22 @@ public final class IndexStores {
                 throw new IndexException("Grouped index %s cannot live in Redis, use the repository index for that lookup".formatted(index.getName()));
             }
 
-            this.groupedStores.add(new GroupedIndexStore(groupedIndex));
+            final GroupedIndexStore store = new GroupedIndexStore(groupedIndex);
+
+            this.groupedStores.add(store);
+            this.groupedMap.put(index, store);
             return;
         }
 
         if (index instanceof final UniqueIndex<?, ?> uniqueIndex) {
-            this.uniqueStores.add(new UniqueIndexStore(uniqueIndex, this.storages(index, resolved, providers, namespaceFactory)));
+            final UniqueIndexStore store = new UniqueIndexStore(uniqueIndex, this.storages(index, resolved, providers, namespaceFactory));
+
+            this.uniqueStores.add(store);
+            this.uniqueMap.put(index, store);
+
+            if (index.getDependencies().size() == 1) {
+                index.getDependencies().forEach(property -> this.propertyMap.putIfAbsent(property, store));
+            }
         }
     }
 

@@ -102,6 +102,8 @@ These names belong to the example; Foundation does not automatically read enviro
 
 DatabaseSettings requires all values, including the tenant String after the enabled tier set. Null or blank selects no tenant. The example enables LOCAL and POSTGRES and supplies a five-minute entity TTL, one-minute refresh, one-second batch interval, five-second marker lease and two-second marker wait. The initial setup writes synchronously to PostgreSQL and uses in-process coalescing for simultaneous ID loads.
 
+The final settings arguments are localTtl and localLimit. Use Duration.ZERO and 0 for unbounded local retention. For a bounded singleton, pass Duration.ofSeconds(30) and 100_000. The holder releases an evicted ID to remove its tracking and subscription.
+
 ## Account entity
 
 `src/main/java/example/database/Account.java`:
@@ -235,7 +237,7 @@ public final class AccountApplication {
         final PostgresSettings postgresSettings = new PostgresSettings(System.getenv("DATABASE_HOST"), Integer.parseInt(System.getenv("DATABASE_PORT")), System.getenv("DATABASE_NAME"), System.getenv("DATABASE_USERNAME"), System.getenv("DATABASE_PASSWORD"), 10);
         final PostgresDriver postgresDriver = new PostgresDriver(postgresSettings);
 
-        final DatabaseSettings databaseSettings = new DatabaseSettings(Set.of(Tier.LOCAL, Tier.POSTGRES), null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
+        final DatabaseSettings databaseSettings = new DatabaseSettings(Set.of(Tier.LOCAL, Tier.POSTGRES), null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2), Duration.ZERO, 0);
         final CoreDatabase coreDatabase = new CoreDatabase(databaseSettings, postgresDriver, null);
 
         try {
@@ -293,7 +295,7 @@ Register the driver, tenant scope and holder factory in your application contain
 
 holdAll() loads every repository row and retains/indexes each one; use it only when that working set fits memory. release is not deletion. save does not automatically hold an entity. Reindex changes runtime keys without persisting values.
 
-`hold` and `holdAll` seed tracked versions from Redis when it is configured for the holder. Reload samples the Redis version around its read. A plain `get` leaves tracking alone. On a missing Redis hash, ordinary untracked mutations can fall through to PostgreSQL. Tracked non-SAVE writes and guarded decrements reject a missing hash. Use unconverted `Long` properties for counter operations.
+`hold` and `holdAll` seed tracked versions from Redis when it is configured for the holder. A Redis snapshot supplies the entity and version together for hold and reload. A plain `get` leaves tracking alone. On a missing Redis hash, ordinary untracked mutations can fall through to PostgreSQL. Tracked non-SAVE writes and guarded decrements reject a missing hash. Use unconverted `Long` properties for counter operations.
 
 ## Optional Redis wiring
 
@@ -301,7 +303,7 @@ Redis acts as the write authority when enabled for a holder. Supply the driver a
 
 ```java
 final Set<Tier> tierSet = Set.of(Tier.REDIS, Tier.POSTGRES);
-final DatabaseSettings databaseSettings = new DatabaseSettings(tierSet, null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
+final DatabaseSettings databaseSettings = new DatabaseSettings(tierSet, null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2), Duration.ZERO, 0);
 final RedisDriver redisDriver = new RedisDriver(new RedisSettings("localhost", 6379, null, null, 0, Duration.ofSeconds(2)));
 final CoreDatabase coreDatabase = new CoreDatabase(databaseSettings, postgresDriver, redisDriver);
 ```
@@ -318,9 +320,11 @@ public AccountManager(final AccountRepository accountRepository, final HolderCon
 
 This manager reads from Redis first and falls back to PostgreSQL. `holds(id)` is false and `getHeld()` is empty. The username index can use shared Redis storage. To keep all runtime indexes shared, omit the LOCAL region index declaration and the corresponding manager method. Use `AccountRepository.findByRegion` for region queries.
 
-For a holder that also retains active entities in its own process, add LOCAL to the holder and database tier sets. Keep grouped indexes explicitly local and set a positive TTL longer than the holder refresh interval.
+For a holder that also retains active entities in its own process, add LOCAL to the holder and database tier sets. Keep grouped indexes explicitly local and set a positive TTL longer than the holder refresh interval. The holder sends its held list to the refresher, and Redis groups expiries on a batch connection.
 
 ### Shared reads and writes
+
+Use a PostgreSQL pool size of at least eight for the parallel persistence flush. holdAll loads the repository and submits the subscription channels in one request.
 
 A PostgreSQL lookup can backfill Redis after a miss. Holders with REDIS use shared load markers when available. Holders without REDIS still coalesce same-process lookups through `InFlight` and call the repository loader directly.
 
@@ -333,7 +337,7 @@ For holders with LOCAL, remote events update held objects via the holder's event
 Set the tenant String in DatabaseSettings before constructing Core:
 
 ```java
-final DatabaseSettings databaseSettings = new DatabaseSettings(Set.of(Tier.LOCAL, Tier.POSTGRES), "shop", Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
+final DatabaseSettings databaseSettings = new DatabaseSettings(Set.of(Tier.LOCAL, Tier.POSTGRES), "shop", Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2), Duration.ZERO, 0);
 ```
 
 Core creates TenantScope from that setting. Pass coreDatabase.getTenantScope() to repositories. Repository queries add tenant predicates; holder write keys and cache namespaces capture the instance tenant. Tenanted SQL indexes include tenant.

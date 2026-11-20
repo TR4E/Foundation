@@ -7,6 +7,7 @@ import me.trae.foundation.database.local.LocalStorage;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -50,7 +51,7 @@ public final class CpuBenchmarkTest {
 
     @Test
     void batchMergeThroughput() throws Exception {
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final var write = write(UUID.randomUUID(), WriteKind.UPDATE, 0L, increment(1L));
 
         throughput("batch_merge", 1, 500_000, () -> batchQueue.add(write));
@@ -59,7 +60,7 @@ public final class CpuBenchmarkTest {
     }
 
     private void localOperations(final int threads) throws Exception {
-        final LocalStorage<UUID, Account> localStorage = new LocalStorage<>(namespace("benchmark"));
+        final LocalStorage<UUID, Account> localStorage = new LocalStorage<>(namespace("benchmark"), 0, Duration.ZERO);
         final Account account = account();
 
         localStorage.put(account.getId(), account);

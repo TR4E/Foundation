@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -26,6 +27,7 @@ public final class ProtocolBenchmarkTest extends RuntimeFixture {
                 final int version = sequence.incrementAndGet();
                 final String value = "applied-%s".formatted(version);
 
+                node.getRedisDriver().getCommands().hset(path(item.getId()), Map.of("version", Integer.toString(version), "name", value));
                 node.getRedisDriver().getCommands().publish(
                         channel(item.getId()),
                         "%s\nbenchmark-sender\nUPDATE\n%s".formatted(version, RedisEvents.encode(List.of(set("name", value))))

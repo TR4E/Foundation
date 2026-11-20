@@ -192,7 +192,9 @@ public abstract class RuntimeFixture {
                     Duration.ofMillis(100),
                     Duration.ofHours(1),
                     Duration.ofSeconds(5),
-                    Duration.ofSeconds(2)
+                    Duration.ofSeconds(2),
+                    Duration.ZERO,
+                    0, 0
             );
 
             this.coreDatabase = new CoreDatabase(databaseSettings, this.postgresDriver, this.redisDriver);

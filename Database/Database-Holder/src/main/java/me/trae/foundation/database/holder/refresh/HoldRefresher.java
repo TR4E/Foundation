@@ -27,7 +27,7 @@ public final class HoldRefresher<EntityType extends Entity> {
     });
 
     private final Supplier<List<EntityType>> held;
-    private final Consumer<EntityType> refresher;
+    private final Consumer<List<EntityType>> refresher;
     private final Duration interval;
 
     public void start() {
@@ -38,19 +38,17 @@ public final class HoldRefresher<EntityType extends Entity> {
         this.executor.shutdownNow();
     }
 
-    private void refresh(final EntityType entity) {
-        try {
-            this.refresher.accept(entity);
-        } catch (final RuntimeException exception) {
-            LOGGER.warn("Failed to refresh {}, {}", entity.getId(), exception.getMessage());
-        }
-    }
-
     public void refresh() {
         try {
-            this.held.get().forEach(this::refresh);
+            final List<EntityType> entities = this.held.get();
+
+            if (entities.isEmpty()) {
+                return;
+            }
+
+            this.refresher.accept(entities);
         } catch (final RuntimeException exception) {
-            LOGGER.warn("Failed to collect held entities, {}", exception.getMessage());
+            LOGGER.warn("Failed to refresh held entities, {}", exception.getMessage());
         }
     }
 }

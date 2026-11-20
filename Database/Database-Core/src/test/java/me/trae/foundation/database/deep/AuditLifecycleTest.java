@@ -13,15 +13,16 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 public final class AuditLifecycleTest extends RuntimeFixture {
 
@@ -51,13 +52,13 @@ public final class AuditLifecycleTest extends RuntimeFixture {
             final Repository<Item> repository = mock(Repository.class);
             final AtomicInteger attempts = new AtomicInteger();
 
-            when(repository.apply(any(Write.class))).thenAnswer(_ -> {
+            doAnswer(_ -> {
                 assertTrue(node.getPostgresDriver().isConnected());
 
                 attempts.incrementAndGet();
 
-                return 1L;
-            });
+                return null;
+            }).when(repository).apply(anyList());
             node.getCoreDatabase().getRegistry().getTableMap().put("deep_items", repository);
             node.getCoreDatabase().getBatchQueue().add(write(UUID.randomUUID(), WriteKind.UPDATE, 0L, increment(1L)));
             node.getCoreDatabase().stop();
@@ -78,14 +79,14 @@ public final class AuditLifecycleTest extends RuntimeFixture {
             final java.util.concurrent.CompletableFuture<Boolean> completion = new java.util.concurrent.CompletableFuture<>();
             final String channel = channel(item.getId());
 
-            node.getRedisDriver().subscribe(channel, _ -> {
+            node.getRedisDriver().subscribe(Map.of(channel, _ -> {
                 try {
                     node.getRedisDriver().unsubscribe(channel);
                     completion.complete(true);
                 } catch (final RuntimeException exception) {
                     completion.completeExceptionally(exception);
                 }
-            });
+            }));
             node.getRedisDriver().getCommands().publish(channel, "trigger");
 
             assertTrue(completion.get(1, java.util.concurrent.TimeUnit.SECONDS), "An unsubscribe on the Pub/Sub callback must not wait for its own acknowledgement");

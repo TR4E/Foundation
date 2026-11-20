@@ -59,7 +59,9 @@ getByIndex and getAllByIndex have no SQL fallback. Grouped results omit IDs whos
 
 ## Writing entities
 
-`save` produces SET changes for persistent properties. `set` writes one property. The writer calls the authority before assigning a local property and uses the returned version to decide whether to apply the result. With Redis and POSTGRES, Core submits successful writes to the PostgreSQL queue. Holders update affected runtime indexes and request a reload when a write uses a different object from the held copy.
+On a Redis hit, hold(id) reads the entity and version in one snapshot. holdAll reads the repository, obtains versions for the loaded IDs and submits their subscriptions as one collection. With bounded LOCAL storage, Core wires eviction to release the ID.
+
+`save` produces SET changes for persistent properties. `set` writes one property. The writer uses 1,024 stripes and calls the authority before assigning a local property and uses the returned version to decide whether to apply the result. With Redis and POSTGRES, Core submits successful writes to the PostgreSQL queue. Holders update affected runtime indexes and request a reload when a write uses a different object from the held copy.
 
 Use unconverted `Long` properties for counters. `increment` and `decrement` return the new value. `decrementIfAtLeast(entity, property, delta, floor)` returns whether the authority accepted the debit. It accepts a result equal to the floor. A refusal keeps the Java property unchanged and produces no persistence write. In the Redis path, an accepted debit publishes and persists as a negative increment.
 
@@ -71,9 +73,9 @@ Hold and reload read the Redis hash version when that storage is available. A pl
 
 Core filters own-origin messages. The holder dispatches events on a single FIFO executor. For held entities, the next version applies its SET and INCREMENT changes and refreshes runtime index keys. Duplicate UPDATE versions are ignored. DELETE evicts the held object, unindexes the ID and leaves a delete marker before version checks for other write kinds.
 
-A version gap, a failed event application or a SAVE at or below the tracked version queues a reload on the holder's refetch executor. A reload checks that the ID is still held, reads Redis directly when available, then falls back through the Redis/POSTGRES lookup on a miss. It checks the backend version before and after the read. If the backend version changed, the reload retries up to three attempts. Under the state lock it installs the result only if the tracked version has stayed the same. This also lets a SAVE that recreated a hash at a lower version refresh the held copy.
+A version gap, a failed event application or a SAVE at or below the tracked version queues a reload on the holder's refetch executor. A reload checks that the ID is still held. It reads the Redis entity and version from one hash snapshot and falls back through the Redis/POSTGRES lookup on a miss. Under the state lock it installs the result only if the tracked version has stayed the same. This also lets a SAVE that recreated a hash at a lower version refresh the held copy.
 
-`HoldRefresher` uses a daemon scheduler to refresh Redis entity and unique-index TTLs for held IDs. A failing entity does not prevent other callbacks from running on the same tick. `close()` stops the refresher and shuts down both event and refetch executors. Core closes its registered holders during shutdown.
+`HoldRefresher` uses a daemon scheduler to refresh Redis entity and unique-index TTLs for held IDs. Each tick passes the held list to the refresher callback. The Core callback batches entity expiry and refreshes unique indexes by collection. `close()` stops the refresher and shuts down both event and refetch executors. Core closes its registered holders during shutdown.
 
 ## Installation and build
 

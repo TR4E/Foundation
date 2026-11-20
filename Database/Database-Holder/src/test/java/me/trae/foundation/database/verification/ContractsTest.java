@@ -60,6 +60,8 @@ import static me.trae.foundation.database.verification.DatabaseFixture.set;
 import static me.trae.foundation.database.verification.DatabaseFixture.write;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
@@ -96,8 +98,8 @@ public final class ContractsTest {
 
     @Test
     void localNamespacesAreIsolated() {
-        final LocalStorage<UUID, Account> firstStorage = new LocalStorage<>(namespace("first"));
-        final LocalStorage<UUID, Account> secondStorage = new LocalStorage<>(namespace("second"));
+        final LocalStorage<UUID, Account> firstStorage = new LocalStorage<>(namespace("first"), 0, Duration.ZERO);
+        final LocalStorage<UUID, Account> secondStorage = new LocalStorage<>(namespace("second"), 0, Duration.ZERO);
         final Account account = account();
 
         firstStorage.put(account.getId(), account);
@@ -108,7 +110,7 @@ public final class ContractsTest {
 
     @Test
     void localRemoveRemovesValue() {
-        final LocalStorage<UUID, Account> localStorage = new LocalStorage<>(namespace("remove"));
+        final LocalStorage<UUID, Account> localStorage = new LocalStorage<>(namespace("remove"), 0, Duration.ZERO);
         final Account account = account();
 
         localStorage.put(account.getId(), account);
@@ -120,18 +122,18 @@ public final class ContractsTest {
 
     @Test
     void uniqueRenameReplacesOldKey() {
-        final UniqueIndexStore uniqueIndexStore = new UniqueIndexStore(AccountDeclaration.NAME_INDEX, List.of(new LocalStorage<>(indexNamespace("name"))));
+        final UniqueIndexStore uniqueIndexStore = new UniqueIndexStore(AccountDeclaration.NAME_INDEX, List.of(new LocalStorage<>(indexNamespace("name"), 0, Duration.ZERO)));
         final Account account = account();
         final String previous = account.getName();
 
         uniqueIndexStore.index(account);
-        assertEquals(account.getId(), uniqueIndexStore.lookup(previous).orElseThrow());
+        assertEquals(account.getId(), uniqueIndexStore.lookup(previous));
 
         account.setName("renamed");
         uniqueIndexStore.index(account);
 
-        assertTrue(uniqueIndexStore.lookup(previous).isEmpty());
-        assertEquals(account.getId(), uniqueIndexStore.lookup("renamed").orElseThrow());
+        assertNull(uniqueIndexStore.lookup(previous));
+        assertEquals(account.getId(), uniqueIndexStore.lookup("renamed"));
     }
 
     @Test
@@ -169,7 +171,7 @@ public final class ContractsTest {
         final StorageProvider postgresProvider = mock(StorageProvider.class);
 
         when(redisProvider.getTier()).thenReturn(Tier.REDIS);
-        when(redisProvider.create(any())).thenAnswer(invocation -> new LocalStorage<>(invocation.getArgument(0)));
+        when(redisProvider.create(any())).thenAnswer(invocation -> new LocalStorage<>(invocation.getArgument(0), 0, Duration.ZERO));
         when(postgresProvider.getTier()).thenReturn(Tier.POSTGRES);
         new IndexStores(Account.class, Tier.ALL, List.of(localProvider, redisProvider, postgresProvider), index -> indexNamespace(index.getName()));
 
@@ -208,13 +210,13 @@ public final class ContractsTest {
         indexUpdater.index(derived, DerivedDeclaration.OTHER);
 
         assertEquals(1, extractionCount.get());
-        assertTrue(indexStores.findUnique(uniqueIndex).orElseThrow().lookup("alpha").isPresent());
+        assertNotNull(indexStores.unique(uniqueIndex).lookup("alpha"));
 
         indexUpdater.index(derived, DerivedDeclaration.NAME);
 
         assertEquals(2, extractionCount.get());
-        assertTrue(indexStores.findUnique(uniqueIndex).orElseThrow().lookup("alpha").isEmpty());
-        assertEquals(derived.getId(), indexStores.findUnique(uniqueIndex).orElseThrow().lookup("beta").orElseThrow());
+        assertNull(indexStores.unique(uniqueIndex).lookup("alpha"));
+        assertEquals(derived.getId(), indexStores.unique(uniqueIndex).lookup("beta"));
     }
 
     @Test
@@ -244,9 +246,11 @@ public final class ContractsTest {
 
     @Test
     void tenantPredicateAppearsOnlyWhenConfigured() {
-        assertTrue(PostgresQuery.conditions(Query.all(), null).isEmpty());
-        assertEquals(1, PostgresQuery.conditions(Query.all(), "shop").size());
-        assertTrue(PostgresQuery.conditions(Query.all(), "shop").getFirst().toString().contains("shop"));
+        final List<Property<?, ?>> propertyList = PropertyRegistry.getProperties(Account.class);
+
+        assertTrue(PostgresQuery.conditions(Query.all(), null, propertyList).isEmpty());
+        assertEquals(1, PostgresQuery.conditions(Query.all(), "shop", propertyList).size());
+        assertTrue(PostgresQuery.conditions(Query.all(), "shop", propertyList).getFirst().toString().contains("shop"));
     }
 
     @Test
@@ -300,7 +304,7 @@ public final class ContractsTest {
 
     @Test
     void deleteWinsOverPriorUpdate() {
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final UUID id = UUID.randomUUID();
 
         batchQueue.add(write(id, WriteKind.UPDATE, 0L, increment(1L)));
@@ -312,7 +316,7 @@ public final class ContractsTest {
 
     @Test
     void deleteMustNotBeResurrectedByLaterUpdate() {
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final UUID id = UUID.randomUUID();
 
         batchQueue.add(write(id, WriteKind.DELETE, 0L));
@@ -323,7 +327,7 @@ public final class ContractsTest {
 
     @Test
     void queuedSaveMustSurviveSubsequentUpdate() {
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final UUID id = UUID.randomUUID();
 
         batchQueue.add(write(id, WriteKind.SAVE, 0L, set("name", "created")));
@@ -334,9 +338,9 @@ public final class ContractsTest {
 
     @Test
     void flushDrainsAndCallsWriter() {
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final AtomicInteger writeCount = new AtomicInteger();
-        final BatchScheduler batchScheduler = new BatchScheduler(batchQueue, _ -> writeCount.incrementAndGet(), Duration.ofSeconds(1));
+        final BatchScheduler batchScheduler = new BatchScheduler(batchQueue, writes -> writeCount.addAndGet(writes.size()), Duration.ofSeconds(1));
 
         batchQueue.add(write(UUID.randomUUID(), WriteKind.UPDATE, 0L, increment(1L)));
 
@@ -352,7 +356,7 @@ public final class ContractsTest {
 
     @Test
     void failedFlushRequeues() {
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final BatchScheduler batchScheduler = new BatchScheduler(batchQueue, _ -> {
             throw new IllegalStateException("offline");
         }, Duration.ofSeconds(1));

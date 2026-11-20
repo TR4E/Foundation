@@ -4,6 +4,7 @@ import me.trae.foundation.database.api.event.ChangeEvent;
 import me.trae.foundation.database.api.key.EntityKey;
 import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.tier.Tier;
+import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.holder.context.HolderContextFactory;
 import me.trae.foundation.database.local.LocalMarker;
@@ -44,6 +45,7 @@ import static me.trae.foundation.database.verification.DatabaseFixture.storages;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -224,7 +226,7 @@ public final class HolderLookupTest {
         final String previous = account.getName();
         final AccountHolder accountHolder = holder(accountRepository, Set.of(Tier.LOCAL, Tier.POSTGRES));
 
-        when(accountRepository.apply(any())).thenThrow(new IllegalStateException("offline"));
+        when(accountRepository.apply(any(Write.class))).thenThrow(new IllegalStateException("offline"));
 
         assertThrows(IllegalStateException.class, () -> accountHolder.set(account, AccountDeclaration.NAME, "rejected"));
         assertEquals(previous, account.getName());
@@ -236,7 +238,7 @@ public final class HolderLookupTest {
         final Account account = account();
         final AccountHolder accountHolder = holder(accountRepository, Set.of(Tier.LOCAL, Tier.POSTGRES));
 
-        when(accountRepository.apply(any())).thenThrow(new IllegalStateException("offline"));
+        when(accountRepository.apply(any(Write.class))).thenThrow(new IllegalStateException("offline"));
 
         assertThrows(IllegalStateException.class, () -> accountHolder.increment(account, AccountDeclaration.COUNTER, 5L));
         assertEquals(0L, account.getCounter());
@@ -311,7 +313,7 @@ public final class HolderLookupTest {
         accountHolder.delete(account);
 
         assertFalse(accountHolder.holds(account.getId()));
-        assertTrue(accountHolder.getContext().getIndexStores().findUnique(AccountDeclaration.NAME_INDEX).orElseThrow().lookup(account.getName()).isEmpty());
+        assertNull(accountHolder.getContext().getIndexStores().unique(AccountDeclaration.NAME_INDEX).lookup(account.getName()));
         assertTrue(accountHolder.getAllByIndex(AccountDeclaration.GROUP_INDEX, "group").isEmpty());
     }
 
@@ -346,20 +348,15 @@ public final class HolderLookupTest {
     }
 
     @Test
-    void directApplierInterleavingLeavesSingleIncrement() {
+    void authorityIncrementAppliesOnce() {
         final AccountRepository accountRepository = repository();
         final Account account = account();
-        final java.util.concurrent.atomic.AtomicReference<AccountHolder> holderReference = new java.util.concurrent.atomic.AtomicReference<>();
         final ContextFactory contextFactory = new ContextFactory(tiers -> context(
                 accountRepository,
                 tiers,
                 storages(tiers),
                 new LocalMarker(),
-                write -> {
-                    holderReference.get().getApplier().apply(new ChangeEvent(write.getKey(), 1L, write.getKind(), write.getChanges()));
-
-                    return new WriteResult(1L, null);
-                },
+                _ -> new WriteResult(1L, 1L),
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -367,7 +364,6 @@ public final class HolderLookupTest {
         ));
         final AccountHolder accountHolder = new AccountHolder(accountRepository, contextFactory, Set.of(Tier.LOCAL, Tier.REDIS, Tier.POSTGRES));
 
-        holderReference.set(accountHolder);
         when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
         accountHolder.hold(account.getId());
 
@@ -383,7 +379,7 @@ public final class HolderLookupTest {
                 tiers,
                 storages(tiers),
                 new LocalMarker(),
-                write -> new WriteResult(accountRepository.apply(write), null),
+                accountRepository::apply,
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -430,7 +426,7 @@ public final class HolderLookupTest {
                 tiers,
                 storages(tiers),
                 new LocalMarker(),
-                write -> new WriteResult(accountRepository.apply(write), null),
+                accountRepository::apply,
                 _ -> {},
                 (_, _) -> {},
                 _ -> unsubscribeCount.incrementAndGet(),

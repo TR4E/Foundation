@@ -44,6 +44,8 @@ With a shared marker, the claim owner runs the repository lookup and publishes t
 
 ## Backfill and retention
 
+Holder hold and reload can read a VersionedEntity snapshot directly from Redis. On a snapshot miss they use the tiered lookup fallback.
+
 Successful repository ID reads backfill storage for requested cache tiers. Redis can be repopulated from a PostgreSQL result. Local is updated only when the ID is already held. Redis hits and decoded marker results return without the repository backfill step.
 
 Runtime indexes and subscriptions are maintained by [Database-Holder](../Database-Holder/README.md).

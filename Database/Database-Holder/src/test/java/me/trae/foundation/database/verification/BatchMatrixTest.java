@@ -25,7 +25,7 @@ public final class BatchMatrixTest {
             "DELETE,SAVE,SAVE", "DELETE,UPDATE,DELETE", "DELETE,DELETE,DELETE"
     })
     void orderedPairMatrix(final WriteKind firstKind, final WriteKind secondKind, final WriteKind expectedKind) {
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final UUID id = UUID.randomUUID();
 
         batchQueue.add(write(id, firstKind, 0L, set("counter", 1L)));

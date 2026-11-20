@@ -46,7 +46,7 @@ public final class RedisEvents {
         return new Change(parts[0], ChangeType.valueOf(parts[1]), decodeValue(parts[2]));
     }
 
-    private String encodeValue(final Object value) {
+    public String encodeValue(final Object value) {
         return value == null ? "~" : Base64.getEncoder().encodeToString(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
     }
 

@@ -93,8 +93,8 @@ public final class DeepRuntimeTest extends RuntimeFixture {
             final AtomicInteger ownCount = new AtomicInteger();
             final AtomicInteger remoteCount = new AtomicInteger();
 
-            firstNode.getItemHolder().getContext().getSubscriber().accept(item.getId(), _ -> ownCount.incrementAndGet());
-            secondNode.getItemHolder().getContext().getSubscriber().accept(item.getId(), _ -> remoteCount.incrementAndGet());
+            firstNode.getItemHolder().getContext().getSubscriber().accept(List.of(item.getId()), _ -> ownCount.incrementAndGet());
+            secondNode.getItemHolder().getContext().getSubscriber().accept(List.of(item.getId()), _ -> remoteCount.incrementAndGet());
             this.writer(firstNode).delete(path(item.getId()), channel(item.getId()), 1L);
             await(() -> remoteCount.get() == 1);
             Thread.sleep(50L);
@@ -234,7 +234,7 @@ public final class DeepRuntimeTest extends RuntimeFixture {
                                 this.writer(index == 0 ? firstNode : secondNode).apply(
                                         path(item.getId()),
                                         channel(item.getId()),
-                                        write(item.getId(), WriteKind.UPDATE, 1L, increment(1L)),
+                                        write(item.getId(), WriteKind.UPDATE, 1L, set("value", "writer-%d".formatted(index))),
                                         Duration.ofSeconds(30)
                                 );
                                 winner.set(index);
@@ -256,7 +256,7 @@ public final class DeepRuntimeTest extends RuntimeFixture {
             }
 
             assertEquals(1, conflicts.get());
-            assertEquals("1", firstNode.getRedisDriver().getCommands().hget(path(item.getId()), "counter"));
+            assertEquals("writer-%d".formatted(winner.get()), firstNode.getRedisDriver().getCommands().hget(path(item.getId()), "value"));
 
             final Node loserNode = winner.get() == 0 ? secondNode : firstNode;
 
@@ -268,11 +268,11 @@ public final class DeepRuntimeTest extends RuntimeFixture {
             this.writer(loserNode).apply(
                     path(item.getId()),
                     channel(item.getId()),
-                    write(item.getId(), WriteKind.UPDATE, version, increment(1L)),
+                    write(item.getId(), WriteKind.UPDATE, version, set("value", "retry")),
                     Duration.ofSeconds(30)
             );
 
-            assertEquals("2", loserNode.getRedisDriver().getCommands().hget(path(item.getId()), "counter"));
+            assertEquals("retry", loserNode.getRedisDriver().getCommands().hget(path(item.getId()), "value"));
         }
     }
 
@@ -377,16 +377,20 @@ public final class DeepRuntimeTest extends RuntimeFixture {
     }
 
     @Test
-    void heldLocalCopyDoesNotSilentlySkipRedisExpiryRepair() throws Exception {
+    void heldLocalCopyIsReturnedAfterRedisExpiry() throws Exception {
         try (final Node node = new Node(AllBean.class, Duration.ofMillis(200))) {
             final Item item = node.seed();
+            final String path = path(item.getId());
 
             node.getItemHolder().getRefresher().stop();
             node.getItemHolder().hold(item.getId());
-            Thread.sleep(350L);
-            node.getItemHolder().get(item.getId()).orElseThrow();
 
-            assertTrue(node.getRedisDriver().getCommands().exists(path(item.getId())) > 0, "A read after held-key expiry should repopulate Redis");
+            final Item held = node.getItemHolder().getHeld().getFirst();
+
+            await(() -> node.getRedisDriver().getCommands().exists(path) == 0L);
+
+            assertSame(held, node.getItemHolder().get(item.getId()).orElseThrow());
+            assertEquals(0L, node.getRedisDriver().getCommands().exists(path));
         }
     }
 
@@ -455,7 +459,7 @@ public final class DeepRuntimeTest extends RuntimeFixture {
                     WriteKind.UPDATE,
                     0L,
                     set("value", "updated")
-            ));
+            )).getVersion();
 
             assertThrows(VersionConflictException.class, () -> node.getItemRepository().apply(write(
                     item.getId(),
@@ -480,7 +484,7 @@ public final class DeepRuntimeTest extends RuntimeFixture {
             this.redisDriver = new RedisDriver(new RedisSettings(REDIS.getHost(), REDIS.getMappedPort(6379), null, 0, Duration.ofSeconds(3)));
 
             this.redisDriver.connect();
-            this.redisDriver.subscribe(channel(id), this.payloadQueue::add);
+            this.redisDriver.subscribe(Map.of(channel(id), this.payloadQueue::add));
         }
 
         private String next() throws InterruptedException {

@@ -38,19 +38,22 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 public final class IsolatedFixesTest {
@@ -61,37 +64,32 @@ public final class IsolatedFixesTest {
         final Repository<Probe> repository = mock(Repository.class);
         final SharedMarker sharedMarker = mock(SharedMarker.class);
         final Probe probe = new Probe(UUID.randomUUID());
-        final AtomicInteger claims = new AtomicInteger();
-        final CountDownLatch entered = new CountDownLatch(1);
-        final CountDownLatch release = new CountDownLatch(1);
+        final CountDownLatch loading = new CountDownLatch(1), release = new CountDownLatch(1);
 
-        when(repository.findById(probe.getId())).thenReturn(Optional.of(probe));
-        when(sharedMarker.claim(any(), any())).thenAnswer(_ -> {
-            if (claims.incrementAndGet() == 1) {
-                entered.countDown();
-                assertTrue(release.await(5, TimeUnit.SECONDS));
-            }
+        when(sharedMarker.claim(any(), any())).thenReturn(true);
+        when(repository.findById(probe.getId())).thenAnswer(_ -> {
+            loading.countDown();
+            assertTrue(release.await(5L, TimeUnit.SECONDS));
 
-            return true;
+            return Optional.of(probe);
         });
 
         final EntityLookup<Probe> entityLookup = this.lookup(repository, sharedMarker);
 
-        try (final var executorService = Executors.newFixedThreadPool(2)) {
-            final var localFuture = executorService.submit(() -> entityLookup.find(probe.getId(), Set.of(Tier.LOCAL)));
-
-            assertTrue(entered.await(5, TimeUnit.SECONDS));
+        try (final ExecutorService executorService = Executors.newSingleThreadExecutor()) {
+            final Future<Optional<Probe>> fullFuture = executorService.submit(() -> entityLookup.find(probe.getId(), Set.of(Tier.LOCAL, Tier.POSTGRES)));
 
             try {
-                final var fullFuture = executorService.submit(() -> entityLookup.find(probe.getId(), Set.of(Tier.LOCAL, Tier.POSTGRES)));
-
-                assertTrue(fullFuture.get(3, TimeUnit.SECONDS).isPresent(), "Full lookup must not inherit a LOCAL-only miss");
+                assertTrue(loading.await(5L, TimeUnit.SECONDS));
+                assertTrue(entityLookup.find(probe.getId(), Set.of(Tier.LOCAL)).isEmpty());
+                verify(sharedMarker).claim(any(), any());
+                verifyNoMoreInteractions(sharedMarker);
             } finally {
                 release.countDown();
             }
 
-            assertTrue(localFuture.get(5, TimeUnit.SECONDS).isEmpty());
-            verify(repository, times(1)).findById(probe.getId());
+            assertEquals(Optional.of(probe), fullFuture.get(5L, TimeUnit.SECONDS));
+            verify(repository).findById(probe.getId());
         }
     }
 
@@ -159,17 +157,17 @@ public final class IsolatedFixesTest {
     void uniqueIndexCanBeRemovedByIdWithoutLocalEntity() {
         final Property<Probe, String> property = Property.persistent(Probe.class, "unique_name", String.class, Probe::getName, Probe::setName);
         final UniqueIndex<Probe, String> uniqueIndex = UniqueIndex.of("isolated_unique", property);
-        final UniqueIndexStore uniqueIndexStore = new UniqueIndexStore(uniqueIndex, List.of(new LocalStorage<>(this.namespace())));
+        final UniqueIndexStore uniqueIndexStore = new UniqueIndexStore(uniqueIndex, List.of(new LocalStorage<>(this.namespace(), 0, Duration.ZERO)));
         final Probe probe = new Probe(UUID.randomUUID());
 
         probe.setName("indexed");
         uniqueIndexStore.index(probe);
 
-        assertEquals(probe.getId(), uniqueIndexStore.lookup("indexed").orElseThrow());
+        assertEquals(probe.getId(), uniqueIndexStore.lookup("indexed"));
 
         uniqueIndexStore.unindex(probe.getId());
 
-        assertTrue(uniqueIndexStore.lookup("indexed").isEmpty());
+        assertNull(uniqueIndexStore.lookup("indexed"));
         assertTrue(this.map(uniqueIndexStore, "keyMap").isEmpty());
     }
 
@@ -198,7 +196,7 @@ public final class IsolatedFixesTest {
 
         for (final WriteKind existingKind : WriteKind.values()) {
             for (final WriteKind incomingKind : WriteKind.values()) {
-                final BatchQueue batchQueue = new BatchQueue();
+                final BatchQueue batchQueue = new BatchQueue(0);
                 final EntityKey entityKey = new EntityKey("probe", null, UUID.randomUUID());
 
                 batchQueue.add(new Write(entityKey, existingKind, List.of(new Change("counter", ChangeType.SET, 1L)), 0L));

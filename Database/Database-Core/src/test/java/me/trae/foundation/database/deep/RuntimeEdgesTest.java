@@ -41,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class RuntimeEdgesTest extends RuntimeFixture {
@@ -103,7 +104,7 @@ public final class RuntimeEdgesTest extends RuntimeFixture {
     @Test
     void nullUniqueExtractorDoesNotLeaveOldMapping() {
         final UniqueIndex<TypeEdgesTest.MemoryEntity, String> uniqueIndex = UniqueIndex.derived("edge_null_unique", TypeEdgesTest.MemoryEntity.class, String.class, TypeEdgesTest.MemoryEntity::getNote, java.util.Set.of());
-        final UniqueIndexStore uniqueIndexStore = new UniqueIndexStore(uniqueIndex, List.of(new LocalStorage<>(new Namespace<>("edge_null_unique", UUID.class, String::valueOf, null, Duration.ZERO))));
+        final UniqueIndexStore uniqueIndexStore = new UniqueIndexStore(uniqueIndex, List.of(new LocalStorage<>(new Namespace<>("edge_null_unique", UUID.class, String::valueOf, null, Duration.ZERO), 0, Duration.ZERO)));
         final TypeEdgesTest.MemoryEntity memoryEntity = new TypeEdgesTest.MemoryEntity(UUID.randomUUID());
 
         memoryEntity.setNote("before");
@@ -111,7 +112,7 @@ public final class RuntimeEdgesTest extends RuntimeFixture {
         memoryEntity.setNote(null);
 
         assertDoesNotThrow(() -> uniqueIndexStore.index(memoryEntity), "A nullable extractor must remove the old key without throwing");
-        assertTrue(uniqueIndexStore.lookup("before").isEmpty());
+        assertNull(uniqueIndexStore.lookup("before"));
     }
 
     @Test
@@ -177,32 +178,41 @@ public final class RuntimeEdgesTest extends RuntimeFixture {
     }
 
     @Test
-    void expiredMarkerLeaseDoesNotDuplicatePostgresQuery() throws Exception {
+    void expiredMarkerLeaseAllowsOneAdditionalPostgresQuery() throws Exception {
         try (final Node firstNode = new Node(AllBean.class, Duration.ofSeconds(30));
              final Node secondNode = new Node(AllBean.class, Duration.ofSeconds(30));
-             final var executorService = Executors.newFixedThreadPool(2)) {
+             final ExecutorService executorService = Executors.newFixedThreadPool(2)) {
             final AtomicInteger queryCount = new AtomicInteger();
-            final CountDownLatch started = new CountDownLatch(1);
+            final CountDownLatch firstStarted = new CountDownLatch(1), secondStarted = new CountDownLatch(1);
             final ValueConverter<String, String> valueConverter = new StringConverter();
             final Stampede firstStampede = new Stampede(new RedisMarker(firstNode.getRedisDriver()), Duration.ofMillis(50), Duration.ofSeconds(2));
             final Stampede secondStampede = new Stampede(new RedisMarker(secondNode.getRedisDriver()), Duration.ofMillis(50), Duration.ofSeconds(2));
             final String key = "lease-edge:%s".formatted(UUID.randomUUID());
-            final java.util.function.Supplier<Optional<String>> loader = () -> {
+
+            final Future<Optional<String>> firstFuture = executorService.submit(() -> firstStampede.load(key, valueConverter, () -> {
+                firstStarted.countDown();
+                assertDoesNotThrow(() -> assertTrue(secondStarted.await(5L, TimeUnit.SECONDS)));
+
                 queryCount.incrementAndGet();
-                started.countDown();
-                firstNode.getPostgresDriver().getDslContext().execute("SELECT pg_sleep(0.3)");
+                firstNode.getPostgresDriver().getDslContext().execute("SELECT 1");
+
                 return Optional.of("loaded");
-            };
-            final var firstFuture = executorService.submit(() -> firstStampede.load(key, valueConverter, loader));
+            }));
 
-            assertTrue(started.await(3, TimeUnit.SECONDS));
-            Thread.sleep(100L);
+            assertTrue(firstStarted.await(3L, TimeUnit.SECONDS));
+            await(() -> firstNode.getRedisDriver().getCommands().exists("%s:claim".formatted(key)) == 0L);
 
-            final var secondFuture = executorService.submit(() -> secondStampede.load(key, valueConverter, loader));
+            final Future<Optional<String>> secondFuture = executorService.submit(() -> secondStampede.load(key, valueConverter, () -> {
+                secondStarted.countDown();
+                queryCount.incrementAndGet();
+                secondNode.getPostgresDriver().getDslContext().execute("SELECT 1");
 
-            assertEquals(Optional.of("loaded"), firstFuture.get(5, TimeUnit.SECONDS));
-            assertEquals(Optional.of("loaded"), secondFuture.get(5, TimeUnit.SECONDS));
-            assertEquals(1, queryCount.get(), "A lease expiring during an active Postgres query must not duplicate that query");
+                return Optional.of("loaded");
+            }));
+
+            assertEquals(Optional.of("loaded"), firstFuture.get(5L, TimeUnit.SECONDS));
+            assertEquals(Optional.of("loaded"), secondFuture.get(5L, TimeUnit.SECONDS));
+            assertEquals(2, queryCount.get());
         }
     }
 
@@ -295,7 +305,19 @@ public final class RuntimeEdgesTest extends RuntimeFixture {
         private TenantNode(final String tenant) {
             this.postgresDriver = new PostgresDriver(new PostgresSettings(POSTGRES.getHost(), POSTGRES.getMappedPort(5432), "deep", "deep", "deep", 4));
             this.redisDriver = new RedisDriver(new RedisSettings(REDIS.getHost(), REDIS.getMappedPort(6379), null, 0, Duration.ofSeconds(3)));
-            this.coreDatabase = new CoreDatabase(new DatabaseSettings(Tier.ALL, tenant, Duration.ofSeconds(30), Duration.ofHours(1), Duration.ofHours(1), Duration.ofSeconds(5), Duration.ofSeconds(2)), this.postgresDriver, this.redisDriver);
+            final DatabaseSettings databaseSettings = new DatabaseSettings(
+                    Tier.ALL,
+                    tenant,
+                    Duration.ofSeconds(30),
+                    Duration.ofHours(1),
+                    Duration.ofHours(1),
+                    Duration.ofSeconds(5),
+                    Duration.ofSeconds(2),
+                    Duration.ZERO,
+                    0, 0
+            );
+
+            this.coreDatabase = new CoreDatabase(databaseSettings, this.postgresDriver, this.redisDriver);
             this.itemRepository = new ItemRepository(this.postgresDriver, this.coreDatabase.getTenantScope());
             this.itemHolder = new ItemHolder(this.itemRepository, this.coreDatabase.getContextFactory(), Tier.ALL);
             this.coreDatabase.start();

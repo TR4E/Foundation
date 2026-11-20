@@ -44,7 +44,7 @@ public final class AuditBenchmarkTest extends RuntimeFixture {
     @Test
     void localScalesFromOneToSixteenThreadsAndBatchMerge() throws Exception {
         final Item item = new Item(UUID.randomUUID());
-        final LocalStorage<UUID, Item> localStorage = new LocalStorage<>(new Namespace<>("audit", Item.class, UUID::toString, null, Duration.ZERO));
+        final LocalStorage<UUID, Item> localStorage = new LocalStorage<>(new Namespace<>("audit", Item.class, UUID::toString, null, Duration.ZERO), 0, Duration.ZERO);
 
         localStorage.put(item.getId(), item);
 
@@ -53,7 +53,7 @@ public final class AuditBenchmarkTest extends RuntimeFixture {
             this.measureParallel("local_put_%s".formatted(threads), threads, () -> localStorage.put(item.getId(), item));
         }
 
-        final BatchQueue batchQueue = new BatchQueue();
+        final BatchQueue batchQueue = new BatchQueue(0);
         final Write write = write(item.getId(), WriteKind.UPDATE, 0L, increment(1L));
 
         this.measure("batch_merge", 500_000, () -> batchQueue.add(write));
@@ -114,9 +114,10 @@ public final class AuditBenchmarkTest extends RuntimeFixture {
                 final String payload = "%s\naudit-sender\nUPDATE\ncounter\tINCREMENT\tMQ==".formatted(version);
                 final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
 
-                redisNode.getRedisDriver().getCommands().publish(channel(publishItem.getId()), payload);
+                redisCommands.hset(path(publishItem.getId()), Map.of("version", Integer.toString(version), "counter", Integer.toString(version)));
+                redisCommands.publish(channel(publishItem.getId()), payload);
 
-                while (subscriberNode.getItemHolder().getWriter().getVersion(publishItem.getId()) != version && System.nanoTime() < deadline) {
+                while (subscriberNode.getItemHolder().get(publishItem.getId()).orElseThrow().getCounter() != version && System.nanoTime() < deadline) {
                     java.util.concurrent.locks.LockSupport.parkNanos(10_000L);
                 }
 

@@ -31,9 +31,9 @@ Database-Local implements generic Storage using ConcurrentHashMap. Core uses it 
 
 ## Storage behavior
 
-Construct LocalStorage with a Namespace. Keys use its encoder; values remain object references. The value converter and TTL are unused. There is no expiry, size limit, serialization or copying. holdAll keeps the entire repository result and its runtime index mappings in memory; the caller chooses a working set that fits the process.
+Construct LocalStorage with a Namespace, a size limit and a TTL. It uses the supplied key directly and stores object references. A zero limit disables capacity eviction and Duration.ZERO disables expiry. Capacity eviction uses insertion order. Reads can evict expired entries, while contains reports whether an entry is present and unexpired. Call onEviction to register an eviction callback. Core registers the holder release callback. holdAll keeps the entire repository result and its runtime index mappings in memory; the caller chooses a working set that fits the process.
 
-get returns Optional; put replaces; remove deletes; contains checks presence. values() exposes the concurrent map's live values collection; clear() empties it. refresh does nothing. Separate LocalStorage instances have separate maps even with identical namespace names.
+get returns Optional; put replaces; remove deletes; contains checks presence. values() exposes the concurrent map's live values collection; clear() empties it. refresh renews the timestamp of an existing entry when TTL is enabled. Separate LocalStorage instances have separate maps even with identical namespace names.
 
 Entity retention is explicit: hold/holdAll populate Local, release removes entries. Ordinary reads do not create new local holds. Application code remains responsible for mutable value threading. Local storage makes map operations concurrent; it does not make multi-step entity mutation or hold/release atomic. A queued holder reload skips an ID released before the task starts. That check does not make a reload already in progress atomic with release.
 

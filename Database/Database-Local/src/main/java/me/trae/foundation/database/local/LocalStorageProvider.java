@@ -6,6 +6,8 @@ import me.trae.foundation.database.api.storage.Storage;
 import me.trae.foundation.database.api.storage.StorageProvider;
 import me.trae.foundation.database.api.tier.Tier;
 
+import java.time.Duration;
+
 public final class LocalStorageProvider implements StorageProvider {
 
     @Getter
@@ -13,6 +15,6 @@ public final class LocalStorageProvider implements StorageProvider {
 
     @Override
     public <Key, Value> Storage<Key, Value> create(final Namespace<Key, Value> namespace) {
-        return new LocalStorage<>(namespace);
+        return new LocalStorage<>(namespace, 0, Duration.ZERO);
     }
 }

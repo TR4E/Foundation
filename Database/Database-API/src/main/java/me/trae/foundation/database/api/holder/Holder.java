@@ -6,6 +6,7 @@ import me.trae.foundation.database.api.index.UniqueIndex;
 import me.trae.foundation.database.api.property.Property;
 import me.trae.foundation.database.api.tier.Tier;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -16,6 +17,8 @@ public interface Holder<EntityType extends Entity> {
     Optional<EntityType> get(final UUID id, final Set<Tier> tiers);
 
     Optional<EntityType> get(final UUID id);
+
+    List<EntityType> getAll(final Collection<UUID> ids);
 
     <Value> Optional<EntityType> getByProperty(final Property<EntityType, Value> property, final Value value);
 

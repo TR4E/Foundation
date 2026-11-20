@@ -22,8 +22,12 @@ public final class GroupedIndexStore {
     @Getter
     private final GroupedIndex<?, ?> index;
 
+    public Set<UUID> members(final Object key) {
+        return this.idMap.getOrDefault(key, Collections.emptySet());
+    }
+
     public List<UUID> lookup(final Object key) {
-        return new ArrayList<>(this.idMap.getOrDefault(key, Collections.emptySet()));
+        return new ArrayList<>(this.members(key));
     }
 
     public void index(final Entity entity) {
@@ -40,7 +44,7 @@ public final class GroupedIndexStore {
             this.discard(previous, entity.getId());
         }
 
-        this.idMap.computeIfAbsent(key, _ -> ConcurrentHashMap.newKeySet()).add(entity.getId());
+        this.idMap.compute(key, (_, ids) -> add(ids, entity.getId()));
     }
 
     public void unindex(final UUID id) {
@@ -59,6 +63,14 @@ public final class GroupedIndexStore {
 
             return ids.isEmpty() ? null : ids;
         });
+    }
+
+    private static Set<UUID> add(final Set<UUID> ids, final UUID id) {
+        final Set<UUID> members = ids == null ? ConcurrentHashMap.newKeySet() : ids;
+
+        members.add(id);
+
+        return members;
     }
 
     private static <Owner> Object extract(final Index<Owner, ?> index, final Object entity) {

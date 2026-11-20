@@ -2,6 +2,7 @@ package me.trae.foundation.database.postgres.value;
 
 import lombok.experimental.UtilityClass;
 import me.trae.foundation.database.api.exception.SchemaException;
+import org.jooq.Field;
 import org.jooq.impl.DSL;
 
 import java.math.BigDecimal;
@@ -26,26 +27,46 @@ public final class PostgresValues {
         return value;
     }
 
-    public <Value> Value read(final org.jooq.Record record, final String column, final Class<Value> type) {
+    public <Value> Field<?> field(final String column, final Class<Value> type) {
         if (type.isEnum()) {
-            final String name = record.get(DSL.field(DSL.name(column), String.class));
-
-            return name == null ? null : type.cast(constant(type, name));
+            return DSL.field(DSL.name(column), String.class);
         }
 
         if (type == Instant.class) {
-            final OffsetDateTime timestamp = record.get(DSL.field(DSL.name(column), OffsetDateTime.class));
-
-            return timestamp == null ? null : type.cast(timestamp.toInstant());
+            return DSL.field(DSL.name(column), OffsetDateTime.class);
         }
 
         if (type == BigInteger.class) {
-            final BigDecimal number = record.get(DSL.field(DSL.name(column), BigDecimal.class));
-
-            return number == null ? null : type.cast(number.toBigInteger());
+            return DSL.field(DSL.name(column), BigDecimal.class);
         }
 
-        return record.get(DSL.field(DSL.name(column), type));
+        return DSL.field(DSL.name(column), type);
+    }
+
+    public <Value> Value read(final org.jooq.Record record, final Field<?> field, final Class<Value> type) {
+        final Object value = record.get(field);
+
+        if (value == null) {
+            return null;
+        }
+
+        if (type.isEnum()) {
+            return type.cast(constant(type, String.class.cast(value)));
+        }
+
+        if (type == Instant.class) {
+            return type.cast(OffsetDateTime.class.cast(value).toInstant());
+        }
+
+        if (type == BigInteger.class) {
+            return type.cast(BigDecimal.class.cast(value).toBigInteger());
+        }
+
+        return type.cast(value);
+    }
+
+    public <Value> Value read(final org.jooq.Record record, final String column, final Class<Value> type) {
+        return read(record, field(column, type), type);
     }
 
     private Object constant(final Class<?> type, final String name) {

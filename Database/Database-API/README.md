@@ -79,6 +79,8 @@ ChangeEvent carries EntityKey, version, WriteKind and changes. Its constructor t
 
 ## Storage and exceptions
 
+Storage.refreshAll(keys) calls refresh for each key by default. Storage.onEviction(listener) lets an implementation notify callers when it evicts a key. VersionedEntity pairs an entity with the version read alongside it.
+
 Namespace contains name, value class, key encoder, string value converter and TTL. Storage supports get, put, remove, contains, values and refresh. Redis rejects enumeration through values(); Local supplies it. SharedMarker exposes claim, await and release for load coordination. Tier defines LOCAL, REDIS and POSTGRES. `Tier.ALL` is unmodifiable.
 
 API exceptions extend DatabaseException: ConnectionException, SchemaException, QueryException, VersionConflictException and UniqueValueTakenException. UniqueValueTakenException is declared but is not thrown by current runtime index stores. Backend failures are not universally translated into API exceptions.

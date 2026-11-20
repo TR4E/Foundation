@@ -22,8 +22,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -34,12 +37,13 @@ public final class EntityWriter<EntityType extends Entity> {
 
     private static final long DELETED = -1L;
     private static final long GUARDED_LIMIT = 1L << 53;
-    private static final int LOCKS = 64;
+    private static final int LOCKS = 1024;
 
-    private final List<Object> lockList = Stream.generate(Object::new).limit(LOCKS).collect(Collectors.toCollection(ArrayList::new));
+    private final List<ReentrantReadWriteLock> lockList = Stream.generate(ReentrantReadWriteLock::new).limit(LOCKS).collect(Collectors.toCollection(ArrayList::new));
     private final List<Object> stateList = Stream.generate(Object::new).limit(LOCKS).collect(Collectors.toCollection(ArrayList::new));
 
     private final ConcurrentHashMap<UUID, Long> versionMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Boolean> persistentMap = new ConcurrentHashMap<>();
 
     private final String table, tenant;
     private final List<Property<?, ?>> properties;
@@ -47,9 +51,16 @@ public final class EntityWriter<EntityType extends Entity> {
     private final Consumer<Write> persistence;
     private final Consumer<UUID> refetch;
     private final WriteGate gate;
+    private final boolean tracking;
+    private final Predicate<UUID> held;
+    private final Function<UUID, EntityType> resolver;
 
     public void save(final EntityType entity) {
-        synchronized (this.lock(entity.getId())) {
+        final Lock lock = this.lock(entity.getId()).writeLock();
+
+        lock.lock();
+
+        try {
             final List<Change> changes = this.properties.stream()
                     .filter(Property::isPersistent)
                     .map(property -> change(property, entity))
@@ -59,21 +70,31 @@ public final class EntityWriter<EntityType extends Entity> {
 
             synchronized (this.state(entity.getId())) {
                 this.recreate(entity.getId(), result.getVersion());
+
+                this.copy(entity);
             }
+        } finally {
+            lock.unlock();
         }
     }
 
     public <Value> void set(final EntityType entity, final Property<EntityType, Value> property, final Value value) {
-        synchronized (this.lock(entity.getId())) {
+        final Lock lock = this.lock(entity.getId()).writeLock();
+
+        lock.lock();
+
+        try {
             final WriteResult result = this.apply(entity, WriteKind.UPDATE, List.of(new Change(property.getColumn(), ChangeType.SET, value)));
 
             synchronized (this.state(entity.getId())) {
                 this.gap(entity.getId(), result.getVersion());
 
                 if (this.accept(entity.getId(), result.getVersion())) {
-                    property.set(entity, value);
+                    this.assign(entity, property, value);
                 }
             }
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -82,7 +103,11 @@ public final class EntityWriter<EntityType extends Entity> {
             throw new SchemaException("Cannot increment %s, a converted property has no stable unit across instances".formatted(property.getColumn()));
         }
 
-        synchronized (this.lock(entity.getId())) {
+        final Lock lock = this.lock(entity.getId()).readLock();
+
+        lock.lock();
+
+        try {
             final WriteResult result = this.apply(entity, WriteKind.UPDATE, List.of(new Change(property.getColumn(), ChangeType.INCREMENT, delta)));
 
             synchronized (this.state(entity.getId())) {
@@ -90,14 +115,14 @@ public final class EntityWriter<EntityType extends Entity> {
 
                 final long updated = result.getValue() == null ? (previous == null ? 0L : previous) + delta : result.getValue();
 
-                this.gap(entity.getId(), result.getVersion());
-
                 if (this.accept(entity.getId(), result.getVersion())) {
-                    property.set(entity, updated);
+                    this.assign(entity, property, updated);
                 }
 
                 return updated;
             }
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -110,11 +135,15 @@ public final class EntityWriter<EntityType extends Entity> {
             throw new QueryException("Guarded decrement of %s supports values below 2^53".formatted(property.getColumn()));
         }
 
-        synchronized (this.lock(entity.getId())) {
-            final List<Change> guarded = List.of(new Change(property.getColumn(), ChangeType.DECREMENT_IF, new Decrement(delta, floor)));
+        final List<Change> guarded = List.of(new Change(property.getColumn(), ChangeType.DECREMENT_IF, new Decrement(delta, floor)));
 
-            final List<Change> persisted = List.of(new Change(property.getColumn(), ChangeType.INCREMENT, -delta));
+        final List<Change> persisted = List.of(new Change(property.getColumn(), ChangeType.INCREMENT, -delta));
 
+        final Lock lock = this.lock(entity.getId()).readLock();
+
+        lock.lock();
+
+        try {
             final WriteResult result = this.apply(entity, WriteKind.UPDATE, guarded, persisted);
 
             if (result.getVersion() == Decrement.REFUSED) {
@@ -126,18 +155,22 @@ public final class EntityWriter<EntityType extends Entity> {
 
                 final long updated = result.getValue() == null ? (previous == null ? 0L : previous) - delta : result.getValue();
 
-                this.gap(entity.getId(), result.getVersion());
-
                 if (this.accept(entity.getId(), result.getVersion())) {
-                    property.set(entity, updated);
+                    this.assign(entity, property, updated);
                 }
             }
 
             return true;
+        } finally {
+            lock.unlock();
         }
     }
 
     public void delete(final EntityType entity) {
+        final Lock lock = this.lock(entity.getId()).writeLock();
+
+        lock.lock();
+
         this.gate.enter();
 
         try {
@@ -145,19 +178,27 @@ public final class EntityWriter<EntityType extends Entity> {
 
             this.authority.apply(write);
 
-            this.persistence.accept(write);
+            this.persistence.accept(new Write(write.getKey(), WriteKind.DELETE, Collections.emptyList(), 0L));
 
             this.markDeleted(entity.getId());
         } finally {
             this.gate.exit();
+
+            lock.unlock();
         }
     }
 
     public long getVersion(final UUID id) {
-        return this.versionMap.getOrDefault(id, 0L);
+        final long version = this.versionMap.getOrDefault(id, 0L);
+
+        return this.tracking || version == DELETED ? version : 0L;
     }
 
     public void setVersion(final UUID id, final long version) {
+        if (!this.tracking) {
+            return;
+        }
+
         this.versionMap.put(id, version);
     }
 
@@ -169,18 +210,38 @@ public final class EntityWriter<EntityType extends Entity> {
         this.versionMap.put(id, DELETED);
     }
 
-    public boolean accept(final UUID id, final long version) {
-        if (version <= 0) {
-            return true;
+    private void copy(final EntityType entity) {
+        final EntityType current = this.resolver.apply(entity.getId());
+
+        if (current == null || current == entity) {
+            return;
         }
 
+        this.properties.forEach(property -> copy(property, entity, current));
+    }
+
+    private <Value> void assign(final EntityType entity, final Property<EntityType, Value> property, final Value value) {
+        property.set(entity, value);
+
+        final EntityType current = this.resolver.apply(entity.getId());
+
+        if (current == null || current == entity) {
+            return;
+        }
+
+        property.set(current, value);
+    }
+
+    private boolean accept(final UUID id, final long version) {
         final long current = this.getVersion(id);
 
-        if (current == DELETED || current >= version) {
+        if (current == DELETED || version <= current) {
             return false;
         }
 
-        this.versionMap.put(id, version);
+        if (this.held.test(id)) {
+            this.versionMap.put(id, version);
+        }
 
         return true;
     }
@@ -188,16 +249,12 @@ public final class EntityWriter<EntityType extends Entity> {
     public boolean install(final UUID id, final long version) {
         final long current = this.getVersion(id);
 
-        if (current == DELETED) {
+        if (current == DELETED || current > version) {
             return false;
         }
 
-        if (version <= 0) {
+        if (version <= 0 || !this.tracking) {
             return true;
-        }
-
-        if (current > version) {
-            return false;
         }
 
         this.versionMap.put(id, version);
@@ -212,14 +269,14 @@ public final class EntityWriter<EntityType extends Entity> {
             return false;
         }
 
-        if (version > 0) {
+        if (version > 0 && this.tracking) {
             this.versionMap.put(id, version);
         }
 
         return true;
     }
 
-    public Object lock(final UUID id) {
+    public ReentrantReadWriteLock lock(final UUID id) {
         return this.lockList.get(Math.floorMod(id.hashCode(), LOCKS));
     }
 
@@ -232,11 +289,15 @@ public final class EntityWriter<EntityType extends Entity> {
             this.versionMap.remove(id);
         }
 
+        if (!this.held.test(id)) {
+            return;
+        }
+
         this.install(id, version);
     }
 
     private void gap(final UUID id, final long version) {
-        if (version <= 0) {
+        if (version <= 0 || !this.tracking) {
             return;
         }
 
@@ -291,12 +352,36 @@ public final class EntityWriter<EntityType extends Entity> {
                 throw new VersionConflictException("%s no longer exists".formatted(entity.getId()));
             }
 
-            this.persistence.accept(new Write(write.getKey(), kind, persisted, write.getExpectedVersion()));
+            final List<Change> durable = this.durable(persisted);
+
+            if (!durable.isEmpty()) {
+                this.persistence.accept(new Write(write.getKey(), kind, durable, 0L));
+            }
 
             return result;
         } finally {
             this.gate.exit();
         }
+    }
+
+    private List<Change> durable(final List<Change> changes) {
+        for (final Change change : changes) {
+            if (!this.persistent(change.getColumn())) {
+                return changes.stream()
+                        .filter(entry -> this.persistent(entry.getColumn()))
+                        .collect(Collectors.toCollection(ArrayList::new));
+            }
+        }
+
+        return changes;
+    }
+
+    private boolean persistent(final String column) {
+        return this.persistentMap.computeIfAbsent(column, name -> this.properties.stream()
+                .filter(property -> property.getColumn().equals(name))
+                .findFirst()
+                .map(Property::isPersistent)
+                .orElse(false));
     }
 
     private WriteResult apply(final EntityType entity, final WriteKind kind, final List<Change> changes) {
@@ -313,6 +398,10 @@ public final class EntityWriter<EntityType extends Entity> {
 
     private static boolean guarded(final List<Change> changes) {
         return changes.stream().anyMatch(change -> change.getValue() instanceof Decrement);
+    }
+
+    private static <Owner, Value> void copy(final Property<Owner, Value> property, final Object source, final Object target) {
+        property.set(property.getEntityType().cast(target), property.get(property.getEntityType().cast(source)));
     }
 
     private static <Owner, Value> Change change(final Property<Owner, Value> property, final Object entity) {

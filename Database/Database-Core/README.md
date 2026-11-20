@@ -76,6 +76,8 @@ DatabaseSettings has a single constructor, without defaults:
 | batchInterval | PostgreSQL queue flush |
 | markerLease | Shared-load claim duration |
 | markerTimeout | Shared-load wait before direct fallback |
+| localTtl | Local entity lifetime. Duration.ZERO disables expiry |
+| localLimit | Local entity capacity. Zero disables the capacity limit |
 
 Use positive scheduler intervals and a positive Redis TTL longer than refreshInterval. Zero TTL skips expiry on puts but refresh still calls PEXPIRE with zero. Settings do not validate these combinations.
 
@@ -85,7 +87,7 @@ ID lookup checks LOCAL, REDIS and POSTGRES in that order for the enabled tiers. 
 
 Without Redis entity storage, `repository.apply` is the synchronous authority. With Redis, Lua handles entity writes and publishes the version, origin, kind and changes for successful writes. Core filters messages whose origin is its own driver instance ID. If POSTGRES is enabled alongside Redis, Core queues the write with expected version `0`. A context without a batch queue applies that SQL copy immediately.
 
-A Redis SAVE can create a missing hash. A Redis UPDATE returns zero for a missing hash. The holder can send an ordinary untracked UPDATE to PostgreSQL in that case. A tracked UPDATE or guarded decrement rejects a missing hash. Core reads the hash version for holds and reloads when Redis is available.
+A Redis SAVE can create a missing hash. A Redis UPDATE returns zero for a missing hash. The holder can send an ordinary untracked UPDATE to PostgreSQL in that case. A tracked UPDATE or guarded decrement rejects a missing hash. Core exposes a Redis hash snapshot to holders. It also wires collection callbacks for subscriptions and TTL refresh. The local bound applies to entity storage. Index stores are unbounded.
 
 Redis and SQL keep separate version counters. The PostgreSQL queue is in memory. See [Database-Holder](../Database-Holder/README.md#writing-entities) and [Database-Redis](../Database-Redis/README.md#entity-writes).
 

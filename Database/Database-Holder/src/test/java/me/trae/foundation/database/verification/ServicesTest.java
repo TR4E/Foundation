@@ -30,6 +30,7 @@ import me.trae.foundation.database.redis.event.RedisEvents;
 import me.trae.foundation.database.redis.marker.RedisMarker;
 import me.trae.foundation.database.redis.storage.RedisEntityStorage;
 import me.trae.foundation.database.redis.storage.RedisStorageProvider;
+import me.trae.foundation.database.redis.write.RedisEntityWriter;
 import me.trae.foundation.database.tenant.Tenant;
 import me.trae.foundation.database.tenant.TenantScope;
 import me.trae.foundation.injector.core.CoreInjector;
@@ -46,6 +47,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 import static me.trae.foundation.database.verification.DatabaseFixture.Account;
 import static me.trae.foundation.database.verification.DatabaseFixture.AccountDeclaration;
@@ -115,10 +117,10 @@ public final class ServicesTest extends ServiceFixture {
     void updateBumpsVersion() {
         final Account account = this.persistedAccount();
 
-        final long version = accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 1L, set("name", "updated")));
+        final long version = accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 1L, set("name", "updated"))).getVersion();
 
         assertEquals(2L, version);
-        assertEquals(version + 1L, accountRepository.apply(write(account.getId(), WriteKind.UPDATE, version, increment(2L))));
+        assertEquals(version + 1L, accountRepository.apply(write(account.getId(), WriteKind.UPDATE, version, increment(2L))).getVersion());
         assertEquals(2L, accountRepository.findById(account.getId()).orElseThrow().getCounter());
     }
 
@@ -126,7 +128,7 @@ public final class ServicesTest extends ServiceFixture {
     void staleExpectedVersionThrows() {
         final Account account = this.persistedAccount();
 
-        final long version = accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 0L, set("name", "first")));
+        final long version = accountRepository.apply(write(account.getId(), WriteKind.UPDATE, 0L, set("name", "first"))).getVersion();
 
         accountRepository.apply(write(account.getId(), WriteKind.UPDATE, version, set("name", "second")));
 
@@ -241,19 +243,25 @@ public final class ServicesTest extends ServiceFixture {
     void redisMinusOneBecomesVersionConflict() {
         final Account account = account();
         final RedisEntityStorage<Account> redisEntityStorage = this.entityStorage();
+        final String path = redisEntityStorage.path(account.getId());
+        final String channel = redisEntityStorage.channel(account.getId());
+        final RedisEntityWriter redisEntityWriter = this.entityWriter();
 
         redisEntityStorage.put(account.getId(), account);
-        redisDriver.getCommands().hset(redisEntityStorage.path(account.getId()), "version", "2");
+        redisDriver.getCommands().hset(path, "version", "2");
 
-        assertThrows(
-                VersionConflictException.class,
-                () -> this.entityWriter().apply(
-                        redisEntityStorage.path(account.getId()),
-                        redisEntityStorage.channel(account.getId()),
-                        write(account.getId(), WriteKind.UPDATE, 1L, increment(1L)),
-                        Duration.ofSeconds(10)
-                )
-        );
+        final WriteResult result = redisEntityWriter.apply(path, channel, write(account.getId(), WriteKind.UPDATE, 1L, increment(1L)), Duration.ofSeconds(10));
+
+        assertEquals(3L, result.getVersion());
+        assertEquals(account.getCounter() + 1L, result.getValue());
+
+        assertThrows(VersionConflictException.class, () -> redisEntityWriter.apply(path, channel,
+                write(account.getId(), WriteKind.UPDATE, 1L, set("name", "stale")), Duration.ofSeconds(10)));
+        assertThrows(VersionConflictException.class, () -> redisEntityWriter.apply(path, channel,
+                write(account.getId(), WriteKind.UPDATE, 1L, set("name", "stale"), increment(1L)), Duration.ofSeconds(10)));
+
+        assertEquals("3", redisDriver.getCommands().hget(path, "version"));
+        assertEquals(result.getValue().toString(), redisDriver.getCommands().hget(path, "counter"));
     }
 
     @Test
@@ -264,10 +272,10 @@ public final class ServicesTest extends ServiceFixture {
         final AtomicReference<String> payloadReference = new AtomicReference<>();
 
         redisEntityStorage.put(account.getId(), account);
-        redisDriver.subscribe(redisEntityStorage.channel(account.getId()), payload -> {
+        redisDriver.subscribe(Map.of(redisEntityStorage.channel(account.getId()), payload -> {
             payloadReference.set(payload);
             received.countDown();
-        });
+        }));
 
         try {
             this.entityWriter().apply(
@@ -364,7 +372,7 @@ public final class ServicesTest extends ServiceFixture {
                 tiers,
                 firstMap,
                 redisMarker,
-                write -> new WriteResult(countedRepository.apply(write), null),
+                countedRepository::apply,
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -375,7 +383,7 @@ public final class ServicesTest extends ServiceFixture {
                 tiers,
                 secondMap,
                 redisMarker,
-                write -> new WriteResult(countedRepository.apply(write), null),
+                countedRepository::apply,
                 _ -> {},
                 (_, _) -> {},
                 _ -> {},
@@ -451,7 +459,7 @@ public final class ServicesTest extends ServiceFixture {
             final RedisEntityStorage<Account> redisEntityStorage = this.entityStorage();
 
             if (tiers.contains(Tier.LOCAL)) {
-                storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace("mixed-local")));
+                storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace("mixed-local"), 0, Duration.ZERO));
             }
 
             if (tiers.contains(Tier.REDIS)) {
@@ -470,7 +478,7 @@ public final class ServicesTest extends ServiceFixture {
                             write,
                             Duration.ofSeconds(10)
                     )
-                            : write -> new WriteResult(countedRepository.apply(write), null),
+                            : countedRepository::apply,
                     tiers.contains(Tier.REDIS) ? countedRepository::apply : _ -> {},
                     (_, _) -> {},
                     _ -> {},
@@ -504,7 +512,7 @@ public final class ServicesTest extends ServiceFixture {
             clearInvocations(countedRepository);
             localBean.set(localBean.get(account.getId()).orElseThrow(), AccountDeclaration.NAME, "local-change");
 
-            verify(countedRepository, times(1)).apply(any());
+            verify(countedRepository, times(1)).apply(any(Write.class));
             assertEquals(account.getName(), allBean.get(account.getId()).orElseThrow().getName());
         } finally {
             coreInjector.shutdown(testApplication);
@@ -533,10 +541,10 @@ public final class ServicesTest extends ServiceFixture {
 
             assertEquals("visible", secondNode.getAllBean().get(account.getId()).orElseThrow().getName());
 
-            secondDriver.subscribe(
+            secondDriver.subscribe(Map.of(
                     this.entityStorage().channel(account.getId()),
                     payload -> secondNode.getAllBean().getApplier().apply(RedisEvents.decode(new EntityKey("accounts", null, account.getId()), payload))
-            );
+            ));
             firstNode.getAllBean().set(firstAccount, AccountDeclaration.NAME, "repaired");
             this.await(() -> secondNode.getAllBean().getHeld().stream().anyMatch(heldAccount -> heldAccount.getName().equals("repaired")));
 
@@ -608,7 +616,7 @@ public final class ServicesTest extends ServiceFixture {
                     )
             );
 
-            storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace("local")));
+            storageMap.put(Tier.LOCAL, new LocalStorage<>(namespace("local"), 0, Duration.ZERO));
             storageMap.put(Tier.REDIS, redisEntityStorage);
 
             return context(
@@ -621,14 +629,17 @@ public final class ServicesTest extends ServiceFixture {
                             PropertyRegistry.getProperties(Account.class)
                     ).apply(redisEntityStorage.path(write.getKey().getId()), redisEntityStorage.channel(write.getKey().getId()), write, Duration.ofSeconds(10)),
                     write -> this.accountRepository.apply(new Write(write.getKey(), write.getKind(), write.getChanges(), 0L)),
-                    (
-                            id,
-                            listener
-                    ) -> this.redisDriver.subscribe(redisEntityStorage.channel(id), payload -> {
-                        if (!RedisEvents.origin(payload).equals(this.redisDriver.getInstanceId())) {
-                            listener.accept(RedisEvents.decode(new EntityKey("accounts", null, id), payload));
-                        }
-                    }),
+                    (ids, listener) -> {
+                        final Map<String, Consumer<String>> listenerMap = new LinkedHashMap<>();
+
+                        ids.forEach(id -> listenerMap.put(redisEntityStorage.channel(id), payload -> {
+                            if (!RedisEvents.origin(payload).equals(this.redisDriver.getInstanceId())) {
+                                listener.accept(RedisEvents.decode(new EntityKey("accounts", null, id), payload));
+                            }
+                        }));
+
+                        this.redisDriver.subscribe(listenerMap);
+                    },
                     id -> this.redisDriver.unsubscribe(redisEntityStorage.channel(id)),
                     List.of(new LocalStorageProvider(), new RedisStorageProvider(this.redisDriver))
             );

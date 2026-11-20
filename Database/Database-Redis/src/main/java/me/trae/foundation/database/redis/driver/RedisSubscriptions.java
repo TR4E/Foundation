@@ -5,6 +5,7 @@ import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 import lombok.CustomLog;
 import me.trae.foundation.database.api.exception.ConnectionException;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -32,10 +33,14 @@ public final class RedisSubscriptions extends RedisPubSubAdapter<String, String>
         }
     }
 
-    public void subscribe(final String channel, final Consumer<String> consumer) {
-        this.listenerMap.put(channel, consumer);
+    public void subscribe(final Map<String, Consumer<String>> listeners) {
+        if (listeners.isEmpty()) {
+            return;
+        }
 
-        this.getConnection().sync().subscribe(channel);
+        this.listenerMap.putAll(listeners);
+
+        this.getConnection().sync().subscribe(listeners.keySet().toArray(String[]::new));
     }
 
     public void unsubscribe(final String channel) {

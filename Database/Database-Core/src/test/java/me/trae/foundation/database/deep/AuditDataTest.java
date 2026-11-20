@@ -10,7 +10,6 @@ import me.trae.foundation.database.api.property.Property;
 import me.trae.foundation.database.api.property.PropertyRegistry;
 import me.trae.foundation.database.api.storage.Namespace;
 import me.trae.foundation.database.api.write.WriteGate;
-import me.trae.foundation.database.api.write.WriteResult;
 import me.trae.foundation.database.holder.write.EntityWriter;
 import me.trae.foundation.database.postgres.repository.PostgresRepository;
 import me.trae.foundation.database.postgres.row.PostgresRow;
@@ -67,7 +66,18 @@ public final class AuditDataTest extends RuntimeFixture {
 
             assertDoesNotThrow(() -> postgresSynchronizer.synchronize(dataRepository.getStatements()), "A native decimal property should support PostgreSQL DDL");
 
-            final EntityWriter<DataEntity> entityWriter = new EntityWriter<>(dataRepository.getTable(), null, PropertyRegistry.getProperties(DataEntity.class), write -> new WriteResult(dataRepository.apply(write), null), _ -> {}, _ -> {}, new WriteGate());
+            final EntityWriter<DataEntity> entityWriter = new EntityWriter<>(
+                    dataRepository.getTable(),
+                    null,
+                    PropertyRegistry.getProperties(DataEntity.class),
+                    dataRepository::apply,
+                    _ -> {},
+                    _ -> {},
+                    new WriteGate(),
+                    true,
+                    _ -> true,
+                    _ -> null
+            );
             final DataEntity dataEntity = new DataEntity(UUID.randomUUID());
 
             dataEntity.setAmount(new BigDecimal("1234567890.1234500"));
@@ -79,17 +89,19 @@ public final class AuditDataTest extends RuntimeFixture {
     }
 
     @Test
-    void allNullRedisEntityCanReplaceLastField() {
+    void clearingLastRedisFieldPreservesVersionedHash() {
         try (final Node node = new Node(LocalBean.class, Duration.ofSeconds(30))) {
             final RedisEntityStorage<DataEntity> redisEntityStorage = this.storage(node);
             final DataEntity dataEntity = new DataEntity(UUID.randomUUID());
 
             dataEntity.setLabel("");
             redisEntityStorage.put(dataEntity.getId(), dataEntity);
+            node.getRedisDriver().getCommands().hset(redisEntityStorage.path(dataEntity.getId()), "version", "1");
             dataEntity.setLabel(null);
 
-            assertDoesNotThrow(() -> redisEntityStorage.put(dataEntity.getId(), dataEntity), "Replacing the last field with null should keep a readable entity");
+            assertDoesNotThrow(() -> redisEntityStorage.put(dataEntity.getId(), dataEntity));
             assertNull(redisEntityStorage.get(dataEntity.getId()).orElseThrow().getLabel());
+            assertEquals(1L, redisEntityStorage.version(dataEntity.getId()));
         }
     }
 
@@ -117,7 +129,18 @@ public final class AuditDataTest extends RuntimeFixture {
             final org.jooq.DSLContext dslContext = node.getPostgresDriver().getDslContext();
             final org.jooq.Table<?> table = DSL.table(DSL.name(tableName));
             final PostgresRow<DataEntity> postgresRow = new PostgresRow<>(new EntityInstantiator<>(DataEntity.class), propertyList);
-            final EntityWriter<DataEntity> entityWriter = new EntityWriter<>(tableName, null, propertyList, write -> new WriteResult(PostgresWrite.apply(dslContext, table, propertyList, write), null), _ -> {}, _ -> {}, new WriteGate());
+            final EntityWriter<DataEntity> entityWriter = new EntityWriter<>(
+                    tableName,
+                    null,
+                    propertyList,
+                    write -> PostgresWrite.apply(dslContext, table, propertyList, write),
+                    _ -> {},
+                    _ -> {},
+                    new WriteGate(),
+                    true,
+                    _ -> true,
+                    _ -> null
+            );
             final DataEntity dataEntity = new DataEntity(UUID.randomUUID());
 
             dataEntity.setBytes(new byte[0]);
@@ -132,7 +155,18 @@ public final class AuditDataTest extends RuntimeFixture {
     void decimalRoundTripsThroughAnExistingNumericColumn() {
         try (final Node node = new Node(LocalBean.class, Duration.ofSeconds(30))) {
             final DataRepository dataRepository = new DataRepository(node, "audit_existing_numeric");
-            final EntityWriter<DataEntity> entityWriter = new EntityWriter<>(dataRepository.getTable(), null, PropertyRegistry.getProperties(DataEntity.class), write -> new WriteResult(dataRepository.apply(write), null), _ -> {}, _ -> {}, new WriteGate());
+            final EntityWriter<DataEntity> entityWriter = new EntityWriter<>(
+                    dataRepository.getTable(),
+                    null,
+                    PropertyRegistry.getProperties(DataEntity.class),
+                    dataRepository::apply,
+                    _ -> {},
+                    _ -> {},
+                    new WriteGate(),
+                    true,
+                    _ -> true,
+                    _ -> null
+            );
             final DataEntity dataEntity = new DataEntity(UUID.randomUUID());
 
             node.getPostgresDriver().getDslContext().execute("CREATE TABLE audit_existing_numeric (id uuid PRIMARY KEY, version bigint NOT NULL DEFAULT 0, amount numeric, payload bytea, label text, custom_value text)");

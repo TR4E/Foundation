@@ -7,6 +7,7 @@ import me.trae.foundation.database.api.event.ChangeEvent;
 import me.trae.foundation.database.api.property.Property;
 import me.trae.foundation.database.api.repository.Repository;
 import me.trae.foundation.database.api.storage.Storage;
+import me.trae.foundation.database.api.storage.VersionedEntity;
 import me.trae.foundation.database.api.tier.Tier;
 import me.trae.foundation.database.api.write.Write;
 import me.trae.foundation.database.api.write.WriteGate;
@@ -15,7 +16,11 @@ import me.trae.foundation.database.index.IndexStores;
 import me.trae.foundation.database.lookup.EntityLookup;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
@@ -37,10 +42,13 @@ public final class HolderContext<EntityType extends Entity> {
     private final Function<Write, WriteResult> authority;
     private final Consumer<Write> persistence;
     private final WriteGate gate;
-    private final BiConsumer<UUID, Consumer<ChangeEvent>> subscriber;
+    private final BiConsumer<Collection<UUID>, Consumer<ChangeEvent>> subscriber;
     private final Consumer<UUID> unsubscriber;
     private final BiFunction<Property<?, ?>, String, Object> decoder;
     private final ToLongFunction<UUID> version;
-    private final Consumer<EntityType> refresher;
+    private final Function<Collection<UUID>, Map<UUID, Long>> versions;
+    private final Function<UUID, Optional<VersionedEntity<EntityType>>> snapshot;
+    private final Function<Collection<UUID>, Map<UUID, VersionedEntity<EntityType>>> snapshots;
+    private final Consumer<List<EntityType>> refresher;
     private final Duration refreshInterval;
 }

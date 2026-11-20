@@ -150,11 +150,11 @@ Null extracted index values remove any previous runtime mapping. Memory properti
 CoreDatabase takes settings and drivers. Its tenant comes from DatabaseSettings, not a separate constructor argument.
 
 ```java
-final DatabaseSettings databaseSettings = new DatabaseSettings(Tier.ALL, null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2));
+final DatabaseSettings databaseSettings = new DatabaseSettings(Tier.ALL, null, Duration.ofMinutes(5), Duration.ofMinutes(1), Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(2), Duration.ZERO, 0);
 final CoreDatabase coreDatabase = new CoreDatabase(databaseSettings, postgresDriver, redisDriver);
 ```
 
-The settings arguments are enabled tiers, tenant, entity TTL, refresh interval, batch interval, marker lease and marker timeout. Null/blank tenant means no tenant. Pass null for redisDriver when Redis should not be used.
+The settings arguments are enabled tiers, tenant, entity TTL, refresh interval, batch interval, marker lease, marker timeout, local TTL and local size limit. Null/blank tenant means no tenant. Pass null for redisDriver when Redis should not be used.
 
 Expose PostgresDriver, coreDatabase.getTenantScope() and coreDatabase.getContextFactory() to your DI container. The container constructs ExampleRepository and ExampleHolder before Core starts. With [Foundation Injector](../Injector/README.md), explicitly supplied component classes work without additional annotations:
 
@@ -182,6 +182,8 @@ Core start connects drivers, applies registered repository DDL, and starts batch
 
 ## Read and write paths
 
+Capacity and TTL can bound each holder?s LOCAL entity store. Zero capacity and Duration.ZERO preserve unbounded retention. Index stores keep their own storage policy. Holder refresh groups Redis expirations by storage on a dedicated batch connection. holdAll subscribes to the loaded IDs in one request.
+
 ID reads use the enabled tiers in LOCAL, REDIS, POSTGRES order. `hold` and `holdAll` populate the Local working set when enabled. `release` removes remembered index entries by UUID, removes any Local entry and unsubscribes. It clears live version tracking and preserves delete markers.
 
 `getByProperty` tries a matching unique runtime index, or a held scan when no matching index exists, then PostgreSQL if enabled. `getByIndex` and `getAllByIndex` resolve IDs from runtime indexes.
@@ -190,7 +192,7 @@ The holder calls the write authority before applying local property changes. Wit
 
 `increment`, `decrement` and `decrementIfAtLeast` operate on unconverted `Long` properties. The guarded decrement returns `false` when the resulting value would fall below the floor. The authority checks the floor atomically. A refused debit leaves the held property's value unchanged and produces no persistence write or event.
 
-Other-instance events for held entities are processed in order on the holder's event executor. Version gaps and SAVE events at or below the tracked version queue a reload. Reload reads Redis directly before falling back through the lookup, checks that the backend version stayed stable, and installs the snapshot only if the tracked version has stayed the same. Remote DELETE evicts the held object, removes its runtime index entries and marks the ID deleted. See [Database-Holder](Database-Holder/README.md#remote-events-and-refresh).
+Other-instance events for held entities are processed in order on the holder's event executor. Version gaps and SAVE events at or below the tracked version queue a reload. Reload reads Redis directly before falling back through the lookup, reads the entity and version together, and installs the snapshot only if the tracked version has stayed the same. Remote DELETE evicts the held object, removes its runtime index entries and marks the ID deleted. See [Database-Holder](Database-Holder/README.md#remote-events-and-refresh).
 
 ## Schema and coalescing
 
